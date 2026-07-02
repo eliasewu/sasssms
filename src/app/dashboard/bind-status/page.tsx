@@ -14,38 +14,71 @@ export default function BindStatusPage() {
   const [clients, setClients] = useState<BindEntity[]>([]);
   const [suppliers, setSuppliers] = useState<BindEntity[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+
+  const loadRealStatus = useCallback(async (entityType: string) => {
+    try {
+      const res = await fetch(`/api/tenant/bind-control?entityType=${entityType}`);
+      const data = await res.json();
+      if (data.entities) {
+        return data.entities as Array<{ id: number; name: string; dbStatus: string; realStatus: string }>;
+      }
+    } catch {}
+    return [];
+  }, []);
 
   const load = useCallback(async () => {
-    const [cr, sr] = await Promise.all([
+    const [cr, sr, clientReal, supplierReal] = await Promise.all([
       fetch("/api/tenant/clients").then(r => r.json()),
       fetch("/api/tenant/suppliers").then(r => r.json()),
+      loadRealStatus("clients"),
+      loadRealStatus("suppliers"),
     ]);
 
-    setClients((cr.clients || []).map((c: Record<string,unknown>) => ({
-      id: c.id as number, name: c.name as string, type: "client" as const,
-      systemType: (c.smpp_system_type as string) || "ESME",
-      host: (c.smpp_allowed_ip as string) || (c.ip as string) || "0.0.0.0",
-      port: 2775,
-      bindStatus: (c.bind_status as string) || "UNBOUND",
-      lastBindTime: (c.last_bind_time as string) || null,
-      connectionType: (c.connection_type as string) || "SMPP",
-      smppUsername: (c.smpp_username as string) || "—",
-      smppAllowedIp: (c.smpp_allowed_ip as string) || "—",
-    })));
+    // Build client map from real status API
+    const clientRealMap = new Map<number, string>();
+    for (const e of clientReal) {
+      clientRealMap.set(e.id, e.realStatus);
+    }
 
-    setSuppliers((sr.suppliers || []).map((s: Record<string,unknown>) => ({
-      id: s.id as number, name: s.name as string, type: "supplier" as const,
-      systemType: (s.connection_mode as string) === "SERVER" ? "SMSC" : "ESME",
-      host: (s.host as string) || "—",
-      port: (s.port as number) || 2775,
-      bindStatus: (s.bind_status as string) || "UNBOUND",
-      lastBindTime: (s.last_bind_time as string) || null,
-      connectionType: (s.connection_type as string) || "SMPP",
-      smppUsername: (s.username as string) || (s.system_id as string) || "—",
-      smppAllowedIp: "—",
-      connectionMode: (s.connection_mode as string) || "CLIENT",
-    })));
-  }, []);
+    const supplierRealMap = new Map<number, string>();
+    for (const e of supplierReal) {
+      supplierRealMap.set(e.id, e.realStatus);
+    }
+
+    setClients((cr.clients || []).map((c: Record<string,unknown>) => {
+      const realStatus = clientRealMap.get(c.id as number) || "UNBOUND";
+      return {
+        id: c.id as number, name: c.name as string, type: "client" as const,
+        systemType: (c.smpp_system_type as string) || "ESME",
+        host: (c.smpp_allowed_ip as string) || (c.ip as string) || "0.0.0.0",
+        port: 2775,
+        bindStatus: realStatus, // Use REAL status from active sessions
+        lastBindTime: (c.last_bind_time as string) || null,
+        connectionType: (c.connection_type as string) || "SMPP",
+        smppUsername: (c.smpp_username as string) || "—",
+        smppAllowedIp: (c.smpp_allowed_ip as string) || "—",
+      };
+    }));
+
+    setSuppliers((sr.suppliers || []).map((s: Record<string,unknown>) => {
+      const realStatus = supplierRealMap.get(s.id as number) || "UNBOUND";
+      return {
+        id: s.id as number, name: s.name as string, type: "supplier" as const,
+        systemType: (s.connection_mode as string) === "SERVER" ? "SMSC" : "ESME",
+        host: (s.host as string) || "—",
+        port: (s.port as number) || 2775,
+        bindStatus: realStatus, // Use REAL status from active connections
+        lastBindTime: (s.last_bind_time as string) || null,
+        connectionType: (s.connection_type as string) || "SMPP",
+        smppUsername: (s.username as string) || (s.system_id as string) || "—",
+        smppAllowedIp: "—",
+        connectionMode: (s.connection_mode as string) || "CLIENT",
+      };
+    }));
+
+    setLastSyncTime(new Date().toLocaleTimeString());
+  }, [loadRealStatus]);
 
   useEffect(() => { load(); if (autoRefresh) { const i = setInterval(load, 10000); return () => clearInterval(i); } }, [load, autoRefresh]);
 

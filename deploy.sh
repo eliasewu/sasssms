@@ -128,7 +128,15 @@ CREATE TABLE IF NOT EXISTS public.mcc_traffic_stats (id SERIAL PRIMARY KEY, tena
 
 INSERT INTO public.platform_settings (key, value) VALUES ('globalCostPerSms', '0.00030') ON CONFLICT (key) DO NOTHING;
 INSERT INTO public.platform_settings (key, value) VALUES ('ott_proxy_required', 'true') ON CONFLICT (key) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS public.voice_otp_default_audio (id SERIAL PRIMARY KEY, language VARCHAR(50) NOT NULL, digit VARCHAR(5) NOT NULL, file_name VARCHAR(255), file_url TEXT, audio_type VARCHAR(10) DEFAULT 'wav', created_at TIMESTAMP DEFAULT NOW());
 SQL
+
+# Seed Voice OTP language groups into all existing tenant schemas
+if [ -f "$APP_DIR/seed-voice-otp-languages.sql" ]; then
+  psql "$DB_URL" -f "$APP_DIR/seed-voice-otp-languages.sql" 2>&1 | tail -5
+  ok "Voice OTP languages seeded into all tenants"
+fi
 
 ok "Database tables ready"
 
@@ -138,7 +146,7 @@ echo "[9/9] Starting services..."
 # PM2
 cd "$APP_DIR"
 pm2 delete net2app 2>/dev/null || true
-pm2 start npm --name "net2app" -- start --cwd "$APP_DIR"
+pm2 start npm --name "net2app" -- run start
 pm2 save
 pm2 startup systemd -u root --hp /root 2>/dev/null || true
 

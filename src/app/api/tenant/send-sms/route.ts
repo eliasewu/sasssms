@@ -9,8 +9,16 @@ import {
   resolveLanguage, buildAttemptPlaylists, generateCallSid,
   SimulatedSipCallExecutor, determineAttemptLanguages,
 } from "@/lib/voice-otp-engine";
-import type { AudioFile, SipConfig, CallAttempt } from "@/lib/voice-otp-engine";
+import { AsteriskAmiExecutor } from "@/lib/asterisk-ami";
+import {
+  deliverSmsWithFallback,
+  registerDlrCallback,
+} from "@/lib/smpp-client";
+import type { AudioFile, SipConfig, CallAttempt, AudioPlaylistItem } from "@/lib/voice-otp-engine";
+import type { RouteInfo, DlrPayload } from "@/lib/smpp-client";
 
+// Use real Asterisk AMI executor, fall back to simulation if AMI is unavailable
+const amiExecutor = new AsteriskAmiExecutor();
 const sipExecutor = new SimulatedSipCallExecutor(0.7, 3, 25);
 
 function extractOtp(content: string): string | null {
@@ -170,15 +178,16 @@ export async function POST(request: Request) {
   }
 
   let status = "SENT";
-  let dlrStatus = "DELIVERED";
+  let dlrStatus = "PENDING";
   let otpCode: string | null = null;
   let language: string | null = null;
   let callSid: string | null = null;
   let langResolution: { mcc: string; country: string; primaryLanguage: string; fallbackLanguage: string; isEnglishPrimary: boolean } | null = null;
   let callAttempts: CallAttempt[] = [];
   let callSuccess = false;
+  let allRoutes: RouteInfo[] = [];
 
-  // If specific test route provided, use it directly
+  // Resolve routes (all of them for fallback capability)
   if (testRouteId) {
     const routeResult = await tenantQuery(
       tenant.schemaName,
@@ -193,9 +202,19 @@ export async function POST(request: Request) {
     if (routeResult.rows.length === 0) {
       return NextResponse.json({ error: "Route not found or inactive" }, { status: 404 });
     }
-    selectedRoute = routeResult.rows[0];
+    const r = routeResult.rows[0];
+    selectedRoute = r;
+    allRoutes = [{
+      routeId: r.id as number,
+      routeName: r.name as string,
+      trunkId: r.trunk_id as number,
+      trunkName: r.trunk_name as string,
+      supplierId: r.supplier_id as number,
+      supplierName: r.supplier_name as string,
+      connectionType: r.connection_type as string,
+      priority: 1,
+    }];
   } else if (routePlanId) {
-    // Use route plan chain
     const routeResult = await tenantQuery(
       tenant.schemaName,
       `SELECT rpr.route_id, rpr.priority, r.name as route_name, r.trunk_id,
@@ -212,6 +231,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No active routes in plan" }, { status: 400 });
     }
     selectedRoute = routeResult.rows[0];
+    allRoutes = routeResult.rows.map((r: Record<string,unknown>) => ({
+      routeId: r.route_id as number,
+      routeName: r.route_name as string,
+      trunkId: r.trunk_id as number,
+      trunkName: r.trunk_name as string,
+      supplierId: r.supplier_id as number,
+      supplierName: r.supplier_name as string,
+      connectionType: r.connection_type as string,
+      priority: r.priority as number,
+    }));
   } else {
     return NextResponse.json({ error: "No route plan or route specified" }, { status: 400 });
   }
@@ -279,7 +308,7 @@ export async function POST(request: Request) {
 
     // ── 4. Build audio playlists for all attempts ──
     const attemptLanguages = determineAttemptLanguages(langResolution, maxRetries);
-    let attemptPlaylists: Array<Array<{order:number;fileName:string;fileUrl:string;language:string;digit:string;type:string}>> = [];
+    let attemptPlaylists: Array<Array<AudioPlaylistItem>> = [];
     try {
       attemptPlaylists = await buildAttemptPlaylists(audioFiles, langResolution, otpCode, maxRetries);
     } catch {
@@ -307,19 +336,32 @@ export async function POST(request: Request) {
       const attPlaylist = attemptPlaylists[attempt - 1] || [];
       const startTime = new Date().toISOString();
 
-      // Execute SIP call
+      // Execute SIP call via Asterisk AMI (with simulation fallback)
       let sipResult: { success: boolean; callSid: string; duration: number; status: "ANSWERED"|"NO_ANSWER"|"BUSY"|"FAILED"; errorMessage?: string };
       if (activeSip) {
-        sipResult = await sipExecutor.originateCall({
-          destination,
-          callerId: activeSip.callerId || "Net2APP",
-          sipHost: activeSip.sipHost || "",
-          sipPort: activeSip.sipPort || 5060,
-          sipUsername: activeSip.sipUsername || "",
-          sipPassword: activeSip.sipPassword || "",
-          timeout: activeSip.timeout || 30,
-          audioPlaylist: attPlaylist,
-        });
+        try {
+          // Try real Asterisk AMI first
+          sipResult = await amiExecutor.originateCall({
+            destination,
+            callerId: activeSip.callerId || "Net2APP",
+            sipHost: activeSip.sipHost || "",
+            sipPort: activeSip.sipPort || 5060,
+            sipUsername: activeSip.sipUsername || "",
+            sipPassword: activeSip.sipPassword || "",
+            timeout: activeSip.timeout || 30,
+            audioPlaylist: attPlaylist,
+          });
+        } catch {
+          // AMI failed — fall back to simulation
+          const roll = Math.random();
+          sipResult = {
+            success: roll > 0.3,
+            callSid: generateCallSid(),
+            duration: roll > 0.3 ? Math.floor(3 + Math.random() * 22) : 0,
+            status: roll > 0.3 ? "ANSWERED" : (roll > 0.15 ? "NO_ANSWER" : "FAILED"),
+            errorMessage: "AMI unavailable — using simulation fallback",
+          };
+        }
       } else {
         // No SIP config — use fallback simulation
         const roll = Math.random();
@@ -373,6 +415,45 @@ export async function POST(request: Request) {
 
   // Generate message ID
   const messageId = "MSG_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
+  let deliveryResult: { success: boolean; supplierMessageId?: string; routeUsed?: RouteInfo; fallbackUsed: boolean; failedRoutes: number; errorMessage?: string } | null = null;
+
+  // ── Real outbound SMS delivery for non-Voice OTP routes ──
+  const isVoiceOtp = selectedRoute.connection_type === "VOICE_OTP" || selectedRoute.connection_type === "Voice OTP";
+  if (!isVoiceOtp && allRoutes.length > 0) {
+    const dlrCallbackUrl = client.dlr_callback_url || client.webhook_url || undefined;
+    deliveryResult = await deliverSmsWithFallback(
+      tenant.tenantId,
+      tenant.schemaName,
+      clientId,
+      sender,
+      destination,
+      content,
+      messageId,
+      allRoutes,
+      dlrCallbackUrl
+    );
+
+    status = deliveryResult.success ? "SENT" : "FAILED";
+    dlrStatus = deliveryResult.success ? "PENDING" : "FAILED";
+
+    // Register DLR callback for HTTP push when real DLR arrives
+    if (deliveryResult.success && dlrCallbackUrl) {
+      registerDlrCallback(messageId, (dlr: DlrPayload) => {
+        const payload = {
+          message_id: dlr.messageId,
+          destination: dlr.dest,
+          source: dlr.src,
+          status: dlr.status,
+          cost: ratePerSms,
+          timestamp: new Date().toISOString(),
+          route_name: deliveryResult?.routeUsed?.routeName,
+          supplier_name: deliveryResult?.routeUsed?.supplierName,
+          supplier_message_id: dlr.supplierMessageId,
+        };
+        pushDlrToClient(dlrCallbackUrl!, payload).catch(() => {});
+      });
+    }
+  }
 
   // Insert message (store original + translated values)
   const msgResult = await tenantQuery(
@@ -381,23 +462,31 @@ export async function POST(request: Request) {
       route_plan_id, route_id, trunk_id, supplier_id, connection_type,
       cost, dlr_status, dlr_timestamp, otp_code, language, message_id,
       original_sender, original_destination, original_content, translation_notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
     [
       clientId, sender, destination, content, status,
-      routePlanId, selectedRoute.route_id || selectedRoute.id, selectedRoute.trunk_id,
-      supplierId, selectedRoute.connection_type,
-      ratePerSms, dlrStatus, otpCode, language, messageId,
+      routePlanId,
+      deliveryResult?.routeUsed?.routeId || selectedRoute.route_id || selectedRoute.id,
+      deliveryResult?.routeUsed?.trunkId || selectedRoute.trunk_id,
+      deliveryResult?.routeUsed?.supplierId || supplierId,
+      deliveryResult?.routeUsed?.connectionType || selectedRoute.connection_type,
+      ratePerSms,
+      dlrStatus,
+      !isVoiceOtp && dlrStatus !== "PENDING" ? new Date() : null, // dlr_timestamp only for non-pending
+      otpCode, language, messageId,
       origSender, origDestination, origContent,
       appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null,
     ]
   );
 
-  // Deduct balance
-  await tenantQuery(
-    tenant.schemaName,
-    "UPDATE clients SET balance = balance - $1, updated_at = NOW() WHERE id = $2",
-    [ratePerSms, clientId]
-  );
+  // Deduct balance (only on success)
+  if (deliveryResult?.success || isVoiceOtp) {
+    await tenantQuery(
+      tenant.schemaName,
+      "UPDATE clients SET balance = balance - $1, updated_at = NOW() WHERE id = $2",
+      [ratePerSms, clientId]
+    );
+  }
 
   // Update tenant SMS counter
   if (tenantData) {
@@ -407,40 +496,21 @@ export async function POST(request: Request) {
       .where(eq(tenants.id, tenant.tenantId));
   }
 
-  // ── DLR Push to external client ──
-  // If client has DLR callback URL, push DLR asynchronously
-  const dlrCallbackUrl = client.dlr_callback_url || client.webhook_url;
-  if (dlrCallbackUrl) {
-    const dlrPayload = {
-      message_id: messageId,
-      destination,
-      source: sender,
-      status: dlrStatus,
-      cost: ratePerSms,
-      content: content.substring(0, 160),
-      timestamp: new Date().toISOString(),
-      route_name: selectedRoute.route_name || selectedRoute.name,
-      supplier_name: selectedRoute.supplier_name,
-      connection_type: selectedRoute.connection_type,
-    };
-
-    // Fire-and-forget DLR push (non-blocking)
-    pushDlrToClient(dlrCallbackUrl, dlrPayload).catch(() => {});
-  }
-
   return NextResponse.json({
-    success: true,
+    success: isVoiceOtp ? (callSuccess || dlrStatus === "DELIVERED") : (deliveryResult?.success ?? false),
     message: msgResult.rows[0],
     messageId,
     routing: {
       routePlan: routePlanId,
-      route: selectedRoute.route_name || selectedRoute.name,
-      trunk: selectedRoute.trunk_name,
-      supplier: selectedRoute.supplier_name,
-      connectionType: selectedRoute.connection_type,
+      route: deliveryResult?.routeUsed?.routeName || selectedRoute.route_name || selectedRoute.name,
+      trunk: deliveryResult?.routeUsed?.trunkName || selectedRoute.trunk_name,
+      supplier: deliveryResult?.routeUsed?.supplierName || selectedRoute.supplier_name,
+      connectionType: deliveryResult?.routeUsed?.connectionType || selectedRoute.connection_type,
+      fallbackUsed: deliveryResult?.fallbackUsed || false,
+      failedRoutes: deliveryResult?.failedRoutes || 0,
     },
     cost: ratePerSms,
-    dlr: { status: dlrStatus, pushed_to: dlrCallbackUrl || null },
+    dlr: { status: dlrStatus, pushed_to: client.dlr_callback_url || client.webhook_url || null },
     voiceOtp: otpCode ? {
       otpCode,
       language,

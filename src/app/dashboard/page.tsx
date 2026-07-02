@@ -82,7 +82,7 @@ export default function DashboardPage() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h3 className="font-semibold text-lg">🔌 SMPP Server Connection</h3>
-            <p className="text-slate-300 text-sm">Java 21 SMPP (ESME/SMSC) • Connect via SMPP or REST API</p>
+            <p className="text-slate-300 text-sm">SMPP v3.4 • Connect via SMPP or HTTP REST API</p>
           </div>
           <div className="flex items-center gap-6">
             <div className="text-center"><p className="text-slate-400 text-xs">Server IP</p><p className="font-mono text-lg font-bold">{tenant.smppServerIp}</p></div>

@@ -1,10 +1,51 @@
 /**
  * Net2APP SMPP SMSC Server — Java 21 / Node.js compatible
- * Port 2775, supports SMPP v3.4 ESME binds
- * Handles: BIND_TRANSCEIVER, SUBMIT_SM, DELIVER_SM (DLR), ENQUIRE_LINK
+ * Port 2775, supports SMPP v3.3, v3.4, v5.0 ESME binds with version negotiation
+ *
+ * Version detection: Reads interface_version from bind PDU and negotiates
+ * the best mutually-supported version. v3.3 does NOT support bind_transceiver.
+ *
+ * Handles: BIND_TRANSCEIVER, BIND_TRANSMITTER, BIND_RECEIVER, SUBMIT_SM, DELIVER_SM (DLR), ENQUIRE_LINK
+ *
+ * SMS Delivery: Uses real outbound delivery via smpp-client with route fallback.
+ * DLR: Delayed until real supplier DLR arrives, then pushed to client via SMPP + HTTP.
  */
 import smpp from "smpp";
 import { pool } from "@/db";
+import {
+  deliverSmsWithFallback,
+  registerDlrCallback,
+} from "@/lib/smpp-client";
+import type { RouteInfo, DlrPayload } from "@/lib/smpp-client";
+
+/** SMPP interface_version hex constants */
+const SMPP_V33 = 0x33; // 51 — SMPP v3.3
+const SMPP_V34 = 0x34; // 52 — SMPP v3.4
+const SMPP_V50 = 0x50; // 80 — SMPP v5.0
+const SUPPORTED_VERSIONS = [SMPP_V50, SMPP_V34, SMPP_V33];
+
+function versionLabel(v: number): string {
+  if (v === SMPP_V33) return "3.3";
+  if (v === SMPP_V34) return "3.4";
+  if (v === SMPP_V50) return "5.0";
+  return `unknown(0x${v.toString(16)})`;
+}
+
+/**
+ * Negotiate SMPP version: pick the version if we support it, otherwise fall back to v3.4.
+ * If ESME sends an unsupported version, default to v3.4.
+ */
+function negotiateVersion(esmeVersion: number): number {
+  // If ESME didn't send interface_version, default to v3.4
+  if (!esmeVersion || esmeVersion === 0) return SMPP_V34;
+  
+  // If ESME requested a version we support, use it
+  if (SUPPORTED_VERSIONS.includes(esmeVersion)) return esmeVersion;
+  
+  // Unrecognized version — fall back to v3.4
+  console.warn(`[SMPP] Unrecognized interface_version 0x${esmeVersion.toString(16)}, falling back to v3.4`);
+  return SMPP_V34;
+}
 
 interface EsmeSession {
   session: smpp.ServerSession;
@@ -13,34 +54,11 @@ interface EsmeSession {
   tenantId: number;
   schemaName: string;
   clientId: number;
+  interfaceVersion: number;
   boundAt: Date;
 }
 
 const activeSessions: Map<string, EsmeSession> = new Map();
-
-// DLR cache: message_id → DLR info
-const dlrQueue: Map<string, {
-  messageId: string;
-  status: string;
-  dlrStatus: string;
-  errorCode: string;
-  submitDate: Date;
-  doneDate: Date;
-  dest: string;
-  src: string;
-  tenantId: number;
-  schemaName: string;
-  clientId: number;
-  smppUsername: string;
-}> = new Map();
-
-// Pending DLR queue for external HTTP push
-const dlrHttpQueue: Array<{
-  url: string;
-  payload: Record<string, unknown>;
-  retries: number;
-  maxRetries: number;
-}> = [];
 
 /**
  * Start SMPP server on given port
@@ -55,10 +73,13 @@ export function startSmppServer(port: number = 2775) {
           .then((es) => {
             if (es) {
               currentSession = es;
-              session.send(pdu.response({ system_id: "Net2APP_SMSC" }));
-              console.log(`[SMPP] BOUND: ${es.systemId} @ tenant ${es.tenantId}`);
+              session.send(pdu.response({
+                system_id: "Net2APP_SMSC",
+                interface_version: es.interfaceVersion,
+              }));
+              console.log(`[SMPP] BOUND transceiver: ${es.systemId} @ tenant ${es.tenantId} (SMPP v${versionLabel(es.interfaceVersion)})`);
             } else {
-              session.send(pdu.response({ command_status: 14 })); // invalid system_id
+              session.send(pdu.response({ command_status: 14 }));
             }
           })
           .catch(() => {
@@ -71,7 +92,11 @@ export function startSmppServer(port: number = 2775) {
           .then((es) => {
             if (es) {
               currentSession = es;
-              session.send(pdu.response({ system_id: "Net2APP_SMSC" }));
+              session.send(pdu.response({
+                system_id: "Net2APP_SMSC",
+                interface_version: es.interfaceVersion,
+              }));
+              console.log(`[SMPP] BOUND transmitter: ${es.systemId} @ tenant ${es.tenantId} (SMPP v${versionLabel(es.interfaceVersion)})`);
             } else {
               session.send(pdu.response({ command_status: 14 }));
             }
@@ -84,9 +109,12 @@ export function startSmppServer(port: number = 2775) {
           .then((es) => {
             if (es) {
               currentSession = es;
-              session.send(pdu.response({ system_id: "Net2APP_SMSC" }));
-              // Start pushing any pending DLRs to this receiver
+              session.send(pdu.response({
+                system_id: "Net2APP_SMSC",
+                interface_version: es.interfaceVersion,
+              }));
               flushPendingDlrs(es);
+              console.log(`[SMPP] BOUND receiver: ${es.systemId} @ tenant ${es.tenantId} (SMPP v${versionLabel(es.interfaceVersion)})`);
             } else {
               session.send(pdu.response({ command_status: 14 }));
             }
@@ -101,21 +129,11 @@ export function startSmppServer(port: number = 2775) {
         }
 
         try {
-          const result = await processSubmitSm(
-            currentSession, pdu
-          );
+          const result = await processSubmitSm(currentSession, pdu);
 
           if (result.success) {
-            session.send(
-              pdu.response({
-                message_id: result.messageId,
-              })
-            );
-
-            // Schedule DLR via deliver_sm after 3-8 seconds
-            setTimeout(() => {
-              sendDlrViaSmpp(currentSession!, result);
-            }, 3000 + Math.random() * 5000);
+            session.send(pdu.response({ message_id: result.messageId }));
+            // DLR is now sent only when real supplier DLR arrives (via registerDlrCallback)
           } else {
             session.send(
               pdu.response({
@@ -155,7 +173,6 @@ export function startSmppServer(port: number = 2775) {
       session.on("close", () => {
         if (currentSession) {
           activeSessions.delete(currentSession.systemId);
-          // Update DB bind status
           updateBindStatus(currentSession.clientId, currentSession.schemaName, "UNBOUND");
         }
       });
@@ -175,15 +192,23 @@ export function startSmppServer(port: number = 2775) {
 async function handleBind(
   session: smpp.ServerSession,
   pdu: smpp.PDU,
-  _bindType: string
+  bindType: string
 ): Promise<EsmeSession | null> {
   const systemId = pdu.system_id as string;
   const password = pdu.password as string;
+  const esmeVersion = ((pdu as unknown as Record<string,unknown>).interface_version as number) || 0;
+  const negotiatedVersion = negotiateVersion(esmeVersion);
 
-  // Search all tenant schemas for matching SMPP credentials
+  console.log(`[SMPP] Bind request from ${systemId}: requested v${versionLabel(esmeVersion)}, negotiated v${versionLabel(negotiatedVersion)}`);
+
+  // v3.3 does NOT support transceiver mode — reject if ESME tries it
+  if (negotiatedVersion === SMPP_V33 && bindType === "transceiver") {
+    console.warn(`[SMPP] Rejected: ${systemId} tried transceiver with SMPP v3.3 (not supported)`);
+    return null;
+  }
+
   const client = await pool.connect();
   try {
-    // Get all active tenants
     const { rows: tenants } = await client.query(
       "SELECT id, schema_name FROM tenants WHERE is_active = true"
     );
@@ -201,12 +226,10 @@ async function handleBind(
 
       if (matched.length > 0) {
         const c = matched[0];
-        // Verify password
         if (c.smpp_password && c.smpp_password !== password) {
           continue;
         }
 
-        // Update bind status
         await client.query(
           `UPDATE clients SET bind_status = 'BOUND', last_bind_time = NOW(), updated_at = NOW() WHERE id = $1`,
           [c.id]
@@ -219,12 +242,12 @@ async function handleBind(
           tenantId: t.id,
           schemaName: t.schema_name,
           clientId: c.id,
+          interfaceVersion: negotiatedVersion,
           boundAt: new Date(),
         };
 
         activeSessions.set(`${t.id}:${systemId}`, es);
 
-        // Audit log
         await client.query(`SET search_path TO public`);
         await client.query(
           `INSERT INTO audit_log (entity_type, entity_id, action, changed_by, tenant_id)
@@ -243,12 +266,12 @@ async function handleBind(
 }
 
 /**
- * Process incoming SUBMIT_SM
+ * Process incoming SUBMIT_SM with real delivery + route fallback
  */
 async function processSubmitSm(
   es: EsmeSession,
   pdu: smpp.PDU
-): Promise<{ success: boolean; messageId: string; errorCode?: number; dest?: string; src?: string; content?: string }> {
+): Promise<{ success: boolean; messageId: string; errorCode?: number }> {
   const messageId = "SMPP_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
   const dest = (pdu.destination_addr as string) || "";
   const src = (pdu.source_addr as string) || "";
@@ -257,7 +280,6 @@ async function processSubmitSm(
   try {
     const client = await pool.connect();
     try {
-      // Get client's route plan
       await client.query(`SET search_path TO "${es.schemaName}"`);
       const { rows: clients } = await client.query(
         "SELECT * FROM clients WHERE id = $1 AND is_active = true",
@@ -266,25 +288,23 @@ async function processSubmitSm(
       const c = clients[0];
       if (!c) return { success: false, messageId, errorCode: 14 };
 
-      // Get route plan
       if (!c.route_plan_id) return { success: false, messageId, errorCode: 8 };
 
-      // Get routing chain
-      const { rows: routes } = await client.query(
-        `SELECT rpr.priority, r.name as route_name, r.trunk_id, r.country_code,
+      // Get ALL routes from route plan (sorted by priority) for fallback
+      const { rows: allRoutes } = await client.query(
+        `SELECT rpr.route_id, rpr.priority, r.name as route_name, r.trunk_id,
                 t.name as trunk_name, t.supplier_id,
-                s.name as supplier_name, s.connection_type, s.cost_per_sms
+                s.name as supplier_name, s.connection_type
          FROM route_plan_routes rpr
          JOIN routes r ON rpr.route_id = r.id AND r.is_active = true
          JOIN trunks t ON r.trunk_id = t.id AND t.is_active = true
          JOIN suppliers s ON t.supplier_id = s.id AND s.is_active = true
          WHERE rpr.route_plan_id = $1
-         ORDER BY rpr.priority ASC LIMIT 1`,
+         ORDER BY rpr.priority ASC`,
         [c.route_plan_id]
       );
 
-      if (routes.length === 0) {
-        // Insert as failed
+      if (allRoutes.length === 0) {
         await client.query(
           `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, cost, dlr_status, message_id, dlr_timestamp)
            VALUES ($1,$2,$3,$4,'FAILED',$5,$6,'FAILED',$7,NOW())`,
@@ -293,58 +313,120 @@ async function processSubmitSm(
         return { success: false, messageId, errorCode: 8 };
       }
 
-      const route = routes[0];
-      const costPerSms = parseFloat(c.rate_per_sms || "0.00030");
+      const ratePerSms = parseFloat(c.rate_per_sms || "0.00030");
 
       // Check balance
-      if (parseFloat(c.balance) < costPerSms) {
+      if (parseFloat(c.balance) < ratePerSms) {
         return { success: false, messageId, errorCode: 20 };
       }
 
-      // Insert message as SENT
-      await client.query(
-        `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, dlr_status, message_id, dlr_timestamp)
-         VALUES ($1,$2,$3,$4,'SENT',$5,$6,$7,$8,$9,$10,'DELIVERED',$11,NOW())`,
-        [es.clientId, src, dest, content, c.route_plan_id, route.route_id || null, route.trunk_id || null, route.supplier_id || null, route.connection_type || "SMPP", costPerSms, messageId]
+      // Build RouteInfo list for smpp-client
+      const routeInfos: RouteInfo[] = allRoutes.map((r) => ({
+        routeId: r.route_id,
+        routeName: r.route_name,
+        trunkId: r.trunk_id,
+        trunkName: r.trunk_name,
+        supplierId: r.supplier_id,
+        supplierName: r.supplier_name,
+        connectionType: r.connection_type,
+        priority: r.priority,
+      }));
+
+      const dlrCallbackUrl = c.dlr_callback_url || c.webhook_url || undefined;
+
+      // ── Real delivery with route fallback ──
+      const deliveryResult = await deliverSmsWithFallback(
+        es.tenantId,
+        es.schemaName,
+        es.clientId,
+        src,
+        dest,
+        content,
+        messageId,
+        routeInfos,
+        dlrCallbackUrl
       );
 
-      // Deduct balance
-      await client.query(
-        `UPDATE clients SET balance = balance - $1, updated_at = NOW() WHERE id = $2`,
-        [costPerSms, es.clientId]
-      );
+      if (deliveryResult.success) {
+        // Insert message as SENT (DLR will update it later when real DLR arrives)
+        await client.query(
+          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, dlr_status, message_id)
+           VALUES ($1,$2,$3,$4,'SENT',$5,$6,$7,$8,$9,$10,'PENDING',$11)`,
+          [
+            es.clientId, src, dest, content,
+            c.route_plan_id,
+            deliveryResult.routeUsed?.routeId || null,
+            deliveryResult.routeUsed?.trunkId || null,
+            deliveryResult.routeUsed?.supplierId || null,
+            deliveryResult.routeUsed?.connectionType || "SMPP",
+            ratePerSms,
+            messageId,
+          ]
+        );
 
-      // Check for DLR callback URL
-      if (c.dlr_callback_url || c.webhook_url) {
-        const dlrUrl = c.dlr_callback_url || c.webhook_url;
-        if (dlrUrl) {
-          dlrHttpQueue.push({
-            url: dlrUrl,
-            payload: {
-              message_id: messageId,
-              destination: dest,
-              source: src,
-              status: "DELIVERED",
-              dlr_status: "DELIVERED",
-              cost: costPerSms,
-              timestamp: new Date().toISOString(),
-              client_id: es.clientId,
-            },
-            retries: 0,
-            maxRetries: 5,
-          });
-        }
+        // Deduct balance
+        await client.query(
+          `UPDATE clients SET balance = balance - $1, updated_at = NOW() WHERE id = $2`,
+          [ratePerSms, es.clientId]
+        );
+
+        // ── Register DLR callback to push DLR back to this ESME client ──
+        registerDlrCallback(messageId, (dlr: DlrPayload) => {
+          // Find the live ESME session (may have reconnected with a new session object)
+          let liveSession: EsmeSession | null = null;
+          for (const [, s] of activeSessions) {
+            if (s.clientId === es.clientId && s.schemaName === es.schemaName) {
+              liveSession = s;
+              break;
+            }
+          }
+          if (!liveSession) {
+            // Client disconnected — no SMPP push possible
+            console.log(`[SMPP] DLR for ${dlr.messageId} skipped: client disconnected`);
+            return;
+          }
+          const dlrStatus = mapDlrStatus(dlr.status);
+          liveSession.session.send(
+            new smpp.PDU("deliver_sm", {
+              source_addr: dlr.dest,
+              destination_addr: dlr.src,
+              short_message: {
+                message: `id:${dlr.supplierMessageId} sub:001 dlvrd:001 submit date:${dlr.submitDate} done date:${dlr.doneDate} stat:${dlrStatus} err:${dlr.errorCode} text:${dlrStatus}`,
+              },
+              esm_class: 4,
+              registered_delivery: 0,
+              data_coding: 0,
+            })
+          );
+          console.log(`[SMPP] Real DLR pushed to ESME client: ${dlr.messageId} → ${dlr.status}`);
+        });
+
+        console.log(
+          `[SMPP] SMS delivered via ${deliveryResult.routeUsed?.routeName} (supplier: ${deliveryResult.routeUsed?.supplierName})${deliveryResult.fallbackUsed ? ` (fallback after ${deliveryResult.failedRoutes} failed routes)` : ""}`
+        );
+
+        return { success: true, messageId };
+      } else {
+        // All routes failed — insert as FAILED
+        const firstRoute = allRoutes[0];
+        await client.query(
+          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, dlr_status, message_id, dlr_timestamp)
+           VALUES ($1,$2,$3,$4,'FAILED',$5,$6,$7,$8,$9,$10,'FAILED',$11,NOW())`,
+          [
+            es.clientId, src, dest, content,
+            c.route_plan_id,
+            firstRoute.route_id || null,
+            firstRoute.trunk_id || null,
+            firstRoute.supplier_id || null,
+            firstRoute.connection_type || "SMPP",
+            ratePerSms,
+            messageId,
+          ]
+        );
+
+        console.log(`[SMPP] SMS delivery FAILED after ${deliveryResult.failedRoutes} route(s): ${deliveryResult.errorMessage}`);
+        return { success: false, messageId, errorCode: 1 };
       }
-
-      // Store DLR for SMPP push
-      dlrQueue.set(messageId, {
-        messageId, status: "DELIVERED", dlrStatus: "DELIVERED",
-        errorCode: "0", submitDate: new Date(), doneDate: new Date(),
-        dest, src, tenantId: es.tenantId, schemaName: es.schemaName,
-        clientId: es.clientId, smppUsername: es.systemId,
-      });
-
-      return { success: true, messageId, dest, src, content };
     } finally {
       await client.query(`SET search_path TO public`);
       client.release();
@@ -355,74 +437,56 @@ async function processSubmitSm(
   }
 }
 
-/**
- * Send DLR back via SMPP deliver_sm
- */
-function sendDlrViaSmpp(es: EsmeSession, result: { messageId: string; dest?: string; src?: string }) {
-  try {
-    const dlr = dlrQueue.get(result.messageId);
-    if (!dlr) return;
-
-    es.session.send(
-      new smpp.PDU("deliver_sm", {
-        source_addr: dlr.dest,
-        destination_addr: dlr.src,
-        short_message: {
-          message: `id:${dlr.messageId} sub:001 dlvrd:001 submit date:${formatSmppDate(dlr.submitDate)} done date:${formatSmppDate(dlr.doneDate)} stat:${dlr.dlrStatus} err:${dlr.errorCode} text:${dlr.dlrStatus}`,
-        },
-        esm_class: 4,
-        registered_delivery: 0,
-        data_coding: 0,
-      })
-    );
-
-    // Update DB
-    updateDlrStatus(dlr.messageId, dlr.schemaName, dlr.dlrStatus);
-
-    console.log(`[SMPP] DLR sent via deliver_sm: ${dlr.messageId} → ${dlr.dlrStatus}`);
-
-    // Clean up
-    dlrQueue.delete(result.messageId);
-  } catch (err) {
-    console.error("[SMPP] DLR send error:", err);
-  }
+/** Map supplier DLR status to SMPP DLR stat field */
+function mapDlrStatus(status: string): string {
+  const m: Record<string, string> = {
+    DELIVRD: "DELIVRD",
+    DELIVERED: "DELIVRD",
+    EXPIRED: "EXPIRED",
+    UNDELIV: "UNDELIV",
+    REJECTD: "REJECTD",
+    FAILED: "UNDELIV",
+  };
+  return m[status.toUpperCase()] || status.toUpperCase();
 }
 
 /**
- * Push pending DLRs when a receiver binds
+ * Notify a bound receiver that DLRs are ready.
+ * DLRs are now pushed in real-time via registerDlrCallback — no pending queue needed.
  */
 function flushPendingDlrs(es: EsmeSession) {
-  dlrQueue.forEach((dlr) => {
-    if (dlr.tenantId === es.tenantId && dlr.clientId === es.clientId) {
-      sendDlrViaSmpp(es, {
-        messageId: dlr.messageId,
-        dest: dlr.dest,
-        src: dlr.src,
-      });
+  console.log(`[SMPP] Receiver bound for tenant ${es.tenantId}, client ${es.clientId} — DLRs will push in real-time`);
+}
+
+/**
+ * Check if a client has an active real SMPP session
+ */
+export function isClientSessionActive(clientId: number, schemaName: string): boolean {
+  for (const [, session] of activeSessions) {
+    if (session.clientId === clientId && session.schemaName === schemaName) {
+      return true;
     }
-  });
-}
-
-/**
- * Update DLR status in database
- */
-async function updateDlrStatus(messageId: string, schemaName: string, dlrStatus: string) {
-  const client = await pool.connect();
-  try {
-    await client.query(`SET search_path TO "${schemaName}"`);
-    await client.query(
-      `UPDATE messages SET dlr_status = $1, dlr_timestamp = NOW() WHERE message_id = $2`,
-      [dlrStatus, messageId]
-    );
-  } finally {
-    await client.query(`SET search_path TO public`);
-    client.release();
   }
+  return false;
 }
 
 /**
- * Update bind status in DB
+ * Close an active client SMPP session
  */
+export function closeClientSession(clientId: number, schemaName: string): boolean {
+  const keyToDelete: string[] = [];
+  for (const [key, session] of activeSessions) {
+    if (session.clientId === clientId && session.schemaName === schemaName) {
+      try { session.session.close(); } catch {}
+      keyToDelete.push(key);
+    }
+  }
+  for (const key of keyToDelete) {
+    activeSessions.delete(key);
+  }
+  return keyToDelete.length > 0;
+}
+
 async function updateBindStatus(clientId: number, schemaName: string, status: string) {
   const client = await pool.connect();
   try {
@@ -435,52 +499,4 @@ async function updateBindStatus(clientId: number, schemaName: string, status: st
     await client.query(`SET search_path TO public`);
     client.release();
   }
-}
-
-/**
- * Format date for SMPP DLR message
- */
-function formatSmppDate(d: Date): string {
-  const yy = d.getFullYear().toString().slice(2);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const hh = String(d.getHours()).padStart(2, "0");
-  const min = String(d.getMinutes()).padStart(2, "0");
-  return `${yy}${mm}${dd}${hh}${min}`;
-}
-
-/**
- * Background DLR HTTP pusher (runs every 5 seconds)
- */
-export function startDlrHttpPusher() {
-  setInterval(async () => {
-    while (dlrHttpQueue.length > 0) {
-      const item = dlrHttpQueue.shift();
-      if (!item) break;
-
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
-
-        const res = await fetch(item.url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(item.payload),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeout);
-
-        if (!res.ok && item.retries < item.maxRetries) {
-          item.retries++;
-          dlrHttpQueue.push(item); // Re-queue
-        }
-      } catch {
-        if (item.retries < item.maxRetries) {
-          item.retries++;
-          dlrHttpQueue.push(item); // Re-queue on network error
-        }
-      }
-    }
-  }, 5000);
 }

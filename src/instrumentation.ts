@@ -3,7 +3,7 @@
  * Launches SMPP SMSC server on port 2775 alongside Next.js
  * Java 21 compatible SMPP v3.4 ESME/SMSC
  */
-import { startSmppServer, startDlrHttpPusher } from "@/lib/smpp-server";
+import { startSmppServer } from "@/lib/smpp-server";
 
 let smppServer: ReturnType<typeof startSmppServer> | null = null;
 
@@ -22,10 +22,9 @@ export async function register() {
     console.log("  Protocol: SMPP v3.4 (ESME → SMSC)");
     console.log("  Java 21 compatible");
 
-    // Start DLR HTTP push service (background)
-    startDlrHttpPusher();
-    console.log("  DLR Push Service: Active (HTTP callback)");
-    console.log("  DLR Flow: Mobile → Supplier → Trunk → Route → Client (SMPP/HTTP)");
+    // DLR push is now real-time via supplier DLR callbacks
+    console.log("  DLR Push: Real-time (SMPP + HTTP callbacks)");
+    console.log("  DLR Flow: Mobile → Supplier → SMSC → Route → Client (SMPP/HTTP)");
     console.log("=".repeat(50));
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useConfirmModal } from "@/components/confirm-modal";
 
 const CONNECTION_TYPES = ["SMPP", "HTTP API", "Email", "WhatsApp OTT", "Telegram OTT", "Voice OTP", "Local Bypass", "RCS", "Flash SMS"];
 const SMPP_VERSIONS = ["3.3", "3.4", "5.0"];
@@ -137,8 +138,10 @@ export default function SupplierPage() {
     setShowForm(true);
   };
 
+  const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
+
   const handleDelete = async (id: number) => {
-    if (!confirm("Archive this supplier to CDR?")) return;
+    if (!await confirmDelete("Archive this supplier to CDR?")) return;
     await fetch(`/api/tenant/suppliers/${id}`, { method: "DELETE" });
     load();
   };
@@ -327,6 +330,7 @@ export default function SupplierPage() {
           </tbody>
         </table>
       </div>
+      {confirmModal}
     </div>
   );
 }

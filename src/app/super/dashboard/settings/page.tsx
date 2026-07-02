@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useConfirmModal } from "@/components/confirm-modal";
 
 interface PaymentGateway {
   id: number; method: string; label: string; is_active: boolean;
@@ -120,8 +121,10 @@ export default function SuperSettingsPage() {
     setShowForm(false); setEditingGw(null); setQrFile(null); setQrPreview(null); setUploading(false); load();
   };
 
+  const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
+
   const deleteGateway = async (id: number) => {
-    if (!confirm("Delete gateway?")) return;
+    if (!await confirmDelete("Delete gateway?")) return;
     await fetch(`/api/super/settings?id=${id}`, { method: "DELETE" });
     load();
   };
@@ -385,7 +388,8 @@ export default function SuperSettingsPage() {
 
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-sm text-amber-800">
         <strong>⚠️ Sync Behavior:</strong> When you save settings, all tenant SMPP server IPs, rates, and package prices auto-update. Landing page fetches dynamically via <code className="bg-amber-100 px-1 rounded text-xs">/api/public/settings</code>.
-      </div>
+      </div>      {confirmModal}
     </div>
   );
 }
+

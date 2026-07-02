@@ -64,8 +64,45 @@ export async function POST(request: Request) {
       phoneVerified: true,
     }).returning();
 
-    // Create isolated tenant schema with all 27 tables
+    // Create isolated tenant schema with all 27 tables + Voice OTP defaults
     await createTenantSchema(schemaName);
+
+    // ── Seed default Voice OTP audio from super admin defaults into tenant schema ──
+    try {
+      const defResult = await pool.query("SELECT * FROM voice_otp_default_audio ORDER BY language, digit");
+      if (defResult.rows.length > 0) {
+        const client = await pool.connect();
+        try {
+          for (const def of defResult.rows) {
+            // Find matching config_id in tenant schema
+            const configResult = await client.query(
+              `SELECT id FROM "${schemaName}".voice_otp_config WHERE primary_language = $1 OR secondary_language = $1 LIMIT 1`,
+              [def.language]
+            );
+            if (configResult.rows.length > 0) {
+              const configId = configResult.rows[0].id;
+              // Check if this audio already exists
+              const existingAudio = await client.query(
+                `SELECT id FROM "${schemaName}".voice_otp_audio WHERE config_id = $1 AND language = $2 AND digit = $3`,
+                [configId, def.language, def.digit]
+              );
+              if (existingAudio.rows.length === 0) {
+                await client.query(
+                  `INSERT INTO "${schemaName}".voice_otp_audio (config_id, language, digit, file_name, file_url, audio_type) VALUES ($1, $2, $3, $4, $5, $6)`,
+                  [configId, def.language, def.digit, def.file_name, def.file_url, def.audio_type || 'wav']
+                );
+              }
+            }
+          }
+        } finally {
+          client.release();
+        }
+      }
+    } catch (e) {
+      // Non-fatal: defaults table may not exist yet, or no defaults configured
+      console.error("Voice OTP default seeding failed:", e);
+    }
+    // ──────────────────────────────────────────────────────────────────────
 
     const token = createToken({
       tenantId: tenant.id,

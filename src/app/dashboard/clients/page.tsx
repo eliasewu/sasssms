@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useConfirmModal } from "@/components/confirm-modal";
 
 interface Client {
   id: number; client_code: string; name: string; company_name: string; contact_person: string;
@@ -83,8 +84,10 @@ export default function ClientPage() {
     setShowForm(true);
   };
 
+  const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
+
   const handleDelete = async (id: number) => {
-    if (!confirm("Delete this client? It will be archived to CDR.")) return;
+    if (!await confirmDelete("Delete this client? It will be archived to CDR.")) return;
     await fetch(`/api/tenant/clients/${id}`, { method: "DELETE" });
     load();
   };
@@ -221,6 +224,7 @@ export default function ClientPage() {
           </tbody>
         </table>
       </div>
+      {confirmModal}
     </div>
   );
 }

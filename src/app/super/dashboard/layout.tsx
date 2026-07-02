@@ -10,6 +10,7 @@ const navItems = [
   { href: "/super/dashboard", label: "Dashboard", icon: "📊" },
   { href: "/super/dashboard/tenants", label: "Tenants", icon: "🏢" },
   { href: "/super/dashboard/packages", label: "Packages", icon: "📦" },
+  { href: "/super/dashboard/voice-otp-defaults", label: "Voice OTP Defaults", icon: "🎵" },
   { href: "/super/dashboard/payments", label: "Payment Approvals", icon: "💳" },
   { href: "/super/dashboard/email-accounts", label: "Email Accounts", icon: "📧" },
   { href: "/super/dashboard/admins", label: "Admins", icon: "🔐" },

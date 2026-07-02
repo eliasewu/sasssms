@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useConfirmModal } from "@/components/confirm-modal";
 
 interface RoutePlan { id: number; name: string; description: string | null; is_active: boolean; routes: Array<{ route_id: number; priority: number; route_name: string; trunk_name: string }>; }
 interface Route { id: number; name: string; trunk_name: string; country_code: string; prefix: string; priority: number; is_active: boolean; }
@@ -43,8 +44,10 @@ export default function RoutePlansPage() {
     load();
   };
 
+  const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
+
   const handleDelete = async (id: number) => {
-    if (!confirm("Delete this route plan?")) return;
+    if (!await confirmDelete("Delete this route plan?")) return;
     await fetch(`/api/tenant/route-plans/${id}`, { method: "DELETE" });
     load();
   };
@@ -200,6 +203,7 @@ export default function RoutePlansPage() {
           </div>
         )}
       </div>
+      {confirmModal}
     </div>
   );
 }

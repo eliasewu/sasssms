@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useConfirmModal } from "@/components/confirm-modal";
 
 interface OttDevice {
   id: number; name: string; device_type: string; phone_number: string;
@@ -71,8 +72,10 @@ export default function OttDevicesPage() {
     load();
   };
 
+  const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
+
   const deleteDevice = async (id: number) => {
-    if (!confirm("Delete this OTT device?")) return;
+    if (!await confirmDelete("Delete this OTT device?")) return;
     await fetch(`/api/tenant/ott-devices/${id}`, { method: "DELETE" });
     load();
   };
@@ -212,6 +215,8 @@ export default function OttDevicesPage() {
           </div>
         </div>
       )}
+      {confirmModal}
     </div>
   );
 }
+

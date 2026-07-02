@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useConfirmModal } from "@/components/confirm-modal";
 
 interface Route { id: number; name: string; trunk_id: number; trunk_name: string; supplier_name: string; country_code: string | null; prefix: string | null; priority: number; is_active: boolean; }
 interface Trunk { id: number; name: string; supplier_name: string; supplier_id: number; capacity: number; is_active?: boolean; }
@@ -37,7 +38,9 @@ export default function RoutesPage() {
     setShowForm(false); setEditing(null); setForm({ name: "", trunkId: "", countryCode: "", prefix: "", priority: "1" }); load();
   };
 
-  const handleDelete = async (id: number) => { if (!confirm("Archive this route?")) return; await fetch(`/api/tenant/routes/${id}`, { method: "DELETE" }); load(); };
+  const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
+
+  const handleDelete = async (id: number) => { if (!await confirmDelete("Archive this route?")) return; await fetch(`/api/tenant/routes/${id}`, { method: "DELETE" }); load(); };
 
   return (
     <div className="space-y-6">
@@ -106,6 +109,7 @@ export default function RoutesPage() {
           })}
         </tbody></table>
       </div>
+      {confirmModal}
     </div>
   );
 }

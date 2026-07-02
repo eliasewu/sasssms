@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useConfirmModal } from "@/components/confirm-modal";
 
 interface PoolItem { id: number; replacementValue: string; }
 interface Assignment { id: number; clientId: number | null; supplierId: number | null; priority: number; isActive: boolean; }
@@ -79,8 +80,10 @@ export default function SmsTranslationPage() {
     }
   };
 
+  const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
+
   const handleDelete = async (id: number) => {
-    if (!confirm("Delete this profile and all its pool items and assignments?")) return;
+    if (!await confirmDelete("Delete this profile and all its pool items and assignments?")) return;
     await fetch(`/api/tenant/sms-translations/${id}`, { method: "DELETE" });
     setSelected(null);
     setMsg("Profile deleted");
@@ -375,6 +378,8 @@ export default function SmsTranslationPage() {
           </div>
         </div>
       )}
+      {confirmModal}
     </div>
   );
 }
+

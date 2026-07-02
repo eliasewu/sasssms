@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useConfirmModal } from "@/components/confirm-modal";
 
 interface Connector {
   id: number; name: string; provider: string; type: string; region: string;
@@ -43,8 +44,10 @@ export default function FullConnectorsPage() {
     setShowForm(false); setEditing(null); load();
   };
 
+  const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
+
   const handleDelete = async (id: number) => {
-    if (!confirm("Delete this connector?")) return;
+    if (!await confirmDelete("Delete this connector?")) return;
     await fetch(`/api/tenant/connectors/${id}`, { method: "DELETE" });
     load();
   };
@@ -178,6 +181,7 @@ export default function FullConnectorsPage() {
           </table>
         </div>
       </div>
+      {confirmModal}
     </div>
   );
 }

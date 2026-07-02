@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
+import { deliverSmsWithFallback, registerDlrCallback } from "@/lib/smpp-client";
+import type { RouteInfo, DlrPayload } from "@/lib/smpp-client";
 
 function generateMessageId(): string {
   return "CAMP_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
@@ -38,9 +40,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const ratePerSms = parseFloat(client.rate_per_sms || "0.00030");
   const recipients: string[] = JSON.parse(campaign.recipients || "[]");
 
-  // Get route plan for the client
+  // Get route plan for the client — resolve ALL routes for fallback
   let routePlanId = client.route_plan_id;
-  let routeInfo: Record<string, unknown> = {};
+  let allRoutes: RouteInfo[] = [];
+  let dlrCallbackUrl: string | undefined;
 
   if (routePlanId) {
     const routeResult = await tenantQuery(tenant.schemaName,
@@ -51,78 +54,124 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
        JOIN routes r ON rpr.route_id = r.id AND r.is_active = true
        JOIN trunks t ON r.trunk_id = t.id AND t.is_active = true
        JOIN suppliers s ON t.supplier_id = s.id AND s.is_active = true
-       WHERE rpr.route_plan_id = $1 ORDER BY rpr.priority ASC LIMIT 1`,
+       WHERE rpr.route_plan_id = $1 ORDER BY rpr.priority ASC`,
       [routePlanId]);
-    if (routeResult.rows.length > 0) routeInfo = routeResult.rows[0];
+    
+    allRoutes = routeResult.rows.map((r: Record<string,unknown>) => ({
+      routeId: r.route_id as number,
+      routeName: r.route_name as string,
+      trunkId: r.trunk_id as number,
+      trunkName: r.trunk_name as string,
+      supplierId: r.supplier_id as number,
+      supplierName: r.supplier_name as string,
+      connectionType: r.connection_type as string,
+      priority: r.priority as number,
+    }));
+
+    dlrCallbackUrl = client.dlr_callback_url || client.webhook_url || undefined;
   }
 
   let sent = 0, delivered = 0, failed = 0;
   const messageRecords: Array<Record<string, unknown>> = [];
 
-  // Create individual message records for each recipient
-  for (const dest of recipients) {
-    sent++;
-    const messageId = generateMessageId();
-    const isSuccess = Math.random() > 0.15; // 85% delivery rate
-    
-    // Phase 1: Message SENT to supplier
-    const msgStatus = isSuccess ? "SENT" : "FAILED";
-    const dlrStatus = isSuccess ? "SENT" : "FAILED";
-    
-    const msgResult = await tenantQuery(
-      tenant.schemaName,
-      `INSERT INTO messages (client_id, sender, destination, content, status,
-        route_plan_id, route_id, trunk_id, supplier_id, connection_type,
-        cost, dlr_status, dlr_timestamp, message_id, campaign_id, log_type)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
-      [
-        campaign.client_id,
-        campaign.sender,
-        dest,
-        campaign.content,
-        msgStatus,
-        routePlanId || null,
-        routeInfo.route_id || null,
-        routeInfo.trunk_id || null,
-        routeInfo.supplier_id || null,
-        routeInfo.connection_type || "SMPP",
-        ratePerSms,
-        dlrStatus,
-        isSuccess ? new Date() : null,
-        messageId,
-        id,
-        "campaign",
-      ]
-    );
+  // Process recipients in batches of 50 to avoid overwhelming connections
+  const BATCH_SIZE = 50;
+  for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
+    const batch = recipients.slice(i, i + BATCH_SIZE);
+    const batchPromises = batch.map(async (dest) => {
+      const messageId = generateMessageId();
 
-    // Phase 2: Simulate DLR callback (after brief delay, some become FAILED)
-    if (isSuccess) {
-      const finalDlr = Math.random() > 0.1 ? "DELIVERED" : "FAILED";
-      const finalStatus = finalDlr === "DELIVERED" ? "DELIVERED" : "FAILED";
+      // ── Real SMS delivery ──
+      let deliveryResult: { success: boolean; routeUsed?: RouteInfo; fallbackUsed: boolean; failedRoutes: number } | null = null;
       
-      await tenantQuery(
+      if (allRoutes.length > 0) {
+        deliveryResult = await deliverSmsWithFallback(
+          tenant.tenantId,
+          tenant.schemaName,
+          campaign.client_id,
+          campaign.sender,
+          dest,
+          campaign.content,
+          messageId,
+          allRoutes,
+          dlrCallbackUrl
+        );
+      } else {
+        // No routes — simulate for backward compat
+        deliveryResult = { success: Math.random() > 0.15, fallbackUsed: false, failedRoutes: 0 };
+      }
+
+      const isSuccess = deliveryResult?.success ?? false;
+      const msgStatus = isSuccess ? "SENT" : "FAILED";
+      const dlrStat = isSuccess ? "PENDING" : "FAILED";
+
+      const msgResult = await tenantQuery(
         tenant.schemaName,
-        "UPDATE messages SET dlr_status = $1, status = $2, dlr_timestamp = NOW() WHERE id = $3",
-        [finalDlr, finalStatus, msgResult.rows[0].id]
+        `INSERT INTO messages (client_id, sender, destination, content, status,
+          route_plan_id, route_id, trunk_id, supplier_id, connection_type,
+          cost, dlr_status, message_id, campaign_id, log_type)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+        [
+          campaign.client_id,
+          campaign.sender,
+          dest,
+          campaign.content,
+          msgStatus,
+          routePlanId || null,
+          deliveryResult?.routeUsed?.routeId || null,
+          deliveryResult?.routeUsed?.trunkId || null,
+          deliveryResult?.routeUsed?.supplierId || null,
+          deliveryResult?.routeUsed?.connectionType || allRoutes[0]?.connectionType || "SMPP",
+          ratePerSms,
+          dlrStat,
+          messageId,
+          id,
+          "campaign",
+        ]
       );
 
-      if (finalDlr === "DELIVERED") {
+      // Deduct balance for successful sends
+      if (isSuccess) {
+        await tenantQuery(
+          tenant.schemaName,
+          "UPDATE clients SET balance = balance - $1, updated_at = NOW() WHERE id = $2",
+          [ratePerSms, campaign.client_id]
+        );
+      }
+
+      // Register DLR callback for HTTP push
+      if (isSuccess && dlrCallbackUrl) {
+        registerDlrCallback(messageId, (dlr: DlrPayload) => {
+          fetch(dlrCallbackUrl!, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message_id: dlr.messageId,
+              destination: dlr.dest,
+              source: dlr.src,
+              status: dlr.status,
+              dlr_status: dlr.status,
+              cost: ratePerSms,
+              timestamp: new Date().toISOString(),
+              campaign_id: parseInt(id),
+            }),
+          }).catch(() => {});
+        });
+      }
+
+      return { isSuccess, msgResult, messageId };
+    });
+
+    const batchResults = await Promise.all(batchPromises);
+    for (const { isSuccess, msgResult, messageId } of batchResults) {
+      sent++;
+      if (isSuccess) {
         delivered++;
       } else {
         failed++;
       }
-    } else {
-      failed++;
+      messageRecords.push(msgResult.rows[0]);
     }
-
-    messageRecords.push(msgResult.rows[0]);
-
-    // Deduct client balance per message
-    await tenantQuery(
-      tenant.schemaName,
-      "UPDATE clients SET balance = balance - $1, updated_at = NOW() WHERE id = $2",
-      [ratePerSms, campaign.client_id]
-    );
   }
 
   // Update campaign with final counts

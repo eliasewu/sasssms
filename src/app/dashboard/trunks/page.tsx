@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useConfirmModal } from "@/components/confirm-modal";
 
 interface Trunk { id: number; name: string; supplier_id: number; supplier_name: string; connection_type: string; connector_id: number; capacity: number; is_active: boolean; }
 interface Supplier { id: number; name: string; connection_type: string; is_active?: boolean; }
@@ -35,7 +36,9 @@ export default function TrunksPage() {
     setShowForm(false); setEditing(null); load();
   };
 
-  const handleDelete = async (id: number) => { if (!confirm("Delete this trunk?")) return; await fetch(`/api/tenant/trunks/${id}`, { method: "DELETE" }); load(); };
+  const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
+
+  const handleDelete = async (id: number) => { if (!await confirmDelete("Delete this trunk?")) return; await fetch(`/api/tenant/trunks/${id}`, { method: "DELETE" }); load(); };
 
   return (
     <div className="space-y-6">
@@ -98,6 +101,7 @@ export default function TrunksPage() {
           </tbody>
         </table>
       </div>
+      {confirmModal}
     </div>
   );
 }

@@ -133,11 +133,11 @@ export default function LandingPage() {
               <span className="text-green-200 text-sm font-medium">No Setup Fees • No Hidden Fees • Pay As You Go</span>
             </div>
             <h1 className="text-4xl lg:text-6xl font-extrabold text-white leading-tight mb-6">
-              Enterprise SMS
-              <span className="block bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">Infrastructure</span>
+              SMS Gateway & Voice OTP
+              <span className="block bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">Platform</span>
             </h1>
             <p className="text-xl text-blue-200 mb-8 leading-relaxed">
-              Deploy your own multi-tenant SMS gateway with complete isolation, advanced routing, Voice OTP, and 8+ connection types. <strong className="text-white">Pure pay-as-you-go — only pay for SMS sent.</strong>
+              Deploy your own multi-tenant SMS gateway with SMPP v3.4, HTTP SMS API, Voice OTP with Asterisk, RCS messaging, Flash SMS, OTT (WhatsApp + Telegram), and intelligent multi-layer SMS routing. <strong className="text-white">Pure pay-as-you-go — only pay for SMS sent.</strong>
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
               <button onClick={() => setMode("register")} className="px-8 py-4 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl hover:from-blue-400 hover:to-indigo-400 transition font-semibold text-lg shadow-xl shadow-blue-500/30">Deploy Your Instance Free →</button>
@@ -151,10 +151,10 @@ export default function LandingPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             {[
-              { value: `$${costPerSms.toFixed(5)}`, label: "Per SMS", desc: "Dynamic admin rate" },
-              { value: "8+", label: "Connection Types", desc: "SMPP, HTTP, RCS, OTT..." },
-              { value: "$0", label: "Setup & Monthly", desc: "Zero fees, just SMS" },
-              { value: "100%", label: "Data Isolation", desc: "Dedicated schema" },
+              { value: `$${costPerSms.toFixed(5)}`, label: "Per SMS Cost", desc: "Bulk SMS API pricing" },
+              { value: "8+", label: "Connection Types", desc: "SMPP, HTTP, RCS, OTT, Voice" },
+              { value: "$0", label: "Setup & Monthly Fee", desc: "Zero fees, just SMS cost" },
+              { value: "100%", label: "Data Isolation", desc: "Dedicated per-tenant schema" },
             ].map((s, i) => (
               <div key={i} className="bg-white/5 backdrop-blur border border-white/10 rounded-2xl p-5">
                 <p className="text-3xl font-bold text-white mb-1">{s.value}</p>
@@ -170,8 +170,8 @@ export default function LandingPage() {
       <div id="calculator" className="bg-gradient-to-b from-blue-900/50 to-slate-900/50 py-20">
         <div className="max-w-4xl mx-auto px-6 lg:px-12">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-white mb-3">Cost Calculator</h2>
-            <p className="text-blue-200">See exactly what you&apos;ll pay — no surprises, just simple SMS pricing</p>
+            <h2 className="text-3xl font-bold text-white mb-3">SMS Gateway Cost Calculator</h2>
+            <p className="text-blue-200">See exactly what you&apos;ll pay — no surprises, just simple bulk SMS pricing</p>
           </div>
           <div className="bg-white/10 backdrop-blur rounded-3xl border border-white/10 p-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
@@ -203,7 +203,7 @@ export default function LandingPage() {
       {/* SMS Flow */}
       <div className="py-20 bg-slate-900/50">
         <div className="max-w-6xl mx-auto px-6 lg:px-12">
-          <div className="text-center mb-12"><h2 className="text-3xl font-bold text-white mb-3">Multi-Layer Routing Architecture</h2><p className="text-blue-200">Intelligent routing with complete control at every level</p></div>
+          <div className="text-center mb-12"><h2 className="text-3xl font-bold text-white mb-3">SMPP SMS Routing Architecture</h2><p className="text-blue-200">Intelligent SMS routing with complete control at every layer — from client to mobile operator</p></div>
           <div className="bg-white/5 backdrop-blur rounded-3xl border border-white/10 p-8">
             <div className="flex flex-wrap items-center justify-center gap-3 lg:gap-4 text-sm lg:text-base mb-8">
               {["Client", "→", "Route Plan", "→", "Routes", "→", "Trunks", "→", "Suppliers", "→", "Mobile"].map((s, i) =>
@@ -221,21 +221,21 @@ export default function LandingPage() {
       {/* Features */}
       <div id="features" className="py-20">
         <div className="max-w-7xl mx-auto px-6 lg:px-12">
-          <div className="text-center mb-16"><h2 className="text-3xl lg:text-4xl font-bold text-white mb-4">Enterprise-Grade Features</h2><p className="text-blue-200 text-lg">Everything you need to run a professional SMS operation</p></div>
+          <div className="text-center mb-16"><h2 className="text-3xl lg:text-4xl font-bold text-white mb-4">Enterprise SMS Platform Features</h2><p className="text-blue-200 text-lg">Everything you need to run a professional SMS gateway operation — bulk SMS, Voice OTP, RCS, OTT</p></div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
-              { icon: "🔒", title: "Tenant Isolation", desc: "Individual database schema per client with complete data security." },
-              { icon: "🔀", title: "Smart Routing", desc: "Route Plans → Routes → Trunks → Suppliers with priority handling." },
-              { icon: "📞", title: "Voice OTP Engine", desc: "MCC-based language detection, Asterisk integration, 3-retry logic." },
-              { icon: "💬", title: "SMPP Support", desc: "Full SMPP v3.4 with bind status monitoring." },
-              { icon: "🌐", title: "HTTP API", desc: "RESTful API with authentication and rate limiting." },
-              { icon: "👥", title: "Sub-Client Mgmt", desc: "Unlimited sub-clients with individual rates." },
-              { icon: "📊", title: "Real-Time Reports", desc: "Comprehensive analytics and DLR tracking." },
-              { icon: "💰", title: "Automated Billing", desc: "Invoice generation and payment tracking." },
-              { icon: "🛡️", title: "IP Whitelisting", desc: "Enhanced security with IP-based access control." },
-              { icon: "💎", title: "RCS Messaging", desc: "Rich Communication Services support." },
-              { icon: "⚡", title: "Flash SMS", desc: "Priority screen messages." },
-              { icon: "📱", title: "OTT & WhatsApp", desc: "WhatsApp + Telegram with QR pairing." },
+              { icon: "🔒", title: "Tenant Isolation", desc: "PostgreSQL schema isolation per SMS gateway client." },
+              { icon: "🔀", title: "Smart SMS Routing", desc: "Route Plans → Routes → Trunks → Suppliers with priority." },
+              { icon: "📞", title: "Voice OTP Service", desc: "MCC language detection, Asterisk AMI, alphanumeric OTP." },
+              { icon: "💬", title: "SMPP v3.4 Gateway", desc: "Full SMPP bind status monitoring and ESME support." },
+              { icon: "🌐", title: "HTTP SMS API", desc: "RESTful API with auth, rate limiting, DLR webhooks." },
+              { icon: "👥", title: "Sub-Client Mgmt", desc: "Unlimited sub-clients with individual SMS rates." },
+              { icon: "📊", title: "SMS DLR Reports", desc: "Real-time delivery reports and analytics." },
+              { icon: "💰", title: "SMS Billing System", desc: "Automated invoices and payment tracking." },
+              { icon: "🛡️", title: "IP Whitelisting", desc: "API security with IP-based access control." },
+              { icon: "💎", title: "RCS Messaging", desc: "Rich Communication Services — next-gen SMS." },
+              { icon: "⚡", title: "Flash SMS", desc: "Priority screen messages for urgent alerts." },
+              { icon: "📱", title: "OTT & WhatsApp Business", desc: "WhatsApp Business API + Telegram SMS." },
             ].map((f, i) => (
               <div key={i} className="bg-white/5 backdrop-blur rounded-2xl p-6 border border-white/10 hover:border-blue-500/50 transition group">
                 <div className="text-4xl mb-4">{f.icon}</div>
@@ -247,10 +247,36 @@ export default function LandingPage() {
         </div>
       </div>
 
+      {/* Keyword-Rich Content for Search Engines */}
+      <section className="py-16 bg-slate-900/80">
+        <div className="max-w-6xl mx-auto px-6 lg:px-12">
+          <div className="grid md:grid-cols-3 gap-8">
+            <div>
+              <h3 className="text-white font-bold text-lg mb-3">SMS Gateway & Voice OTP Services</h3>
+              <p className="text-slate-400 text-sm leading-relaxed">
+                Net2APP provides a complete SMS gateway platform with SMPP v3.4, HTTP SMS API, bulk SMS messaging, Voice OTP with Asterisk AMI integration, RCS messaging, Flash SMS, and OTT messaging via WhatsApp Business API and Telegram. Our multi-tenant SMS platform supports A2P SMS, P2P SMS, transactional SMS, OTP SMS, and SMS marketing with intelligent routing, DLR delivery reports, and real-time analytics. Deploy your own white-label SMS gateway with zero setup fees.
+              </p>
+            </div>
+            <div>
+              <h3 className="text-white font-bold text-lg mb-3">SMPP Server & SMS Routing Platform</h3>
+              <p className="text-slate-400 text-sm leading-relaxed">
+                Our SMPP gateway supports full SMPP v3.4 protocol with ESME bind status monitoring, SMS firewall, and SMS aggregator capabilities. The multi-layer SMS routing engine — Route Plans, Routes, Trunks, and Suppliers — gives you complete control over SMS delivery paths. Compare Net2APP to Twilio, Vonage, and other CPaaS alternatives: we offer dedicated per-tenant PostgreSQL schema isolation, white-label branding, and pure pay-as-you-go bulk SMS pricing with no monthly commitments.
+              </p>
+            </div>
+            <div>
+              <h3 className="text-white font-bold text-lg mb-3">Global SMS Coverage — Bangladesh, India, UAE, Middle East</h3>
+              <p className="text-slate-400 text-sm leading-relaxed">
+                Net2APP serves SMS gateway clients worldwide including Bangladesh SMS gateway providers, India SMS API services, UAE SMS platforms, and Middle East SMS solutions. Our Voice OTP engine supports 220+ countries with automatic MCC-based language detection. Partners include Reve SMS, 5GVision, LRS, and Al Muqeet. Whether you need an enterprise SMS server, cloud SMS platform, or white-label SMS gateway — deploy in 60 seconds with zero setup cost.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Connection Types */}
       <div className="py-16 bg-gradient-to-r from-blue-900/50 to-indigo-900/50">
         <div className="max-w-6xl mx-auto px-6 lg:px-12 text-center">
-          <h2 className="text-2xl font-bold text-white mb-6">Supported Connection Types</h2>
+          <h2 className="text-2xl font-bold text-white mb-6">SMS Gateway Connection Types</h2>
           <div className="flex flex-wrap justify-center gap-4">
             {["SMPP", "HTTP API", "RCS", "Flash SMS", "Voice OTP", "OTT", "Business API", "Email"].map((t, i) => (
               <span key={i} className="bg-white/10 border border-white/20 px-6 py-3 rounded-xl text-white font-medium hover:bg-white/20 transition">{t}</span>
@@ -263,8 +289,8 @@ export default function LandingPage() {
       <div id="pricing" className="py-20">
         <div className="max-w-6xl mx-auto px-6 lg:px-12">
           <div className="text-center mb-16">
-            <h2 className="text-3xl lg:text-4xl font-bold text-white mb-4">Simple, Transparent Pricing</h2>
-            <p className="text-blue-200 text-lg">No setup fees • No hidden fees • Pay only for SMS sent</p>
+            <h2 className="text-3xl lg:text-4xl font-bold text-white mb-4">SMS Gateway Pricing — $0 Setup, Pay-As-You-Go</h2>
+            <p className="text-blue-200 text-lg">No setup fees • No hidden fees • Pay only for SMS sent • Bulk SMS rates from ${costPerSms.toFixed(5)}/SMS</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {/* Starter */}
@@ -317,8 +343,8 @@ export default function LandingPage() {
       {/* CTA */}
       <div className="py-20 bg-gradient-to-r from-blue-600 to-indigo-600">
         <div className="max-w-4xl mx-auto px-6 lg:px-12 text-center">
-          <h2 className="text-3xl lg:text-4xl font-bold text-white mb-4">Ready to Deploy Your SMS Platform?</h2>
-          <p className="text-blue-100 text-lg mb-8">Get your isolated instance running in under 60 seconds. Completely free to start.</p>
+          <h2 className="text-3xl lg:text-4xl font-bold text-white mb-4">Deploy Your SMS Gateway Platform — Free, Instant Setup</h2>
+          <p className="text-blue-100 text-lg mb-8">Get your isolated multi-tenant SMS platform running in under 60 seconds. SMPP, HTTP API, Voice OTP, RCS included. Completely free to start.</p>
           <button onClick={() => setMode("register")} className="px-10 py-4 bg-white text-blue-600 rounded-xl hover:bg-blue-50 transition font-semibold text-lg shadow-xl">Deploy Your Instance Free →</button>
         </div>
       </div>
@@ -331,7 +357,7 @@ export default function LandingPage() {
               <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center text-white font-bold">N</div>
               <span className="text-white font-semibold text-lg">Net2APP</span>
             </div>
-            <p className="text-blue-400 text-sm">Enterprise SMS Infrastructure • Multi-Tenant SaaS Platform</p>
+            <p className="text-blue-400 text-sm">Enterprise SMS Gateway & Voice OTP Platform • Multi-Tenant SaaS • SMPP, HTTP API, RCS, OTT</p>
             <div className="flex items-center gap-4">
               <a href="/webmail" className="text-blue-400 hover:text-white text-sm transition">Webmail</a>
               <a href="/super" className="text-slate-500 hover:text-slate-400 text-sm">Admin</a>

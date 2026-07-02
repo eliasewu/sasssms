@@ -1,13 +1,16 @@
 /**
- * Webmail IMAP Utilities
- * Connects to local Dovecot IMAP server for @net2app.com email accounts.
+ * Webmail IMAP + SMTP Utilities
+ * Connects to local Dovecot IMAP and Postfix SMTP for @net2app.com email accounts.
  */
 import Imap from "imap";
-import { simpleParser } from "mailparser";
+import { simpleParser, type AddressObject } from "mailparser";
+import nodemailer from "nodemailer";
 import crypto from "crypto";
 
 const IMAP_HOST = process.env.WEBMAIL_IMAP_HOST || "127.0.0.1";
 const IMAP_PORT = parseInt(process.env.WEBMAIL_IMAP_PORT || "143");
+const SMTP_HOST = process.env.WEBMAIL_SMTP_HOST || process.env.SMTP_HOST || "127.0.0.1";
+const SMTP_PORT = parseInt(process.env.WEBMAIL_SMTP_PORT || process.env.SMTP_PORT || "587");
 const ENCRYPTION_KEY = process.env.WEBMAIL_ENCRYPTION_KEY
   ? Buffer.from(process.env.WEBMAIL_ENCRYPTION_KEY, "hex")
   : (() => { console.warn("[webmail] Using fallback encryption key — set WEBMAIL_ENCRYPTION_KEY env var for production"); return crypto.createHash("sha256").update("net2app-webmail-secret-key").digest(); })();
@@ -98,6 +101,189 @@ function openInbox(imap: Imap): Promise<Imap.Box> {
 }
 
 /**
+ * Send an email via SMTP using the user's credentials.
+ * The email is saved to the "Sent" folder via IMAP after sending.
+ */
+export async function sendEmail(
+  email: string,
+  password: string,
+  to: string,
+  cc: string,
+  bcc: string,
+  subject: string,
+  body: string,
+  isHtml: boolean = false,
+  attachments: Array<{ filename: string; content: Buffer; contentType: string }> = []
+): Promise<{ success: boolean; error?: string }> {
+  // Create a fresh transporter with the user's credentials
+  const transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_PORT === 465,
+    auth: { user: email, pass: password },
+  });
+
+  try {
+    await transporter.sendMail({
+      from: email,
+      to,
+      cc: cc || undefined,
+      bcc: bcc || undefined,
+      subject,
+      [isHtml ? "html" : "text"]: body,
+      attachments: attachments.length > 0 ? attachments : undefined,
+    });
+
+    // Save to Sent folder via IMAP
+    try {
+      const imap = await connectAndAuth(email, password);
+      await new Promise<void>((resolve, reject) => {
+        imap.append(
+          buildRawMessage(email, to, cc, subject, body, isHtml),
+          { mailbox: "Sent", flags: ["\\Seen"] },
+          (err) => {
+            imap.end();
+            if (err) return reject(err);
+            resolve();
+          }
+        );
+      });
+    } catch (imapErr) {
+      // Non-fatal: email was sent, just couldn't save to Sent
+      console.error("[webmail] Failed to save sent message:", imapErr);
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = (err as Error).message || "Send failed";
+    console.error("[webmail] Send error:", msg);
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Build a raw RFC 2822 message for IMAP APPEND to Sent folder.
+ */
+function buildRawMessage(
+  from: string,
+  to: string,
+  cc: string,
+  subject: string,
+  body: string,
+  isHtml: boolean
+): string {
+  const date = new Date().toUTCString();
+  const messageId = `<${Date.now()}.${Math.random().toString(36).slice(2, 10)}@net2app.com>`;
+  const contentType = isHtml ? 'text/html; charset="UTF-8"' : 'text/plain; charset="UTF-8"';
+
+  let raw = `Date: ${date}\r\n`;
+  raw += `From: ${from}\r\n`;
+  raw += `To: ${to}\r\n`;
+  if (cc) raw += `Cc: ${cc}\r\n`;
+  raw += `Subject: ${subject}\r\n`;
+  raw += `Message-ID: ${messageId}\r\n`;
+  raw += `MIME-Version: 1.0\r\n`;
+  raw += `Content-Type: ${contentType}\r\n`;
+  raw += `Content-Transfer-Encoding: 7bit\r\n`;
+  raw += `\r\n`;
+  // Normalize body line endings to CRLF for RFC 2822 compliance
+  raw += body.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
+  raw += `\r\n`;
+
+  return raw;
+}
+
+/**
+ * Fetch messages from the Sent folder.
+ */
+export async function fetchSentFolder(
+  email: string,
+  password: string,
+  limit: number = 50,
+  offset: number = 0
+): Promise<{ messages: InboxMessage[]; total: number }> {
+  let imap: Imap | null = null;
+  try {
+    imap = await connectAndAuth(email, password);
+    // Open Sent folder (try common names)
+    const box = await openMailbox(imap, ["Sent", "Sent Items", "Sent Messages"]);
+    const total = box.messages.total;
+
+    if (total === 0) {
+      return { messages: [], total: 0 };
+    }
+
+    const start = Math.max(1, total - offset - limit + 1);
+    const end = total - offset;
+
+    if (start > end) {
+      return { messages: [], total };
+    }
+
+    const messages = await new Promise<InboxMessage[]>((resolve, reject) => {
+      const results: InboxMessage[] = [];
+      const fetch = (imap!.seq as any).fetch(`${start}:${end}`, {
+        bodies: ["HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID)", ""],
+        struct: true,
+      });
+
+      fetch.on("message", (msg: Imap.ImapMessage) => {
+        let header = "";
+        msg.on("body", (stream: NodeJS.ReadableStream) => {
+          stream.on("data", (chunk: Buffer) => {
+            header += chunk.toString("utf8");
+          });
+        });
+        msg.on("attributes", (attrs: Imap.ImapMessageAttributes) => {
+          results.push({
+            uid: attrs.uid,
+            from: "", to: "", subject: "", date: "",
+            flags: attrs.flags || [],
+            size: (attrs as any).size || 0,
+            hasAttachments: false,
+          });
+        });
+        msg.on("end", () => {
+          const parsed = Imap.parseHeader(header);
+          const idx = results.findIndex((r) => r.uid === (msg as any).attributes?.uid);
+          if (idx !== -1) {
+            results[idx].from = parsed.from?.[0] || "";
+            results[idx].to = parsed.to?.[0] || "";
+            results[idx].subject = parsed.subject?.[0] || "(No subject)";
+            results[idx].date = parsed.date?.[0] || "";
+          }
+        });
+      });
+
+      fetch.once("error", reject);
+      fetch.once("end", () => resolve(results.reverse()));
+    });
+
+    return { messages, total };
+  } finally {
+    if (imap) imap.end();
+  }
+}
+
+/**
+ * Open a mailbox by trying multiple folder names sequentially.
+ */
+async function openMailbox(imap: Imap, folderNames: string[]): Promise<Imap.Box> {
+  for (const name of folderNames) {
+    try {
+      return await new Promise<Imap.Box>((resolve, reject) => {
+        imap.openBox(name, false, (err, box) => {
+          if (err) reject(err); else resolve(box);
+        });
+      });
+    } catch {
+      // Try next folder name
+    }
+  }
+  throw new Error(`Could not open any of: ${folderNames.join(", ")}`);
+}
+
+/**
  * Verify email credentials by connecting to IMAP.
  */
 export async function verifyCredentials(email: string, password: string): Promise<boolean> {
@@ -140,19 +326,19 @@ export async function fetchInbox(
 
     const messages = await new Promise<InboxMessage[]>((resolve, reject) => {
       const results: InboxMessage[] = [];
-      const fetch = imap!.seqFetch(`${start}:${end}`, {
+      const fetch = (imap!.seq as any).fetch(`${start}:${end}`, {
         bodies: ["HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID IN-REPLY-TO)", ""],
         struct: true,
       });
 
-      fetch.on("message", (msg) => {
+      fetch.on("message", (msg: Imap.ImapMessage) => {
         let header = "";
-        msg.on("body", (stream) => {
+        msg.on("body", (stream: NodeJS.ReadableStream) => {
           stream.on("data", (chunk: Buffer) => {
             header += chunk.toString("utf8");
           });
         });
-        msg.on("attributes", (attrs) => {
+        msg.on("attributes", (attrs: Imap.ImapMessageAttributes) => {
           results.push({
             uid: attrs.uid,
             from: "",
@@ -188,17 +374,40 @@ export async function fetchInbox(
 }
 
 /**
- * Fetch a single full message by UID.
+ * Fetch a single full message by UID (INBOX).
  */
 export async function fetchMessage(
   email: string,
   password: string,
   uid: number
 ): Promise<FullMessage | null> {
+  return fetchMessageFromFolder(email, password, uid, ["INBOX"]);
+}
+
+/**
+ * Fetch a single full message from the Sent folder by UID.
+ */
+export async function fetchSentMessage(
+  email: string,
+  password: string,
+  uid: number
+): Promise<FullMessage | null> {
+  return fetchMessageFromFolder(email, password, uid, ["Sent", "Sent Items", "Sent Messages"]);
+}
+
+/**
+ * Fetch a single full message by UID from a specific folder.
+ */
+async function fetchMessageFromFolder(
+  email: string,
+  password: string,
+  uid: number,
+  folderNames: string[]
+): Promise<FullMessage | null> {
   let imap: Imap | null = null;
   try {
     imap = await connectAndAuth(email, password);
-    await openInbox(imap);
+    await openMailbox(imap, folderNames);
 
     const result = await new Promise<FullMessage | null>((resolve, reject) => {
       const fetch = imap!.fetch([uid], {
@@ -207,27 +416,30 @@ export async function fetchMessage(
 
       let resolved = false;
 
-      fetch.on("message", (msg) => {
+      fetch.on("message", (msg: Imap.ImapMessage) => {
         let body = "";
 
-        msg.on("body", (stream) => {
+        msg.on("body", (stream: NodeJS.ReadableStream) => {
           stream.on("data", (chunk: Buffer) => {
             body += chunk.toString("utf8");
           });
         });
 
-        msg.once("attributes", (attrs) => {
+        msg.once("attributes", (attrs: Imap.ImapMessageAttributes) => {
           // Parse the full MIME message once body is complete
           msg.once("end", async () => {
             if (resolved) return;
             resolved = true;
             try {
-              const parsed = await simpleParser(body);
+              // Helper to safely extract address text from AddressObject | AddressObject[]
+            const addrText = (a: AddressObject | AddressObject[] | undefined): string =>
+              !a ? "" : (Array.isArray(a) ? a[0]?.text : a?.text) || "";
+            const parsed = await simpleParser(body);
               resolve({
                 uid: attrs.uid,
-                from: parsed.from?.text || "",
-                to: parsed.to?.text || "",
-                cc: parsed.cc?.text || "",
+                from: addrText(parsed.from),
+                to: addrText(parsed.to),
+                cc: addrText(parsed.cc),
                 subject: parsed.subject || "(No subject)",
                 date: parsed.date?.toISOString() || "",
                 flags: attrs.flags || [],
@@ -241,7 +453,7 @@ export async function fetchMessage(
                   size: a.size,
                 })),
                 preview: (parsed.text || "").substring(0, 150),
-                bcc: parsed.bcc?.text || "",
+                bcc: addrText(parsed.bcc),
                 inReplyTo: parsed.inReplyTo || "",
                 messageId: parsed.messageId || "",
               });
