@@ -49,7 +49,7 @@ export default function BillingTopupPage() {
   useEffect(() => { load(); }, [load]);
 
   const calculateSms = (amount: number) => {
-    const rate = parseFloat(tenant?.costPerSms || "0.00025");
+    const rate = parseFloat(tenant?.costPerSms || "0.00010");
     return Math.floor(amount / rate);
   };
 

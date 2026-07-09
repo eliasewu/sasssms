@@ -98,20 +98,20 @@ export default function SuperAdminLoginPage() {
 
   if (checkingAuth) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
-        <div className="text-white">Loading...</div>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center">
+        <div className="text-gray-500">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
         <div className="flex items-center gap-3 mb-8">
-          <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg">N</div>
+          <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg">N</div>
           <div>
-            <span className="text-xl font-bold text-slate-800 block">Net2APP</span>
-            <span className="text-xs text-slate-500">Super Administrator Portal</span>
+            <span className="text-xl font-bold text-gray-900 block">Net2APP</span>
+            <span className="text-xs text-gray-500">Super Administrator Portal</span>
           </div>
         </div>
 
@@ -130,7 +130,7 @@ export default function SuperAdminLoginPage() {
                   type="email" 
                   required 
                   autoComplete="email"
-                  className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition" 
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" 
                   placeholder="admin@company.com"
                 />
               </div>
@@ -141,20 +141,20 @@ export default function SuperAdminLoginPage() {
                   type="password" 
                   required 
                   autoComplete="current-password"
-                  className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition" 
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" 
                 />
               </div>
               <button 
                 type="submit"
                 disabled={loading} 
-                className="w-full bg-gradient-to-r from-orange-500 to-red-600 text-white py-3 rounded-lg hover:from-orange-600 hover:to-red-700 transition font-semibold disabled:opacity-50 shadow-lg"
+                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 rounded-lg hover:from-blue-700 hover:to-indigo-700 transition font-semibold disabled:opacity-50 shadow-lg"
               >
                 {loading ? "Signing in..." : "Sign In to Admin Portal"}
               </button>
             </form>
 
             <div className="mt-6 pt-6 border-t text-center">
-              <button onClick={() => setSetupMode(true)} className="text-sm text-slate-500 hover:text-slate-700">
+              <button onClick={() => setSetupMode(true)} className="text-sm text-gray-500 hover:text-gray-700">
                 First time setup? Create Super Admin →
               </button>
             </div>
@@ -210,13 +210,13 @@ export default function SuperAdminLoginPage() {
               <button 
                 type="submit"
                 disabled={loading} 
-                className="w-full bg-gradient-to-r from-orange-500 to-red-600 text-white py-3 rounded-lg hover:from-orange-600 hover:to-red-700 transition font-semibold disabled:opacity-50 shadow-lg"
+                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 rounded-lg hover:from-blue-700 hover:to-indigo-700 transition font-semibold disabled:opacity-50 shadow-lg"
               >
                 {loading ? "Creating Admin..." : "Create Super Admin & Login"}
               </button>
             </form>
 
-            <button onClick={() => { setSetupMode(false); setError(""); }} className="block text-center mt-4 text-sm text-slate-500 hover:text-slate-700 mx-auto">
+            <button onClick={() => { setSetupMode(false); setError(""); }} className="block text-center mt-4 text-sm text-gray-500 hover:text-gray-700 mx-auto">
               ← Back to Login
             </button>
           </>
@@ -226,8 +226,8 @@ export default function SuperAdminLoginPage() {
           <Link href="/" className="text-sm text-blue-600 hover:underline">← Back to Net2APP</Link>
         </div>
         
-        <p className="text-center text-xs text-slate-400 mt-4">
-          © {new Date().getFullYear()} Tri Angle Trade Centre Fze LLC. All Rights Reserved.
+        <p className="text-center text-xs text-gray-400 mt-4">
+          © {new Date().getFullYear()} Tri Angle Trade Centre FZE LLC. All Rights Reserved.
         </p>
       </div>
     </div>

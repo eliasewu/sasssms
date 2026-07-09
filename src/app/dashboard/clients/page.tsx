@@ -27,7 +27,7 @@ export default function ClientPage() {
     clientCode: "", name: "", companyName: "", contactPerson: "", email: "", phone: "",
     country: "", address: "", connectionType: "SMPP",
     smppUsername: "", smppPassword: "", smppAllowedIp: "", smppSystemType: "ESME", maxTps: "10",
-    billingMode: "prepaid", currency: "USD", balance: "0", creditLimit: "0", ratePerSms: "0.00030",
+    billingMode: "prepaid", currency: "USD", balance: "0", creditLimit: "0", ratePerSms: "0.00010",
     routePlanId: "", enableHttpApi: false, forceDlr: false,
     dlrTimeoutMode: "fixed", dlrTimeout: "60", webhookUrl: "",
   });

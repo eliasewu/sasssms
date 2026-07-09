@@ -7,19 +7,21 @@ import { eq } from "drizzle-orm";
 import { applyTranslations, applyEntityTranslations } from "@/lib/translation-engine";
 import {
   resolveLanguage, buildAttemptPlaylists, generateCallSid,
-  SimulatedSipCallExecutor, determineAttemptLanguages,
+  determineAttemptLanguages,
 } from "@/lib/voice-otp-engine";
 import { AsteriskAmiExecutor } from "@/lib/asterisk-ami";
 import {
   deliverSmsWithFallback,
   registerDlrCallback,
+  filterRoutesByTrunkMcc,
 } from "@/lib/smpp-client";
 import type { AudioFile, SipConfig, CallAttempt, AudioPlaylistItem } from "@/lib/voice-otp-engine";
 import type { RouteInfo, DlrPayload } from "@/lib/smpp-client";
+import { getOnlineOttDevices, sendOttMessage } from "@/lib/ott-pairing-engine";
+import type { OttDeviceType } from "@/lib/ott-pairing-engine";
 
 // Use real Asterisk AMI executor, fall back to simulation if AMI is unavailable
 const amiExecutor = new AsteriskAmiExecutor();
-const sipExecutor = new SimulatedSipCallExecutor(0.7, 3, 25);
 
 function extractOtp(content: string): string | null {
   const match = content.match(/\b(\d{4,8})\b/);
@@ -84,9 +86,10 @@ export async function POST(request: Request) {
       const allTenants = await db.select({ id: tenants.id, schemaName: tenants.schemaName })
         .from(tenants).where(eq(tenants.isActive, true));
       for (const t of allTenants) {
+        // Unified credential: accept http_api_key OR smpp_username as API key
         const clientResult = await tenantQuery(
           t.schemaName,
-          "SELECT id FROM clients WHERE http_api_key = $1 AND is_active = true AND enable_http_api = true",
+          "SELECT id FROM clients WHERE (http_api_key = $1 OR smpp_username = $1) AND is_active = true AND enable_http_api = true",
           [apiKey]
         );
         if (clientResult.rows.length > 0) {
@@ -143,7 +146,7 @@ export async function POST(request: Request) {
   }
 
   const client = clientResult.rows[0];
-  const ratePerSms = parseFloat(client.rate_per_sms || "0.00030");
+  const ratePerSms = parseFloat(client.rate_per_sms || "0.00010");
   const clientBalance = parseFloat(client.balance);
   const clientMaxTps = parseInt(client.max_tps || "0");
 
@@ -187,11 +190,15 @@ export async function POST(request: Request) {
   let callSuccess = false;
   let allRoutes: RouteInfo[] = [];
 
+  // Capture DLR callback URL from client early (used by SMS delivery + OTT Worker)
+  const dlrCallbackUrl = (client.dlr_callback_url || client.webhook_url || null) as string | null;
+
   // Resolve routes (all of them for fallback capability)
   if (testRouteId) {
     const routeResult = await tenantQuery(
       tenant.schemaName,
       `SELECT r.*, t.name as trunk_name, t.supplier_id,
+              t.mcc_allow_list, t.mcc_deny_list,
               s.name as supplier_name, s.connection_type
        FROM routes r
        LEFT JOIN trunks t ON r.trunk_id = t.id AND t.is_active = true
@@ -209,6 +216,8 @@ export async function POST(request: Request) {
       routeName: r.name as string,
       trunkId: r.trunk_id as number,
       trunkName: r.trunk_name as string,
+      trunkMccAllowList: (r.mcc_allow_list as string) || null,
+      trunkMccDenyList: (r.mcc_deny_list as string) || null,
       supplierId: r.supplier_id as number,
       supplierName: r.supplier_name as string,
       connectionType: r.connection_type as string,
@@ -219,6 +228,7 @@ export async function POST(request: Request) {
       tenant.schemaName,
       `SELECT rpr.route_id, rpr.priority, r.name as route_name, r.trunk_id,
               t.name as trunk_name, t.supplier_id, t.is_active as trunk_active,
+              t.mcc_allow_list, t.mcc_deny_list,
               s.name as supplier_name, s.connection_type, s.is_active as supplier_active
        FROM route_plan_routes rpr
        JOIN routes r ON rpr.route_id = r.id AND r.is_active = true
@@ -236,6 +246,8 @@ export async function POST(request: Request) {
       routeName: r.route_name as string,
       trunkId: r.trunk_id as number,
       trunkName: r.trunk_name as string,
+      trunkMccAllowList: (r.mcc_allow_list as string) || null,
+      trunkMccDenyList: (r.mcc_deny_list as string) || null,
       supplierId: r.supplier_id as number,
       supplierName: r.supplier_name as string,
       connectionType: r.connection_type as string,
@@ -247,6 +259,12 @@ export async function POST(request: Request) {
 
   // Extract supplier ID from selected route
   supplierId = (selectedRoute.supplier_id as number) || null;
+
+  // ── Trunk-level MCC/MNC filtering ──
+  allRoutes = filterRoutesByTrunkMcc(allRoutes, destination);
+  if (allRoutes.length === 0) {
+    return NextResponse.json({ error: "No routes available for this destination (MCC filtering)" }, { status: 400 });
+  }
 
   // --- Apply Supplier-Level Translations ---
   if (supplierId) {
@@ -419,8 +437,9 @@ export async function POST(request: Request) {
 
   // ── Real outbound SMS delivery for non-Voice OTP routes ──
   const isVoiceOtp = selectedRoute.connection_type === "VOICE_OTP" || selectedRoute.connection_type === "Voice OTP";
-  if (!isVoiceOtp && allRoutes.length > 0) {
-    const dlrCallbackUrl = client.dlr_callback_url || client.webhook_url || undefined;
+  const isOttRoute = selectedRoute.connection_type === "WhatsApp OTT" || selectedRoute.connection_type === "Telegram OTT";
+
+  if (!isVoiceOtp && !isOttRoute && allRoutes.length > 0) {
     deliveryResult = await deliverSmsWithFallback(
       tenant.tenantId,
       tenant.schemaName,
@@ -430,7 +449,7 @@ export async function POST(request: Request) {
       content,
       messageId,
       allRoutes,
-      dlrCallbackUrl
+      dlrCallbackUrl || undefined
     );
 
     status = deliveryResult.success ? "SENT" : "FAILED";
@@ -450,10 +469,44 @@ export async function POST(request: Request) {
           supplier_name: deliveryResult?.routeUsed?.supplierName,
           supplier_message_id: dlr.supplierMessageId,
         };
-        pushDlrToClient(dlrCallbackUrl!, payload).catch(() => {});
+        pushDlrToClient(dlrCallbackUrl, payload).catch(() => {});
       });
     }
   }
+
+  let ottDeviceId: number | null = null;
+  if (isOttRoute) {
+    const ottDeviceType: OttDeviceType = selectedRoute.connection_type === "WhatsApp OTT" ? "whatsapp" : "telegram";
+    const onlineDevices = await getOnlineOttDevices(tenant.schemaName, ottDeviceType);
+
+    if (onlineDevices.length === 0) {
+      status = "FAILED";
+      dlrStatus = "FAILED";
+    } else {
+      // Round-robin: use first available (sorted by last_seen ASC for load balancing)
+      const ottDevice = onlineDevices[0];
+      ottDeviceId = ottDevice.id;
+
+      const ottResult = await sendOttMessage(
+        tenant.schemaName,
+        ottDevice.id,
+        destination,
+        content,
+        messageId,
+        clientId,
+        routePlanId,
+        (selectedRoute.route_id as number) || (selectedRoute.id as number),
+        (selectedRoute.trunk_id as number) || null,
+        (selectedRoute.supplier_id as number) || supplierId,
+        ratePerSms
+      );
+
+      status = ottResult.success ? "SENT" : "FAILED";
+      dlrStatus = ottResult.success ? "PENDING" : "FAILED";
+    }
+  }
+
+  // DLR callback URL captured above — used for OTT Worker
 
   // Insert message (store original + translated values)
   const msgResult = await tenantQuery(
@@ -461,26 +514,28 @@ export async function POST(request: Request) {
     `INSERT INTO messages (client_id, sender, destination, content, status,
       route_plan_id, route_id, trunk_id, supplier_id, connection_type,
       cost, dlr_status, dlr_timestamp, otp_code, language, message_id,
-      original_sender, original_destination, original_content, translation_notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
+      original_sender, original_destination, original_content, translation_notes,
+      dlr_callback_url)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
     [
       clientId, sender, destination, content, status,
       routePlanId,
-      deliveryResult?.routeUsed?.routeId || selectedRoute.route_id || selectedRoute.id,
-      deliveryResult?.routeUsed?.trunkId || selectedRoute.trunk_id,
+      deliveryResult?.routeUsed?.routeId || (selectedRoute.route_id as number) || (selectedRoute.id as number),
+      deliveryResult?.routeUsed?.trunkId || (selectedRoute.trunk_id as number) || null,
       deliveryResult?.routeUsed?.supplierId || supplierId,
-      deliveryResult?.routeUsed?.connectionType || selectedRoute.connection_type,
+      deliveryResult?.routeUsed?.connectionType || (selectedRoute.connection_type as string),
       ratePerSms,
       dlrStatus,
       !isVoiceOtp && dlrStatus !== "PENDING" ? new Date() : null, // dlr_timestamp only for non-pending
       otpCode, language, messageId,
       origSender, origDestination, origContent,
       appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null,
+      dlrCallbackUrl,
     ]
   );
 
   // Deduct balance (only on success)
-  if (deliveryResult?.success || isVoiceOtp) {
+  if (deliveryResult?.success || isVoiceOtp || (isOttRoute && status === "SENT")) {
     await tenantQuery(
       tenant.schemaName,
       "UPDATE clients SET balance = balance - $1, updated_at = NOW() WHERE id = $2",
@@ -497,7 +552,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    success: isVoiceOtp ? (callSuccess || dlrStatus === "DELIVERED") : (deliveryResult?.success ?? false),
+    success: isVoiceOtp ? (callSuccess || dlrStatus === "DELIVERED") : (isOttRoute ? status === "SENT" : (deliveryResult?.success ?? false)),
     message: msgResult.rows[0],
     messageId,
     routing: {
@@ -511,6 +566,11 @@ export async function POST(request: Request) {
     },
     cost: ratePerSms,
     dlr: { status: dlrStatus, pushed_to: client.dlr_callback_url || client.webhook_url || null },
+    ott: ottDeviceId ? {
+      deviceId: ottDeviceId,
+      deviceType: selectedRoute.connection_type,
+      status,
+    } : null,
     voiceOtp: otpCode ? {
       otpCode,
       language,

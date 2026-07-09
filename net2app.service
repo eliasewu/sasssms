@@ -1,0 +1,36 @@
+[Unit]
+Description=Net2APP SMS Platform (Next.js)
+Documentation=https://net2app.com
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target postgresql.service redis-server.service
+
+[Service]
+Type=forking
+User=root
+Environment=PATH=/usr/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/sbin:/bin
+Environment=NODE_ENV=production
+Environment=PM2_HOME=/root/.pm2
+WorkingDirectory=/opt/net2app
+
+# Start PM2 with the saved process list (resurrect)
+ExecStart=/usr/bin/pm2 resurrect
+ExecReload=/usr/bin/pm2 reload all
+ExecStop=/usr/bin/pm2 kill
+
+# Auto-restart on failure
+Restart=always
+RestartSec=10
+
+# Give the service time to start up
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+# Prevent rate-limiting restarts
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Ensure child processes are killed on stop
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target

@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       body.connectionType || null, body.smppUsername || null, body.smppPassword || null,
       body.smppAllowedIp || null, body.smppPort || 2775, body.smppSystemType || null, body.maxTps || null,
       body.billingMode || "prepaid", body.currency || "USD",
-      body.balance || "0", body.creditLimit || "0", body.ratePerSms || "0.00030",
+      body.balance || "0", body.creditLimit || "0", body.ratePerSms || "0.00010",
       body.routePlanId || null, body.enableHttpApi || false, httpApiKey, body.forceDlr || false,
       body.dlrTimeoutMode || null, body.dlrTimeout || null, body.webhookUrl || null
     ]

@@ -105,7 +105,7 @@ export default function SuperDashboardLayout({ children }: { children: React.Rea
 
         <div className="p-4 border-t border-white/10">
           <p className="text-[10px] text-slate-500 text-center">
-            © {new Date().getFullYear()} Tri Angle Trade Centre Fze LLC
+            © {new Date().getFullYear()} Tri Angle Trade Centre FZE LLC
           </p>
         </div>
       </aside>

@@ -32,23 +32,37 @@ export async function POST(request: Request) {
     createdForName = r.rows[0]?.name || "Supplier #" + supplierId;
   }
 
-  // Calculate from messages
+  // Calculate from messages with profit = client_rate - supplier_rate
   let msgResult;
   if (clientId) {
+    // Client invoice: sum client rate (revenue), get supplier cost for profit calc
     msgResult = await tenantQuery(
       tenant.schemaName,
-      "SELECT COUNT(*) as msg_count, COALESCE(SUM(CAST(cost AS DECIMAL)), 0) as total_cost FROM messages WHERE client_id = $1 AND created_at >= $2 AND created_at <= $3",
+      `SELECT COUNT(*) as msg_count,
+              COALESCE(SUM(CAST(m.cost AS DECIMAL)), 0) as total_revenue,
+              COALESCE(SUM(CAST(COALESCE(s.cost_per_sms, '0') AS DECIMAL)), 0) as total_cost
+       FROM messages m
+       LEFT JOIN suppliers s ON m.supplier_id = s.id
+       WHERE m.client_id = $1 AND m.created_at >= $2 AND m.created_at <= $3`,
       [clientId, periodStart, periodEnd]
     );
-  } else {
+  } else if (supplierId) {
     msgResult = await tenantQuery(
       tenant.schemaName,
-      "SELECT COUNT(*) as msg_count, COALESCE(SUM(CAST(cost AS DECIMAL)), 0) as total_cost FROM messages WHERE supplier_id = $1 AND created_at >= $2 AND created_at <= $3",
+      `SELECT COUNT(*) as msg_count,
+              COALESCE(SUM(CAST(cost AS DECIMAL)), 0) as total_revenue,
+              COALESCE(SUM(CAST(cost AS DECIMAL)), 0) as total_cost
+       FROM messages WHERE supplier_id = $1 AND created_at >= $2 AND created_at <= $3`,
       [supplierId, periodStart, periodEnd]
     );
+  } else {
+    return NextResponse.json({ error: "clientId or supplierId required" }, { status: 400 });
   }
 
-  const amount = parseFloat(msgResult.rows[0].total_cost) || 0;
+  const totalRevenue = parseFloat(msgResult.rows[0].total_revenue) || 0;
+  const totalCost = parseFloat(msgResult.rows[0].total_cost) || 0;
+  const profit = totalRevenue - totalCost; // profit = client_rate - supplier_rate
+  const amount = clientId ? totalRevenue : totalCost;
   const tax = amount * ((taxRate || 0) / 100);
   const totalAmount = amount + tax;
   const invoiceNumber = "INV-" + Date.now() + "-" + (clientId || supplierId);
@@ -64,6 +78,6 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     invoice: result.rows[0],
-    details: { messageCount: parseInt(msgResult.rows[0].msg_count), amount, tax, totalAmount, createdForName },
+    details: { messageCount: parseInt(msgResult.rows[0].msg_count), amount, tax, totalAmount, totalRevenue, totalCost, profit, createdForName },
   }, { status: 201 });
 }

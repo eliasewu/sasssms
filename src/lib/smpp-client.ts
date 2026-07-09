@@ -33,6 +33,8 @@ export interface RouteInfo {
   routeName: string;
   trunkId: number;
   trunkName: string;
+  trunkMccAllowList: string | null;
+  trunkMccDenyList: string | null;
   supplierId: number;
   supplierName: string;
   connectionType: string;
@@ -197,10 +199,35 @@ async function processSupplierDlr(
     const dlrStatus = statusMap[parsed.status.toUpperCase()] || parsed.status;
 
     await client.query(`SET search_path TO "${delivery.schemaName}"`);
+
+    // Update message DLR status
     await client.query(
       `UPDATE messages SET dlr_status = $1, dlr_timestamp = NOW(), status = $2 WHERE message_id = $3`,
       [dlrStatus, dlrStatus, delivery.ourMessageId]
     );
+
+    // ── On DLR success: charge supplier cost, record profit (client_rate - supplier_rate) ──
+    if (dlrStatus === "DELIVERED") {
+      // Get client rate from the message (already stored) and supplier cost
+      const { rows: msgRows } = await client.query(
+        `SELECT m.client_id, m.cost as client_rate, m.supplier_id,
+                COALESCE(s.cost_per_sms, '0') as supplier_cost
+         FROM messages m
+         LEFT JOIN suppliers s ON m.supplier_id = s.id
+         WHERE m.message_id = $1`,
+        [delivery.ourMessageId]
+      );
+      if (msgRows.length > 0) {
+        const clientRate = parseFloat(msgRows[0].client_rate || "0");
+        const supplierCost = parseFloat(msgRows[0].supplier_cost || "0");
+        // Update message with actual supplier cost and profit
+        await client.query(
+          `UPDATE messages SET supplier_cost = $1, profit = $2 WHERE message_id = $3`,
+          [supplierCost, clientRate - supplierCost, delivery.ourMessageId]
+        );
+      }
+    }
+
     await client.query(`SET search_path TO public`);
   } catch (err) {
     console.error(`[SMPP-CLIENT] Failed to update DLR in DB:`, err);
@@ -542,6 +569,36 @@ export function getSupplierConnections(tenantId: number) {
     if (conn.tenantId === tenantId) connections.push(conn);
   });
   return connections;
+}
+
+/**
+ * Filter routes by trunk-level MCC allow/deny lists against the destination number.
+ *
+ * Extracts the first 3 digits (MCC) from the destination and checks each route's
+ * trunk mcc_allow_list and mcc_deny_list. A route is excluded if:
+ *   - mcc_deny_list contains the destination MCC (deny takes precedence)
+ *   - mcc_allow_list is non-empty and does NOT contain the destination MCC
+ *
+ * If the destination MCC cannot be determined (< 3 digits), all routes pass.
+ */
+export function filterRoutesByTrunkMcc(routes: RouteInfo[], destination: string): RouteInfo[] {
+  const destMcc = destination.replace(/^\+/, "").replace(/[^0-9]/g, "").slice(0, 3);
+  if (!destMcc || destMcc.length < 3) return routes;
+
+  return routes.filter((route) => {
+    const allowList = route.trunkMccAllowList
+      ? route.trunkMccAllowList.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+    const denyList = route.trunkMccDenyList
+      ? route.trunkMccDenyList.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+
+    // Deny takes precedence over allow
+    if (denyList.length > 0 && denyList.includes(destMcc)) return false;
+    // If allow list is specified, only allow listed MCCs
+    if (allowList.length > 0 && !allowList.includes(destMcc)) return false;
+    return true;
+  });
 }
 
 /**

@@ -1,10 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import Script from "next/script";
 import "./globals.css";
+
+const GA_ID = process.env.NEXT_PUBLIC_GA_ID || "";
 
 const SITE_URL = "https://net2app.com";
 const SITE_NAME = "Net2APP";
-const DESCRIPTION = "Deploy your own multi-tenant SMS gateway with complete tenant isolation, SMPP v3.4, HTTP API, RCS messaging, Voice OTP with Asterisk integration, Flash SMS, OTT messaging, WhatsApp Business API, and intelligent multi-layer routing. No setup fees, no hidden fees — pure pay-as-you-go SMS infrastructure.";
+const DESCRIPTION = "Deploy your own multi-tenant SMS gateway with SMPP v3.4, HTTP API, Voice OTP, RCS, WhatsApp & Telegram. Trusted by Reve SMS, 5GVision, LRS & Al Muqeet. White-label CPaaS platform — zero setup fees, pay-as-you-go. SMPP Gateway Bangladesh, India, UAE & beyond.";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -90,16 +93,59 @@ export const metadata: Metadata = {
     "SMS Server", "Voice Platform", "SMS Voice Platform",
     "Multi-Tenant SMS Platform", "Enterprise SMS Infrastructure",
     "White-Label SMS Gateway", "Bulk SMS API", "SaaS SMS Platform",
-    "Cloud SMS Platform", "Twilio Alternative", "Vonage Alternative",
+    "Cloud SMS Platform", "CPaaS Provider", "SMS API Provider",
     "Reve SMS", "5GVision", "LRS SMS", "Al Muqeet SMS",
+    "Bangladesh Operators", "UAE Enterprises",
     "Bangladesh SMS Gateway", "India SMS Gateway", "UAE SMS Gateway",
     "Middle East SMS Platform",
+    // ── Regional & Geo-Targeted Keywords (56) ──
+    "SMPP Gateway Bangladesh", "Bulk SMS Bangladesh", "SMS API Bangladesh",
+    "SMS Gateway Dhaka", "Bulk SMS Dhaka", "SMPP Server Bangladesh",
+    "Grameenphone SMS", "GP SMS Gateway", "Robi SMS Gateway",
+    "Banglalink SMS", "Teletalk SMS", "Bangladesh Operator SMS",
+    "Bangla SMS", "বাংলা এসএমএস", "Unicode SMS Bangladesh",
+    "SMS Reseller Bangladesh", "Bangladesh Telecom SMS",
+    "BTRC Compliant SMS", "Bangladesh Business SMS",
+    "SMS Gateway India", "Bulk SMS India", "SMS API India",
+    "Transactional SMS India", "Promotional SMS India", "TRAI Compliant SMS",
+    "OTP SMS India", "SMS Gateway Mumbai", "SMS Gateway Delhi",
+    "SMS Gateway UAE", "Bulk SMS UAE", "SMS API Dubai",
+    "SMS Gateway Dubai", "Voice OTP UAE", "TDRA Compliant SMS",
+    "SMS Gateway Abu Dhabi", "SMS Gateway Sharjah",
+    "SMS Gateway Middle East", "CPaaS Middle East", "SMS API Middle East",
+    "Voice OTP Middle East", "White-Label CPaaS Middle East",
+    "Bulk SMS Pakistan", "SMS Gateway Pakistan", "SMS API Pakistan",
+    "Jazz SMS", "Telenor SMS", "Zong SMS", "Ufone SMS",
+    "SMS Gateway Nigeria", "Bulk SMS Nigeria", "A2P SMS Nigeria",
+    "MTN SMS Gateway", "Glo SMS", "Airtel Nigeria SMS",
+    "SMS Gateway Africa", "Bulk SMS Africa", "A2P SMS Africa",
+    // ── Service & Use Case Keywords (48) ──
+    "White-Label CPaaS", "White-Label SMS Platform", "SMS Reseller Platform",
+    "SMS Reseller Business", "White-Label Communications Platform",
+    "Branded SMS Gateway", "Custom SMS Platform", "Rebranded CPaaS",
+    "Voice OTP Provider", "Voice Call Verification", "Phone Call OTP",
+    "Automated Call OTP", "Call-Based Authentication", "Telephone OTP",
+    "Voice Verification Service", "Voice One-Time Password",
+    "A2P SMS Aggregator", "A2P SMS Gateway Provider", "Bulk SMS API Provider",
+    "SMS API Gateway", "SMS Aggregation Platform",
+    "Enterprise SMS Server", "Managed SMPP Server", "SMPP Server Hosting",
+    "SMPP Gateway Provider", "SMPP Aggregator", "ESME Management",
+    "SMS Marketing Platform", "Promotional SMS Gateway",
+    "Transactional SMS Provider", "OTP SMS Service", "OTP SMS Provider",
+    "Flash SMS Provider", "RCS Messaging Provider", "RCS Business Messaging",
+    "WhatsApp Business API Provider", "Telegram SMS Gateway",
+    "OTT Messaging Platform", "OTT SMS Gateway",
+    "Bulk Messaging Platform", "Multi-Channel Messaging",
+    "Cloud SMS Gateway", "Hosted SMS Platform", "SaaS SMS Gateway",
+    "Pay-As-You-Go SMS", "No Setup Fee SMS Gateway",
+    "SMS Gateway Alternative", "Twilio Alternative", "Vonage Alternative",
+    "MessageBird Alternative", "Infobip Alternative", "Sinch Alternative",
   ],
   applicationName: SITE_NAME,
   generator: "Next.js",
   referrer: "origin-when-cross-origin",
-  creator: "Tri Angle Trade Centre Fze LLC",
-  publisher: "Tri Angle Trade Centre Fze LLC",
+  creator: "Tri Angle Trade Centre FZE LLC",
+  publisher: "Tri Angle Trade Centre FZE LLC",
   category: "Technology",
   classification: "Business",
 
@@ -160,6 +206,9 @@ export const metadata: Metadata = {
   verification: {
     google: process.env.GOOGLE_SITE_VERIFICATION || "",
     yandex: process.env.YANDEX_VERIFICATION || "",
+    other: {
+      "baidu-site-verification": process.env.BAIDU_SITE_VERIFICATION || "",
+    },
   },
 
   // ── App Links ──
@@ -178,6 +227,8 @@ export const metadata: Metadata = {
   other: {
     "msapplication-TileColor": "#1e3a5f",
     "bing-site-verification": process.env.BING_SITE_VERIFICATION || "",
+    "google-site-verification": process.env.GOOGLE_SITE_VERIFICATION || "",
+    "p:domain_verify": process.env.PINTEREST_VERIFICATION || "",
   },
 };
 
@@ -189,9 +240,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         "@type": "Organization",
         "@id": "https://net2app.com/#organization",
         "name": "Net2APP",
-        "legalName": "Tri Angle Trade Centre Fze LLC",
+        "legalName": "Tri Angle Trade Centre FZE LLC",
         "url": "https://net2app.com",
-        "logo": "https://net2app.com/favicon.ico",
+        "logo": "https://net2app.com/favicon.svg",
         "description": "Enterprise SMS Gateway Platform — Multi-tenant SaaS with SMPP, HTTP API, RCS, Voice OTP, and OTT messaging. No setup fees, pay only for SMS sent.",
         "email": "info@net2app.com",
         "foundingDate": "2024",
@@ -245,6 +296,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
   return (
     <html lang="en">
+      <head>
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+      </head>
       <body className="bg-gray-50 text-gray-900 antialiased min-h-screen">
         <script
           type="application/ld+json"
@@ -252,6 +306,22 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         />
         {children}
       </body>
+      {GA_ID && (
+        <>
+          <Script
+            src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`}
+            strategy="afterInteractive"
+          />
+          <Script id="google-analytics" strategy="afterInteractive">
+            {`
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', '${GA_ID}');
+            `}
+          </Script>
+        </>
+      )}
     </html>
   );
 }

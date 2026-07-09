@@ -13,7 +13,7 @@ export async function register() {
 
     console.log("=".repeat(50));
     console.log("  Net2APP SMS Gateway Platform");
-    console.log("  Tri Angle Trade Centre Fze LLC");
+    console.log("  Tri Angle Trade Centre FZE LLC");
     console.log("=".repeat(50));
 
     // Start SMPP SCSC server for ESME clients

@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     }
 
     // ── Get current platform rate from settings ──
-    let platformRate = "0.00030"; // fallback
+    let platformRate = "0.00010"; // fallback
     try {
       const pc = await pool.connect();
       const { rows } = await pc.query("SELECT value FROM platform_settings WHERE key = 'globalCostPerSms'");

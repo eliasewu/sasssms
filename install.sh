@@ -20,7 +20,7 @@ IS_UPDATE=false
 
 echo ""; echo "============================================"
 echo "  Net2APP Platform Installer"
-echo "  Tri Angle Trade Centre Fze LLC"
+echo "  Tri Angle Trade Centre FZE LLC"
 echo "============================================"
 
 # ── 1. System Dependencies ──
@@ -141,28 +141,191 @@ npm run build
 # Push schema
 npx drizzle-kit push 2>&1 | tail -3 || info "Schema push - check manually"
 
-# ── 8. PM2 & Nginx ──
-echo "[8/9] PM2 + Nginx..."
+# ── 8. PM2, Systemd Service & Auto-Recovery ──
+echo "[8/9] PM2 + Systemd + Auto-Recovery..."
 command -v pm2 &>/dev/null || npm install -g pm2
+
+# ── Enable all core services for auto-start on boot ──
+systemctl enable --now postgresql 2>/dev/null || true
+systemctl enable --now redis-server 2>/dev/null || true
+systemctl enable --now nginx 2>/dev/null || true
+
+# Enable Asterisk if installed
+if systemctl list-units --type=service 2>/dev/null | grep -q asterisk; then
+  systemctl enable --now asterisk 2>/dev/null || true
+fi
+
+# PM2: Start app
+set +e
 pm2 delete net2app 2>/dev/null || true
 pm2 start npm --name "net2app" -- start --cwd "$APP_DIR"
 pm2 save
-pm2 startup systemd -u root --hp /root 2>/dev/null || true
+set -e
+
+# ── Create dedicated systemd service for PM2 resurrection ──
+cat > /etc/systemd/system/net2app.service << 'SVCUNIT'
+[Unit]
+Description=Net2APP SMS Platform (Next.js)
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target postgresql.service redis-server.service
+
+[Service]
+Type=forking
+User=root
+Environment=PATH=/usr/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/sbin:/bin
+Environment=NODE_ENV=production
+Environment=PM2_HOME=/root/.pm2
+WorkingDirectory=/opt/net2app
+ExecStart=/usr/bin/pm2 resurrect
+ExecReload=/usr/bin/pm2 reload all
+ExecStop=/usr/bin/pm2 kill
+Restart=always
+RestartSec=10
+TimeoutStartSec=60
+TimeoutStopSec=30
+StartLimitIntervalSec=300
+StartLimitBurst=5
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
+SVCUNIT
+
+# Disable PM2's auto-generated service to avoid duplicate startups
+systemctl disable pm2-root.service 2>/dev/null || true
+
+systemctl daemon-reload
+systemctl enable net2app.service 2>/dev/null || true
+
+# ── Install health-check monitoring script (cron every minute) ──
+cat > "$APP_DIR/health-check.sh" << 'HCSCRIPT'
+#!/bin/bash
+LOG_FILE="/var/log/net2app-health.log"
+APP_PORT=5555
+LOCK_FILE="/tmp/net2app-health.lock"
+exec 200>"$LOCK_FILE"
+/usr/bin/flock -n 200 || exit 0
+if [ -f "$LOG_FILE" ]; then
+    LOG_SIZE=$(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0)
+    if [ "$LOG_SIZE" -gt 10485760 ]; then mv "$LOG_FILE" "${LOG_FILE}.old"; fi
+fi
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"; }
+recover() {
+    log "Restarting $1..."
+    systemctl restart "$1" 2>&1 >> "$LOG_FILE" && log "SUCCESS: $1 restarted" || log "FAILED: $1 restart"
+}
+systemctl is-active --quiet postgresql || recover postgresql
+systemctl is-active --quiet redis-server || recover redis-server
+if ! systemctl is-active --quiet nginx; then recover nginx
+elif ! nginx -t &>/dev/null; then systemctl reload nginx 2>&1 >> "$LOG_FILE" || true; fi
+if systemctl list-units --type=service 2>/dev/null | grep -q asterisk; then
+    systemctl is-active --quiet asterisk || recover asterisk
+fi
+PM2_DOWN=false
+if command -v pm2 &>/dev/null; then
+    ONLINE_COUNT=$(pm2 jlist 2>/dev/null | grep -c '"status":"online"' || echo 0)
+    [ "$ONLINE_COUNT" -eq 0 ] && PM2_DOWN=true
+else
+    PM2_DOWN=true
+fi
+if [ "$PM2_DOWN" = true ] || ! ss -tlnp 2>/dev/null | grep -q ":$APP_PORT "; then
+    log "Net2APP down (PM2: $PM2_DOWN, port: $APP_PORT) — resurrecting"
+    cd /opt/net2app
+    pm2 resurrect 2>&1 >> "$LOG_FILE" || true
+    sleep 3
+    if ! ss -tlnp 2>/dev/null | grep -q ":$APP_PORT "; then
+        log "Port still down — forcing fresh PM2 start"
+        pm2 start npm --name "net2app" -- run start 2>&1 >> "$LOG_FILE" || true
+        pm2 save 2>&1 >> "$LOG_FILE" || true
+    fi
+fi
+HCSCRIPT
+
+chmod +x "$APP_DIR/health-check.sh"
+
+# Install cron jobs for monitoring
+set +e
+(crontab -l 2>/dev/null | grep -v health-check.sh; echo "* * * * * /opt/net2app/health-check.sh") | crontab - 2>/dev/null || true
+(crontab -l 2>/dev/null | grep -v 'pm2 resurrect'; echo "@reboot sleep 10 && /usr/bin/pm2 resurrect") | crontab - 2>/dev/null || true
+set -e
+
+ok "Systemd + monitoring cron installed"
+
+# ── 9. Nginx + Firewall ──
+echo "[9/9] Nginx + Firewall..."
 
 cat > /etc/nginx/sites-available/net2app <<'NGX'
+# HTTP → HTTPS redirect
 server {
     listen 80; server_name _;
+    location /.well-known/acme-challenge/ { root /var/www/html; }
+    location / { return 301 https://$host$request_uri; }
+}
+
+# HTTPS with Cloudflare-compatible origin cert
+server {
+    listen 443 ssl http2; server_name _;
+    ssl_certificate /etc/nginx/ssl/net2app.crt;
+    ssl_certificate_key /etc/nginx/ssl/net2app.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
     client_max_body_size 100M;
-    location / { proxy_pass http://127.0.0.1:5555; proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection 'upgrade'; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; proxy_read_timeout 300s; }
+    location / {
+        proxy_pass http://127.0.0.1:5555;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+    }
     location /api/webhooks/ { proxy_pass http://127.0.0.1:5555; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
 }
 NGX
+
+# Generate Cloudflare-compatible origin cert if missing
+if [ ! -f "/etc/nginx/ssl/net2app.crt" ] || [ ! -f "/etc/nginx/ssl/net2app.key" ]; then
+    info "Generating Cloudflare-compatible origin certificate..."
+    mkdir -p /etc/nginx/ssl
+    cat > /tmp/openssl-san.cnf << 'CNF'
+[req]
+default_bits = 2048
+prompt = no
+default_md = sha256
+distinguished_name = dn
+req_extensions = req_ext
+[dn]
+CN = net2app.com
+[req_ext]
+subjectAltName = @alt_names
+[alt_names]
+DNS.1 = net2app.com
+DNS.2 = www.net2app.com
+CNF
+    openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+      -keyout /etc/nginx/ssl/net2app.key \
+      -out /etc/nginx/ssl/net2app.crt \
+      -config /tmp/openssl-san.cnf \
+      -extensions req_ext 2>/dev/null
+    rm -f /tmp/openssl-san.cnf
+    chmod 600 /etc/nginx/ssl/net2app.key
+    ok "Origin cert generated (10-year, SANs: net2app.com)"
+fi
+
 ln -sf /etc/nginx/sites-available/net2app /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 
-# ── 9. Firewall ──
-echo "[9/9] Firewall..."
+# Service status summary
+echo ""
+echo "  Service Status:"
+systemctl is-active postgresql 2>/dev/null && echo "    ✅ PostgreSQL" || echo "    ❌ PostgreSQL"
+systemctl is-active redis-server 2>/dev/null && echo "    ✅ Redis" || echo "    ❌ Redis"
+systemctl is-active nginx 2>/dev/null && echo "    ✅ Nginx" || echo "    ❌ Nginx"
+systemctl is-enabled net2app.service 2>/dev/null && echo "    ✅ Net2APP (auto-start)" || echo "    ❌ Net2APP (not enabled)"
+ss -tlnp 2>/dev/null | grep -q ":5555 " && echo "    ✅ Port 5555 listening" || echo "    ❌ Port 5555 NOT listening"
 iptables -I INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
 iptables -I INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
 iptables -I INPUT -p tcp --dport 2775 -j ACCEPT 2>/dev/null || true
@@ -174,8 +337,9 @@ SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
 echo ""; echo "═══════════════════════════════════════"
 echo "  ✅ Net2APP Installation Complete!"
 echo "═══════════════════════════════════════"
-echo "  Landing:     http://$SERVER_IP"
-echo "  Super Admin: http://$SERVER_IP/super"
+echo "  ⚠️  Cloudflare: Set SSL/TLS mode to 'Full' in Cloudflare dashboard"
+echo "  Landing:     https://net2app.com"
+echo "  Super Admin: https://net2app.com/super"
 echo "  SMPP Port:   2775 (ESME/SMSC)"
 echo "  Voice OTP:   5060 (Asterisk SIP)"
 echo "  AMI Port:    5038 (admin/Telco1988)"
@@ -185,4 +349,5 @@ echo "  Setup Super Admin:"
 echo "  Key: SETUP_SMS_PLATFORM_2024"
 echo ""
 echo "  Manage: pm2 logs net2app"
+echo "  Health: tail -f /var/log/net2app-health.log"
 echo "═══════════════════════════════════════"

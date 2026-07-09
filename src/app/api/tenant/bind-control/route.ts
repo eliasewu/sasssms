@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 import { auditLog } from "@/lib/db-helpers";
-import { isClientSessionActive, closeClientSession } from "@/lib/smpp-server";
+import { isClientSessionActive, closeClientSession, isSupplierServerSessionActive, closeSupplierServerSession } from "@/lib/smpp-server";
 import { isSupplierConnected, disconnectSupplier, connectToSupplier } from "@/lib/smpp-client";
 
 // Bind or unbind a client or supplier
@@ -54,8 +54,24 @@ export async function POST(request: Request) {
         `UPDATE ${table} SET bind_status = $1, last_bind_time = NOW(), updated_at = NOW() WHERE id = $2`,
         ["BOUND", entityId]
       );
+    } else if (entity.connection_mode === "SERVER") {
+      // ── SERVER-mode supplier: check if the GSM gateway has registered to us ──
+      const hasSession = isSupplierServerSessionActive(tenant.tenantId, entityId);
+      if (!hasSession) {
+        return NextResponse.json({
+          success: false,
+          error: `Supplier "${entity.name || entity.supplier_code}" has not registered yet. The GSM gateway must connect to our SMSC server at port 2775 first.`,
+          entity: { id: entityId, name: entity.name || entity.supplier_code, bindStatus: "UNBOUND" },
+        }, { status: 400 });
+      }
+
+      await tenantQuery(
+        tenant.schemaName,
+        "UPDATE suppliers SET bind_status = $1, last_bind_time = NOW(), updated_at = NOW() WHERE id = $2",
+        ["BOUND", entityId]
+      );
     } else {
-      // For suppliers: attempt to establish a real SMPP connection
+      // ── CLIENT-mode supplier: we connect to them ──
       const host = entity.host;
       const port = entity.port || 2775;
       const username = entity.username || entity.system_id || "";
@@ -106,6 +122,8 @@ export async function POST(request: Request) {
     // ── UNBIND: Close real connection and update DB ──
     if (entityType === "clients") {
       closeClientSession(entityId, tenant.schemaName);
+    } else if (entity.connection_mode === "SERVER") {
+      closeSupplierServerSession(tenant.tenantId, entityId);
     } else {
       disconnectSupplier(tenant.tenantId, entityId);
     }
@@ -164,8 +182,10 @@ export async function GET(request: Request) {
       const hasSession = isClientSessionActive(row.id as number, tenant.schemaName);
       realStatus = hasSession ? "BOUND" : "UNBOUND";
     } else {
-      const isConnected = isSupplierConnected(tenant.tenantId, row.id as number);
-      realStatus = isConnected ? "BOUND" : "UNBOUND";
+      // Check both CLIENT-mode connections and SERVER-mode sessions
+      const isClientConnected = isSupplierConnected(tenant.tenantId, row.id as number);
+      const isServerBound = isSupplierServerSessionActive(tenant.tenantId, row.id as number);
+      realStatus = (isClientConnected || isServerBound) ? "BOUND" : "UNBOUND";
     }
 
     return {

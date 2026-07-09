@@ -12,11 +12,25 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   const values: unknown[] = [];
   let idx = 1;
 
+  if (body.name !== undefined) { fields.push(`name = $${idx++}`); values.push(body.name); }
+  if (body.deviceType !== undefined) { fields.push(`device_type = $${idx++}`); values.push(body.deviceType); }
+  if (body.phoneNumber !== undefined) { fields.push(`phone_number = $${idx++}`); values.push(body.phoneNumber); }
+  if (body.apiConfig !== undefined) {
+    // Merge with existing api_config to preserve session data from prior pairing
+    const existing = await tenantQuery(tenant.schemaName, "SELECT api_config FROM ott_devices WHERE id = $1", [id]);
+    let existingCfg: Record<string, unknown> = {};
+    if (existing.rows[0]?.api_config) {
+      try { existingCfg = JSON.parse(existing.rows[0].api_config); } catch { /* keep empty */ }
+    }
+    const merged = { ...existingCfg, ...body.apiConfig };
+    fields.push(`api_config = $${idx++}`); values.push(JSON.stringify(merged));
+  }
   if (body.qrCode !== undefined) { fields.push(`qr_code = $${idx++}`); values.push(body.qrCode); }
   if (body.qrSession !== undefined) { fields.push(`qr_session = $${idx++}`); values.push(body.qrSession); }
   if (body.qrExpiresAt !== undefined) { fields.push(`qr_expires_at = $${idx++}`); values.push(body.qrExpiresAt); }
   if (body.status !== undefined) { fields.push(`status = $${idx++}`); values.push(body.status); }
-  if (body.proxyId !== undefined) { fields.push(`proxy_id = $${idx++}`); values.push(body.proxyId); }
+  if (body.proxyId !== undefined) { fields.push(`proxy_id = $${idx++}`); values.push(body.proxyId ? parseInt(body.proxyId) : null); }
+  if (body.isActive !== undefined) { fields.push(`is_active = $${idx++}`); values.push(body.isActive); }
 
   if (fields.length === 0) return NextResponse.json({ error: "No fields" }, { status: 400 });
 

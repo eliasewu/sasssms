@@ -9,7 +9,15 @@ export async function GET(request: Request) {
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const [settings, payments] = await Promise.all([
     db.select().from(platformSettings),
-    db.select().from(paymentConfig),
+    (async () => {
+      const client = await pool.connect();
+      try {
+        const result = await client.query(
+          "SELECT id, method, label, is_active, credentials, qr_code_url, wallet_address, network, min_amount, created_at FROM payment_config"
+        );
+        return result.rows;
+      } finally { client.release(); }
+    })(),
   ]);
   const obj: Record<string, string> = {};
   settings.forEach(s => { obj[s.key] = s.value; });

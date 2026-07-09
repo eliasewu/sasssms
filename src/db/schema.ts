@@ -259,6 +259,7 @@ export const suppliers = pgTable("suppliers", {
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 50 }),
   connectionType: varchar("connection_type", { length: 50 }).notNull(),
+  connectionMode: varchar("connection_mode", { length: 20 }).default("CLIENT").notNull(),
   host: varchar("host", { length: 255 }),
   port: integer("port").default(2775),
   username: varchar("username", { length: 255 }),
@@ -292,6 +293,8 @@ export const trunks = pgTable("trunks", {
   connectorId: integer("connector_id"),
   capacity: integer("capacity").default(100).notNull(),
   currentLoad: integer("current_load").default(0),
+  mccAllowList: text("mcc_allow_list"),
+  mccDenyList: text("mcc_deny_list"),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -369,6 +372,8 @@ export const messages = pgTable("messages", {
   supplierId: integer("supplier_id"),
   connectionType: varchar("connection_type", { length: 50 }),
   cost: decimal("cost", { precision: 10, scale: 6 }).default("0"),
+  supplierCost: decimal("supplier_cost", { precision: 10, scale: 6 }).default("0"),
+  profit: decimal("profit", { precision: 10, scale: 6 }).default("0"),
   dlrStatus: varchar("dlr_status", { length: 20 }),
   dlrTimestamp: timestamp("dlr_timestamp"),
   retryCount: integer("retry_count").default(0),
@@ -381,16 +386,16 @@ export const messages = pgTable("messages", {
   originalDestination: varchar("original_destination", { length: 50 }),
   originalContent: text("original_content"),
   translationNotes: text("translation_notes"),
+  dlrCallbackUrl: text("dlr_callback_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // ── Other tables ──
 export const clientRates = pgTable("client_rates", { id: serial("id").primaryKey(), clientId: integer("client_id").notNull(), countryCode: varchar("country_code", { length: 10 }).notNull(), mcc: varchar("mcc", { length: 10 }), mnc: varchar("mnc", { length: 10 }), rate: decimal("rate", { precision: 10, scale: 6 }).notNull(), isActive: boolean("is_active").default(true).notNull() });
 export const supplierRates = pgTable("supplier_rates", { id: serial("id").primaryKey(), supplierId: integer("supplier_id").notNull(), countryCode: varchar("country_code", { length: 10 }).notNull(), mcc: varchar("mcc", { length: 10 }), mnc: varchar("mnc", { length: 10 }), cost: decimal("cost", { precision: 10, scale: 6 }).notNull(), isActive: boolean("is_active").default(true).notNull() });
-export const routeMaps = pgTable("route_maps", { id: serial("id").primaryKey(), name: varchar("name", { length: 255 }).notNull(), description: text("description"), rules: text("rules"), isActive: boolean("is_active").default(true).notNull(), createdAt: timestamp("created_at").defaultNow().notNull() });
 export const smsInbox = pgTable("sms_inbox", { id: serial("id").primaryKey(), sender: varchar("sender", { length: 20 }).notNull(), destination: varchar("destination", { length: 20 }).notNull(), content: text("content").notNull(), supplierId: integer("supplier_id"), receivedAt: timestamp("received_at").defaultNow().notNull(), isRead: boolean("is_read").default(false) });
 export const campaigns = pgTable("campaigns", { id: serial("id").primaryKey(), name: varchar("name", { length: 255 }).notNull(), clientId: integer("client_id").notNull(), sender: varchar("sender", { length: 20 }).notNull(), content: text("content").notNull(), recipients: text("recipients"), totalCount: integer("total_count").default(0), sentCount: integer("sent_count").default(0), deliveredCount: integer("delivered_count").default(0), failedCount: integer("failed_count").default(0), status: varchar("status", { length: 20 }).default("DRAFT"), scheduledAt: timestamp("scheduled_at"), startedAt: timestamp("started_at"), completedAt: timestamp("completed_at"), createdAt: timestamp("created_at").defaultNow().notNull() });
-export const invoices = pgTable("invoices", { id: serial("id").primaryKey(), clientId: integer("client_id").notNull(), invoiceNumber: varchar("invoice_number", { length: 50 }).notNull(), amount: decimal("amount", { precision: 12, scale: 4 }).notNull(), tax: decimal("tax", { precision: 12, scale: 4 }).default("0"), totalAmount: decimal("total_amount", { precision: 12, scale: 4 }).notNull(), status: varchar("status", { length: 20 }).default("DRAFT").notNull(), periodStart: timestamp("period_start").notNull(), periodEnd: timestamp("period_end").notNull(), dueDate: timestamp("due_date").notNull(), notes: text("notes"), createdAt: timestamp("created_at").defaultNow().notNull() });
+export const invoices = pgTable("invoices", { id: serial("id").primaryKey(), clientId: integer("client_id").notNull(), invoiceNumber: varchar("invoice_number", { length: 50 }).notNull(), amount: decimal("amount", { precision: 12, scale: 4 }).notNull(), tax: decimal("tax", { precision: 12, scale: 4 }).default("0"), totalAmount: decimal("total_amount", { precision: 12, scale: 4 }).notNull(), status: varchar("status", { length: 20 }).default("DRAFT").notNull(), periodStart: timestamp("period_start").notNull(), periodEnd: timestamp("period_end").notNull(), dueDate: timestamp("due_date").notNull(), notes: text("notes"), createdBy: varchar("created_by", { length: 255 }), createdForType: varchar("created_for_type", { length: 50 }), createdForId: integer("created_for_id"), createdForName: varchar("created_for_name", { length: 255 }), createdAt: timestamp("created_at").defaultNow().notNull() });
 export const payments = pgTable("payments", { id: serial("id").primaryKey(), clientId: integer("client_id").notNull(), invoiceId: integer("invoice_id"), amount: decimal("amount", { precision: 12, scale: 4 }).notNull(), paymentMethod: varchar("payment_method", { length: 50 }), transactionId: varchar("transaction_id", { length: 255 }), status: varchar("status", { length: 20 }).default("PENDING"), notes: text("notes"), createdAt: timestamp("created_at").defaultNow().notNull() });
 export const voiceOtpConfig = pgTable("voice_otp_config", { id: serial("id").primaryKey(), countryGroup: varchar("country_group", { length: 255 }).notNull(), prefixes: varchar("prefixes", { length: 500 }), primaryLanguage: varchar("primary_language", { length: 50 }).notNull(), secondaryLanguage: varchar("secondary_language", { length: 50 }), primaryAudioCount: integer("primary_audio_count").default(0), secondaryAudioCount: integer("secondary_audio_count").default(0), isActive: boolean("is_active").default(true).notNull(), createdAt: timestamp("created_at").defaultNow().notNull() });
 export const voiceOtpAudio = pgTable("voice_otp_audio", { id: serial("id").primaryKey(), configId: integer("config_id").notNull(), language: varchar("language", { length: 50 }).notNull(), digit: varchar("digit", { length: 5 }).notNull(), fileName: varchar("file_name", { length: 255 }), fileUrl: text("file_url"), createdAt: timestamp("created_at").defaultNow().notNull() });

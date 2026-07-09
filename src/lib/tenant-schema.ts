@@ -21,7 +21,7 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       smpp_allowed_ip VARCHAR(255), smpp_port INTEGER DEFAULT 2775, smpp_system_type VARCHAR(50),
       max_tps INTEGER, billing_mode VARCHAR(50) DEFAULT 'prepaid', currency VARCHAR(10) DEFAULT 'USD',
       balance DECIMAL(12,4) DEFAULT 0, credit_limit DECIMAL(12,4) DEFAULT 0,
-      rate_per_sms DECIMAL(10,6) DEFAULT 0.00030, route_plan_id INTEGER,
+      rate_per_sms DECIMAL(10,6) DEFAULT 0.00010, route_plan_id INTEGER,
       is_active BOOLEAN DEFAULT true, enable_http_api BOOLEAN DEFAULT false,
       http_api_key VARCHAR(255), force_dlr BOOLEAN DEFAULT false, dlr_timeout_mode VARCHAR(50),
       dlr_timeout INTEGER, dlr_callback_url TEXT, webhook_url TEXT,
@@ -57,6 +57,7 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
     await createTable(`CREATE TABLE IF NOT EXISTS trunks (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, supplier_id INTEGER NOT NULL,
       connector_id INTEGER, capacity INTEGER DEFAULT 100, current_load INTEGER DEFAULT 0,
+      mcc_allow_list TEXT, mcc_deny_list TEXT,
       is_active BOOLEAN DEFAULT true, updated_at TIMESTAMP DEFAULT NOW(),
       deleted_at TIMESTAMP, created_at TIMESTAMP DEFAULT NOW())`);
 
@@ -81,11 +82,13 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       destination VARCHAR(20) NOT NULL, content TEXT NOT NULL,
       status VARCHAR(20) DEFAULT 'QUEUED', route_plan_id INTEGER, route_id INTEGER,
       trunk_id INTEGER, supplier_id INTEGER, connection_type VARCHAR(50),
-      cost DECIMAL(10,6) DEFAULT 0, dlr_status VARCHAR(20), dlr_timestamp TIMESTAMP,
+      cost DECIMAL(10,6) DEFAULT 0, supplier_cost DECIMAL(10,6) DEFAULT 0,
+      profit DECIMAL(10,6) DEFAULT 0, dlr_status VARCHAR(20), dlr_timestamp TIMESTAMP,
       retry_count INTEGER DEFAULT 0, max_retries INTEGER DEFAULT 3,
       otp_code VARCHAR(10), language VARCHAR(50), message_id VARCHAR(100),
       campaign_id INTEGER, log_type VARCHAR(20) DEFAULT 'client',
-      submit_result VARCHAR(20), created_at TIMESTAMP DEFAULT NOW())`);
+      submit_result VARCHAR(20), dlr_callback_url TEXT,
+      created_at TIMESTAMP DEFAULT NOW())`);
 
     await createTable(`CREATE TABLE IF NOT EXISTS sms_inbox (
       id SERIAL PRIMARY KEY, sender VARCHAR(20) NOT NULL, destination VARCHAR(20) NOT NULL,

@@ -8,12 +8,12 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
   const { id } = await params;
   const body = await request.json();
-  const { name, supplierId, capacity, isActive } = body;
+  const { name, supplierId, capacity, isActive, mccAllowList, mccDenyList } = body;
 
   const result = await tenantQuery(
     tenant.schemaName,
-    `UPDATE trunks SET name=$1, supplier_id=$2, capacity=$3, is_active=$4 WHERE id=$5 RETURNING *`,
-    [name, supplierId, capacity, isActive, id]
+    `UPDATE trunks SET name=$1, supplier_id=$2, capacity=$3, is_active=$4, mcc_allow_list=$5, mcc_deny_list=$6 WHERE id=$7 RETURNING *`,
+    [name, supplierId, capacity, isActive, mccAllowList || null, mccDenyList || null, id]
   );
 
   return NextResponse.json({ trunk: result.rows[0] });

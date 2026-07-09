@@ -13,10 +13,16 @@ export async function POST(request: Request) {
   const tenant = getTenantFromRequest(request);
   if (!tenant) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await request.json();
+  
+  // Validate proxy requirement
+  if (!body.proxyId) {
+    return NextResponse.json({ error: "Residential proxy is mandatory for OTT devices" }, { status: 400 });
+  }
+
   const result = await tenantQuery(
     tenant.schemaName,
-    `INSERT INTO ott_devices (name, device_type, phone_number, api_config) VALUES ($1,$2,$3,$4) RETURNING *`,
-    [body.name, body.deviceType, body.phoneNumber || null, body.apiConfig || null]
+    `INSERT INTO ott_devices (name, device_type, phone_number, api_config, proxy_id) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [body.name, body.deviceType, body.phoneNumber || null, body.apiConfig ? JSON.stringify(body.apiConfig) : null, parseInt(body.proxyId)]
   );
   return NextResponse.json({ device: result.rows[0] }, { status: 201 });
 }

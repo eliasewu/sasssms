@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
-import { deliverSmsWithFallback, registerDlrCallback } from "@/lib/smpp-client";
+import { deliverSmsWithFallback, registerDlrCallback, filterRoutesByTrunkMcc } from "@/lib/smpp-client";
 import type { RouteInfo, DlrPayload } from "@/lib/smpp-client";
+import { getOnlineOttDevices, sendOttMessage } from "@/lib/ott-pairing-engine";
+import type { OttDeviceType } from "@/lib/ott-pairing-engine";
 
 function generateMessageId(): string {
   return "CAMP_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
@@ -37,18 +39,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Client not found or inactive" }, { status: 404 });
   }
 
-  const ratePerSms = parseFloat(client.rate_per_sms || "0.00030");
+  const ratePerSms = parseFloat(client.rate_per_sms || "0.00010");
   const recipients: string[] = JSON.parse(campaign.recipients || "[]");
+
+  // Cached for both SMS DLR registration and INSERT (OTT Worker reads from message record)
+  const dlrCallbackUrl: string | null = client.dlr_callback_url || client.webhook_url || null;
 
   // Get route plan for the client — resolve ALL routes for fallback
   let routePlanId = client.route_plan_id;
   let allRoutes: RouteInfo[] = [];
-  let dlrCallbackUrl: string | undefined;
 
   if (routePlanId) {
     const routeResult = await tenantQuery(tenant.schemaName,
       `SELECT rpr.route_id, rpr.priority, r.name as route_name, r.trunk_id,
               t.name as trunk_name, t.supplier_id,
+              t.mcc_allow_list, t.mcc_deny_list,
               s.name as supplier_name, s.connection_type
        FROM route_plan_routes rpr
        JOIN routes r ON rpr.route_id = r.id AND r.is_active = true
@@ -62,13 +67,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       routeName: r.route_name as string,
       trunkId: r.trunk_id as number,
       trunkName: r.trunk_name as string,
+      trunkMccAllowList: (r.mcc_allow_list as string) || null,
+      trunkMccDenyList: (r.mcc_deny_list as string) || null,
       supplierId: r.supplier_id as number,
       supplierName: r.supplier_name as string,
       connectionType: r.connection_type as string,
       priority: r.priority as number,
     }));
-
-    dlrCallbackUrl = client.dlr_callback_url || client.webhook_url || undefined;
   }
 
   let sent = 0, delivered = 0, failed = 0;
@@ -81,10 +86,45 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const batchPromises = batch.map(async (dest) => {
       const messageId = generateMessageId();
 
-      // ── Real SMS delivery ──
+      // ── Detect OTT routes ──
+      const filteredRoutes = allRoutes.length > 0 ? filterRoutesByTrunkMcc(allRoutes, dest) : [];
+      const firstRoute = filteredRoutes[0];
+      const isOtt = firstRoute?.connectionType === "WhatsApp OTT" || firstRoute?.connectionType === "Telegram OTT";
+
+      let isSuccess: boolean;
+      let msgStatus: string;
+      let dlrStat: string;
       let deliveryResult: { success: boolean; routeUsed?: RouteInfo; fallbackUsed: boolean; failedRoutes: number } | null = null;
-      
-      if (allRoutes.length > 0) {
+
+      if (isOtt) {
+        // ── OTT delivery ──
+        const ottDeviceType: OttDeviceType = firstRoute.connectionType === "WhatsApp OTT" ? "whatsapp" : "telegram";
+        const onlineDevices = await getOnlineOttDevices(tenant.schemaName, ottDeviceType);
+
+        if (onlineDevices.length === 0) {
+          isSuccess = false;
+          msgStatus = "FAILED";
+          dlrStat = "FAILED";
+        } else {
+          const ottResult = await sendOttMessage(
+            tenant.schemaName,
+            onlineDevices[0].id,
+            dest,
+            campaign.content,
+            messageId,
+            campaign.client_id,
+            routePlanId,
+            firstRoute.routeId,
+            firstRoute.trunkId,
+            firstRoute.supplierId,
+            ratePerSms
+          );
+          isSuccess = ottResult.success;
+          msgStatus = isSuccess ? "SENT" : "FAILED";
+          dlrStat = isSuccess ? "PENDING" : "FAILED";
+        }
+      } else if (filteredRoutes.length > 0) {
+        // ── SMS delivery ──
         deliveryResult = await deliverSmsWithFallback(
           tenant.tenantId,
           tenant.schemaName,
@@ -93,24 +133,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           dest,
           campaign.content,
           messageId,
-          allRoutes,
-          dlrCallbackUrl
+          filteredRoutes,
+          dlrCallbackUrl || undefined
         );
+        isSuccess = deliveryResult?.success ?? false;
+        msgStatus = isSuccess ? "SENT" : "FAILED";
+        dlrStat = isSuccess ? "PENDING" : "FAILED";
       } else {
         // No routes — simulate for backward compat
         deliveryResult = { success: Math.random() > 0.15, fallbackUsed: false, failedRoutes: 0 };
+        isSuccess = deliveryResult?.success ?? false;
+        msgStatus = isSuccess ? "SENT" : "FAILED";
+        dlrStat = isSuccess ? "PENDING" : "FAILED";
       }
-
-      const isSuccess = deliveryResult?.success ?? false;
-      const msgStatus = isSuccess ? "SENT" : "FAILED";
-      const dlrStat = isSuccess ? "PENDING" : "FAILED";
 
       const msgResult = await tenantQuery(
         tenant.schemaName,
         `INSERT INTO messages (client_id, sender, destination, content, status,
           route_plan_id, route_id, trunk_id, supplier_id, connection_type,
-          cost, dlr_status, message_id, campaign_id, log_type)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+          cost, dlr_status, message_id, campaign_id, log_type, dlr_callback_url)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
         [
           campaign.client_id,
           campaign.sender,
@@ -118,15 +160,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           campaign.content,
           msgStatus,
           routePlanId || null,
-          deliveryResult?.routeUsed?.routeId || null,
-          deliveryResult?.routeUsed?.trunkId || null,
-          deliveryResult?.routeUsed?.supplierId || null,
-          deliveryResult?.routeUsed?.connectionType || allRoutes[0]?.connectionType || "SMPP",
+          deliveryResult?.routeUsed?.routeId || firstRoute?.routeId || null,
+          deliveryResult?.routeUsed?.trunkId || firstRoute?.trunkId || null,
+          deliveryResult?.routeUsed?.supplierId || firstRoute?.supplierId || null,
+          deliveryResult?.routeUsed?.connectionType || firstRoute?.connectionType || "SMPP",
           ratePerSms,
           dlrStat,
           messageId,
           id,
           "campaign",
+          dlrCallbackUrl,
         ]
       );
 
@@ -139,8 +182,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         );
       }
 
-      // Register DLR callback for HTTP push
-      if (isSuccess && dlrCallbackUrl) {
+      // Register DLR callback for SMS routes (OTT DLR is handled by the OTT Worker)
+      if (isSuccess && dlrCallbackUrl && !isOtt) {
         registerDlrCallback(messageId, (dlr: DlrPayload) => {
           fetch(dlrCallbackUrl!, {
             method: "POST",

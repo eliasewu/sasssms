@@ -1,11 +1,16 @@
 /**
  * Net2APP SMPP SMSC Server — Java 21 / Node.js compatible
- * Port 2775, supports SMPP v3.3, v3.4, v5.0 ESME binds with version negotiation
+ * Port 2775, supports SMPP v3.3, v3.4, v5.0
  *
- * Version detection: Reads interface_version from bind PDU and negotiates
- * the best mutually-supported version. v3.3 does NOT support bind_transceiver.
+ * Dual-mode operation:
+ *  - ESME Client mode: Clients (ESMEs) connect to us to send MT messages.
+ *    Authenticated via the clients table.
+ *  - Supplier SERVER mode: GSM gateways / upstream SMSCs register to us.
+ *    Authenticated via the suppliers table (connection_mode = 'SERVER').
+ *    Their SUBMIT_SM is treated as inbound MO; DLRs are pushed back via DELIVER_SM.
  *
- * Handles: BIND_TRANSCEIVER, BIND_TRANSMITTER, BIND_RECEIVER, SUBMIT_SM, DELIVER_SM (DLR), ENQUIRE_LINK
+ * Handles: BIND_TRANSCEIVER, BIND_TRANSMITTER, BIND_RECEIVER, SUBMIT_SM,
+ *          DELIVER_SM (DLR push), DELIVER_SM (MO from suppliers), ENQUIRE_LINK
  *
  * SMS Delivery: Uses real outbound delivery via smpp-client with route fallback.
  * DLR: Delayed until real supplier DLR arrives, then pushed to client via SMPP + HTTP.
@@ -15,6 +20,7 @@ import { pool } from "@/db";
 import {
   deliverSmsWithFallback,
   registerDlrCallback,
+  filterRoutesByTrunkMcc,
 } from "@/lib/smpp-client";
 import type { RouteInfo, DlrPayload } from "@/lib/smpp-client";
 
@@ -48,6 +54,7 @@ function negotiateVersion(esmeVersion: number): number {
 }
 
 interface EsmeSession {
+  type: "esme";
   session: smpp.ServerSession;
   systemId: string;
   systemType: string;
@@ -58,7 +65,22 @@ interface EsmeSession {
   boundAt: Date;
 }
 
+interface SupplierServerSession {
+  type: "supplier_server";
+  session: smpp.ServerSession;
+  systemId: string;
+  systemType: string;
+  tenantId: number;
+  schemaName: string;
+  supplierId: number;
+  interfaceVersion: number;
+  boundAt: Date;
+}
+
+type ActiveSession = EsmeSession | SupplierServerSession;
+
 const activeSessions: Map<string, EsmeSession> = new Map();
+const activeSupplierSessions: Map<string, SupplierServerSession> = new Map();
 
 /**
  * Start SMPP server on given port
@@ -66,18 +88,21 @@ const activeSessions: Map<string, EsmeSession> = new Map();
 export function startSmppServer(port: number = 2775) {
   const server = smpp.createServer(
     (session: smpp.ServerSession) => {
-      let currentSession: EsmeSession | null = null;
+      let currentSession: ActiveSession | null = null;
 
       session.on("bind_transceiver", (pdu: smpp.PDU) => {
         handleBind(session, pdu, "transceiver")
-          .then((es) => {
-            if (es) {
-              currentSession = es;
+          .then((sess) => {
+            if (sess) {
+              currentSession = sess;
               session.send(pdu.response({
                 system_id: "Net2APP_SMSC",
-                interface_version: es.interfaceVersion,
+                interface_version: sess.interfaceVersion,
               }));
-              console.log(`[SMPP] BOUND transceiver: ${es.systemId} @ tenant ${es.tenantId} (SMPP v${versionLabel(es.interfaceVersion)})`);
+              const label = sess.type === "esme"
+                ? `[SMPP] BOUND transceiver: ${sess.systemId} @ tenant ${sess.tenantId} (SMPP v${versionLabel(sess.interfaceVersion)})`
+                : `[SMPP-SRV] BOUND transceiver (supplier): ${sess.systemId} @ tenant ${sess.tenantId} (SMPP v${versionLabel(sess.interfaceVersion)})`;
+              console.log(label);
             } else {
               session.send(pdu.response({ command_status: 14 }));
             }
@@ -89,14 +114,17 @@ export function startSmppServer(port: number = 2775) {
 
       session.on("bind_transmitter", (pdu: smpp.PDU) => {
         handleBind(session, pdu, "transmitter")
-          .then((es) => {
-            if (es) {
-              currentSession = es;
+          .then((sess) => {
+            if (sess) {
+              currentSession = sess;
               session.send(pdu.response({
                 system_id: "Net2APP_SMSC",
-                interface_version: es.interfaceVersion,
+                interface_version: sess.interfaceVersion,
               }));
-              console.log(`[SMPP] BOUND transmitter: ${es.systemId} @ tenant ${es.tenantId} (SMPP v${versionLabel(es.interfaceVersion)})`);
+              const label = sess.type === "esme"
+                ? `[SMPP] BOUND transmitter: ${sess.systemId} @ tenant ${sess.tenantId} (SMPP v${versionLabel(sess.interfaceVersion)})`
+                : `[SMPP-SRV] BOUND transmitter (supplier): ${sess.systemId} @ tenant ${sess.tenantId} (SMPP v${versionLabel(sess.interfaceVersion)})`;
+              console.log(label);
             } else {
               session.send(pdu.response({ command_status: 14 }));
             }
@@ -106,15 +134,18 @@ export function startSmppServer(port: number = 2775) {
 
       session.on("bind_receiver", (pdu: smpp.PDU) => {
         handleBind(session, pdu, "receiver")
-          .then((es) => {
-            if (es) {
-              currentSession = es;
+          .then((sess) => {
+            if (sess) {
+              currentSession = sess;
               session.send(pdu.response({
                 system_id: "Net2APP_SMSC",
-                interface_version: es.interfaceVersion,
+                interface_version: sess.interfaceVersion,
               }));
-              flushPendingDlrs(es);
-              console.log(`[SMPP] BOUND receiver: ${es.systemId} @ tenant ${es.tenantId} (SMPP v${versionLabel(es.interfaceVersion)})`);
+              if (sess.type === "esme") flushPendingDlrs(sess);
+              const label = sess.type === "esme"
+                ? `[SMPP] BOUND receiver: ${sess.systemId} @ tenant ${sess.tenantId} (SMPP v${versionLabel(sess.interfaceVersion)})`
+                : `[SMPP-SRV] BOUND receiver (supplier): ${sess.systemId} @ tenant ${sess.tenantId} (SMPP v${versionLabel(sess.interfaceVersion)})`;
+              console.log(label);
             } else {
               session.send(pdu.response({ command_status: 14 }));
             }
@@ -129,11 +160,15 @@ export function startSmppServer(port: number = 2775) {
         }
 
         try {
-          const result = await processSubmitSm(currentSession, pdu);
+          let result: { success: boolean; messageId: string; errorCode?: number };
+          if (currentSession.type === "esme") {
+            result = await processSubmitSm(currentSession, pdu);
+          } else {
+            result = await processSupplierSubmitSm(currentSession, pdu);
+          }
 
           if (result.success) {
             session.send(pdu.response({ message_id: result.messageId }));
-            // DLR is now sent only when real supplier DLR arrives (via registerDlrCallback)
           } else {
             session.send(
               pdu.response({
@@ -156,7 +191,7 @@ export function startSmppServer(port: number = 2775) {
 
       session.on("unbind", (pdu: smpp.PDU) => {
         if (currentSession) {
-          activeSessions.delete(currentSession.systemId);
+          removeSession(currentSession);
           console.log(`[SMPP] UNBOUND: ${currentSession.systemId}`);
         }
         session.send(pdu.response());
@@ -165,15 +200,17 @@ export function startSmppServer(port: number = 2775) {
 
       session.on("error", (err: Error) => {
         console.error("[SMPP] Session error:", err.message);
-        if (currentSession) {
-          activeSessions.delete(currentSession.systemId);
-        }
+        if (currentSession) removeSession(currentSession);
       });
 
       session.on("close", () => {
         if (currentSession) {
-          activeSessions.delete(currentSession.systemId);
-          updateBindStatus(currentSession.clientId, currentSession.schemaName, "UNBOUND");
+          removeSession(currentSession);
+          if (currentSession.type === "esme") {
+            updateClientBindStatus(currentSession.clientId, currentSession.schemaName, "UNBOUND");
+          } else {
+            updateSupplierBindStatus(currentSession.supplierId, currentSession.schemaName, "UNBOUND");
+          }
         }
       });
     }
@@ -187,13 +224,14 @@ export function startSmppServer(port: number = 2775) {
 }
 
 /**
- * Authenticate ESME bind request
+ * Authenticate bind request — tries clients (ESMEs) first, then
+ * suppliers with connection_mode = 'SERVER' (GSM gateways / upstream SMSCs).
  */
 async function handleBind(
   session: smpp.ServerSession,
   pdu: smpp.PDU,
   bindType: string
-): Promise<EsmeSession | null> {
+): Promise<ActiveSession | null> {
   const systemId = pdu.system_id as string;
   const password = pdu.password as string;
   const esmeVersion = ((pdu as unknown as Record<string,unknown>).interface_version as number) || 0;
@@ -216,9 +254,9 @@ async function handleBind(
     for (const t of tenants) {
       await client.query(`SET search_path TO "${t.schema_name}"`);
       const { rows: matched } = await client.query(
-        `SELECT id, smpp_username, smpp_password, smpp_allowed_ip, is_active, name, connection_type
+        `SELECT id, smpp_username, smpp_password, http_api_key, smpp_allowed_ip, is_active, name, connection_type
          FROM clients
-         WHERE (smpp_username = $1 OR smpp_username IS NULL AND $1 = '')
+         WHERE (smpp_username = $1 OR http_api_key = $1 OR (smpp_username IS NULL AND $1 = ''))
            AND is_active = true AND deleted_at IS NULL
            AND connection_type = 'SMPP'`,
         [systemId]
@@ -236,6 +274,7 @@ async function handleBind(
         );
 
         const es: EsmeSession = {
+          type: "esme",
           session,
           systemId,
           systemType: (pdu.system_type as string) || "ESME",
@@ -258,6 +297,60 @@ async function handleBind(
         return es;
       }
     }
+
+    // ── Step 2: Try suppliers with connection_mode = 'SERVER' ──
+    // GSM gateways / upstream SMSCs register to us (we are the server)
+    for (const t of tenants) {
+      await client.query(`SET search_path TO "${t.schema_name}"`);
+      const { rows: matched } = await client.query(
+        `SELECT id, name, username, password, system_id
+         FROM suppliers
+         WHERE connection_mode = 'SERVER'
+           AND connection_type = 'SMPP'
+           AND (username = $1 OR system_id = $1)
+           AND is_active = true AND deleted_at IS NULL`,
+        [systemId]
+      );
+
+      if (matched.length > 0) {
+        const s = matched[0];
+        // Authenticate: check password match
+        const storedPassword = s.password || "";
+        if (storedPassword && storedPassword !== password) {
+          continue;
+        }
+
+        await client.query(
+          `UPDATE suppliers SET bind_status = 'BOUND', last_bind_time = NOW(), updated_at = NOW() WHERE id = $1`,
+          [s.id]
+        );
+
+        const ss: SupplierServerSession = {
+          type: "supplier_server",
+          session,
+          systemId,
+          systemType: (pdu.system_type as string) || "SMSC",
+          tenantId: t.id,
+          schemaName: t.schema_name,
+          supplierId: s.id,
+          interfaceVersion: negotiatedVersion,
+          boundAt: new Date(),
+        };
+
+        activeSupplierSessions.set(`supplier:${t.id}:${s.id}`, ss);
+
+        await client.query(`SET search_path TO public`);
+        await client.query(
+          `INSERT INTO audit_log (entity_type, entity_id, action, changed_by, tenant_id)
+           VALUES ('suppliers', $1, 'BIND_SERVER', $2, $3)`,
+          [s.id, systemId, t.id]
+        );
+
+        console.log(`[SMPP-SRV] Supplier server session registered: ${systemId} (supplier #${s.id}, tenant ${t.id})`);
+        return ss;
+      }
+    }
+
     return null;
   } finally {
     await client.query(`SET search_path TO public`);
@@ -294,6 +387,7 @@ async function processSubmitSm(
       const { rows: allRoutes } = await client.query(
         `SELECT rpr.route_id, rpr.priority, r.name as route_name, r.trunk_id,
                 t.name as trunk_name, t.supplier_id,
+                t.mcc_allow_list, t.mcc_deny_list,
                 s.name as supplier_name, s.connection_type
          FROM route_plan_routes rpr
          JOIN routes r ON rpr.route_id = r.id AND r.is_active = true
@@ -308,12 +402,12 @@ async function processSubmitSm(
         await client.query(
           `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, cost, dlr_status, message_id, dlr_timestamp)
            VALUES ($1,$2,$3,$4,'FAILED',$5,$6,'FAILED',$7,NOW())`,
-          [es.clientId, src, dest, content, c.route_plan_id, c.rate_per_sms || "0.00030", messageId]
+          [es.clientId, src, dest, content, c.route_plan_id, c.rate_per_sms || "0.00010", messageId]
         );
         return { success: false, messageId, errorCode: 8 };
       }
 
-      const ratePerSms = parseFloat(c.rate_per_sms || "0.00030");
+      const ratePerSms = parseFloat(c.rate_per_sms || "0.00010");
 
       // Check balance
       if (parseFloat(c.balance) < ratePerSms) {
@@ -326,11 +420,24 @@ async function processSubmitSm(
         routeName: r.route_name,
         trunkId: r.trunk_id,
         trunkName: r.trunk_name,
+        trunkMccAllowList: (r.mcc_allow_list as string) || null,
+        trunkMccDenyList: (r.mcc_deny_list as string) || null,
         supplierId: r.supplier_id,
         supplierName: r.supplier_name,
         connectionType: r.connection_type,
         priority: r.priority,
       }));
+
+      // ── Trunk-level MCC/MNC filtering ──
+      const filteredRoutes = filterRoutesByTrunkMcc(routeInfos, dest);
+      if (filteredRoutes.length === 0) {
+        await client.query(
+          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, cost, dlr_status, message_id, dlr_timestamp)
+           VALUES ($1,$2,$3,$4,'FAILED',$5,$6,'FAILED',$7,NOW())`,
+          [es.clientId, src, dest, content, c.route_plan_id, c.rate_per_sms || "0.00010", messageId]
+        );
+        return { success: false, messageId, errorCode: 8 };
+      }
 
       const dlrCallbackUrl = c.dlr_callback_url || c.webhook_url || undefined;
 
@@ -343,7 +450,7 @@ async function processSubmitSm(
         dest,
         content,
         messageId,
-        routeInfos,
+        filteredRoutes,
         dlrCallbackUrl
       );
 
@@ -487,7 +594,7 @@ export function closeClientSession(clientId: number, schemaName: string): boolea
   return keyToDelete.length > 0;
 }
 
-async function updateBindStatus(clientId: number, schemaName: string, status: string) {
+async function updateClientBindStatus(clientId: number, schemaName: string, status: string) {
   const client = await pool.connect();
   try {
     await client.query(`SET search_path TO "${schemaName}"`);
@@ -499,4 +606,131 @@ async function updateBindStatus(clientId: number, schemaName: string, status: st
     await client.query(`SET search_path TO public`);
     client.release();
   }
+}
+
+async function updateSupplierBindStatus(supplierId: number, schemaName: string, status: string) {
+  const client = await pool.connect();
+  try {
+    await client.query(`SET search_path TO "${schemaName}"`);
+    await client.query(
+      `UPDATE suppliers SET bind_status = $1, updated_at = NOW() WHERE id = $2`,
+      [status, supplierId]
+    );
+  } finally {
+    await client.query(`SET search_path TO public`);
+    client.release();
+  }
+}
+
+/** Remove a session (esme or supplier_server) from its tracking map */
+function removeSession(sess: ActiveSession) {
+  if (sess.type === "esme") {
+    for (const [key, s] of activeSessions) {
+      if (s.clientId === sess.clientId && s.schemaName === sess.schemaName) {
+        activeSessions.delete(key);
+        return;
+      }
+    }
+  } else {
+    activeSupplierSessions.delete(`supplier:${sess.tenantId}:${sess.supplierId}`);
+  }
+}
+
+/**
+ * Process SUBMIT_SM from a supplier in SERVER mode (GSM gateway / upstream SMSC).
+ * This is an inbound MO (mobile-originated) message from the supplier's network.
+ * We store it in sms_inbox and optionally forward to a designated client.
+ */
+async function processSupplierSubmitSm(
+  ss: SupplierServerSession,
+  pdu: smpp.PDU
+): Promise<{ success: boolean; messageId: string; errorCode?: number }> {
+  const messageId = "MO_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
+  const dest = (pdu.destination_addr as string) || "";
+  const src = (pdu.source_addr as string) || "";
+  const content = (pdu.short_message as { message: string })?.message || "";
+
+  try {
+    const dbClient = await pool.connect();
+    try {
+      await dbClient.query(`SET search_path TO "${ss.schemaName}"`);
+
+      // Store inbound MO message
+      await dbClient.query(
+        `INSERT INTO sms_inbox (sender, destination, content, supplier_id)
+         VALUES ($1, $2, $3, $4)`,
+        [src, dest, content, ss.supplierId]
+      );
+
+      console.log(`[SMPP-SRV] Inbound MO from ${src} → ${dest} via supplier #${ss.supplierId}: ${content.substring(0, 40)}`);
+    } finally {
+      await dbClient.query(`SET search_path TO public`);
+      dbClient.release();
+    }
+
+    return { success: true, messageId };
+  } catch (err) {
+    console.error("[SMPP-SRV] processSupplierSubmitSm error:", err);
+    return { success: false, messageId, errorCode: 1 };
+  }
+}
+
+/**
+ * Push DLR to a supplier server session via DELIVER_SM.
+ * Called when we need to notify a SERVER-mode supplier about delivery status.
+ */
+export function pushDlrToSupplierServer(
+  tenantId: number,
+  supplierId: number,
+  dlrPayload: DlrPayload
+): boolean {
+  const key = `supplier:${tenantId}:${supplierId}`;
+  const sess = activeSupplierSessions.get(key);
+  if (!sess) {
+    console.log(`[SMPP-SRV] No active server session for supplier ${supplierId} — DLR not pushed`);
+    return false;
+  }
+
+  try {
+    const dlrStatus = mapDlrStatus(dlrPayload.status);
+    sess.session.send(
+      new smpp.PDU("deliver_sm", {
+        source_addr: dlrPayload.dest,
+        destination_addr: dlrPayload.src,
+        short_message: {
+          message: `id:${dlrPayload.supplierMessageId} sub:001 dlvrd:001 submit date:${dlrPayload.submitDate} done date:${dlrPayload.doneDate} stat:${dlrStatus} err:${dlrPayload.errorCode} text:${dlrStatus}`,
+        },
+        esm_class: 4,
+        registered_delivery: 0,
+        data_coding: 0,
+      })
+    );
+    console.log(`[SMPP-SRV] DLR pushed to supplier server #${supplierId}: ${dlrPayload.messageId} → ${dlrPayload.status}`);
+    return true;
+  } catch (err) {
+    console.error(`[SMPP-SRV] Failed to push DLR to supplier ${supplierId}:`, err);
+    return false;
+  }
+}
+
+/**
+ * Check if a supplier in SERVER mode has an active session.
+ */
+export function isSupplierServerSessionActive(tenantId: number, supplierId: number): boolean {
+  const key = `supplier:${tenantId}:${supplierId}`;
+  return activeSupplierSessions.has(key);
+}
+
+/**
+ * Close a supplier server session.
+ */
+export function closeSupplierServerSession(tenantId: number, supplierId: number): boolean {
+  const key = `supplier:${tenantId}:${supplierId}`;
+  const sess = activeSupplierSessions.get(key);
+  if (sess) {
+    try { sess.session.close(); } catch {}
+    activeSupplierSessions.delete(key);
+    return true;
+  }
+  return false;
 }

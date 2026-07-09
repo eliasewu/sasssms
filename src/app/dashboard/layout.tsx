@@ -38,6 +38,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { href: "/dashboard/suppliers/rates", label: "Supplier Rates", icon: "💰" },
       { href: "/dashboard/connectors", label: "API Connectors", icon: "🔌" },
       { href: "/dashboard/ott-devices", label: "OTT Devices", icon: "📲" },
+      { href: "/dashboard/proxy-config", label: "Proxy Config", icon: "🔌" },
       { href: "/dashboard/voice-otp", label: "Voice OTP", icon: "📞" },
       { href: "/dashboard/social-api", label: "Social API", icon: "💬" },
       { href: "/dashboard/business-api", label: "Business API", icon: "🔗" },
@@ -46,9 +47,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
   {
     title: "Routing",
     items: [
-      { href: "/dashboard/trunks", label: "Trunks", icon: "🔗" },
-      { href: "/dashboard/routes", label: "Routes", icon: "🔀" },
-      { href: "/dashboard/route-maps", label: "Route Maps", icon: "🗺️" },
+      { href: "/dashboard/trunks", label: "Trunks", icon: "🔗" },      { href: "/dashboard/routes", label: "Routes", icon: "🔀" },
       { href: "/dashboard/route-plans", label: "Route Plans", icon: "📋" },
     ],
   },
@@ -99,6 +98,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
     items: [
       { href: "/dashboard/users", label: "Users", icon: "👤" },
       { href: "/dashboard/roles", label: "Roles", icon: "🔐" },
+      { href: "/dashboard/api-settings", label: "API Settings", icon: "📡" },
       { href: "/dashboard/notifications", label: "Notifications", icon: "🔔" },
     ],
   },
@@ -230,7 +230,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {sidebarOpen && (
           <div className="p-4 border-t border-white/10 shrink-0">
             <p className="text-[10px] text-slate-500 text-center">
-              © {new Date().getFullYear()} Tri Angle Trade Centre Fze LLC
+              © {new Date().getFullYear()} Tri Angle Trade Centre FZE LLC
             </p>
           </div>
         )}

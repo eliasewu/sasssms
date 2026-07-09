@@ -5,7 +5,7 @@ import { tenantQuery } from "@/lib/tenant-schema";
 export async function GET(request: Request) {
   const tenant = getTenantFromRequest(request);
   if (!tenant) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const result = await tenantQuery(tenant.schemaName, "SELECT * FROM proxy_config ORDER BY id DESC");
+  const result = await tenantQuery(tenant.schemaName, "SELECT id, name, proxy_type, host, port, username, protocol, is_active, created_at FROM proxy_config ORDER BY id DESC");
   return NextResponse.json({ configs: result.rows });
 }
 
