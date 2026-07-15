@@ -482,3 +482,14 @@ export const supportTicketReplies = pgTable("support_ticket_replies", {
   message: text("message").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// ── Support Ticket Attachments (public schema) ──
+export const supportTicketAttachments = pgTable("support_ticket_attachments", {
+  id: serial("id").primaryKey(),
+  replyId: integer("reply_id").notNull(),
+  fileName: varchar("file_name", { length: 255 }).notNull(),
+  filePath: text("file_path").notNull(),
+  fileSize: integer("file_size").notNull(),
+  mimeType: varchar("mime_type", { length: 100 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});

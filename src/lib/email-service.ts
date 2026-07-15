@@ -125,6 +125,48 @@ export async function notifyClientPaymentRejected(payload: {
 }
 
 /**
+ * Send email notification to tenant when super admin replies to their support ticket
+ */
+export async function notifyTenantTicketReply(payload: {
+  tenantEmail: string;
+  tenantName: string;
+  ticketId: number;
+  ticketSubject: string;
+  replyMessage: string;
+  adminName: string;
+}): Promise<boolean> {
+  try {
+    const preview = payload.replyMessage.length > 200
+      ? payload.replyMessage.slice(0, 200) + "..."
+      : payload.replyMessage;
+
+    await transporter.sendMail({
+      from: `"Net2APP Support" <${SMTP_USER}>`,
+      to: payload.tenantEmail,
+      subject: `🔔 Support Reply: ${payload.ticketSubject}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1a73e8;">New Reply to Your Support Ticket</h2>
+          <p>Dear ${payload.tenantName},</p>
+          <p><strong>${payload.adminName}</strong> from Net2APP Support has replied to your ticket:</p>
+          <div style="background: #f5f5f5; border-left: 4px solid #1a73e8; padding: 12px 16px; margin: 15px 0; border-radius: 4px;">
+            <p style="margin: 0; color: #333;"><strong>Ticket #${payload.ticketId}: ${payload.ticketSubject}</strong></p>
+            <p style="margin: 10px 0 0 0; color: #555; white-space: pre-wrap;">${preview}</p>
+          </div>
+          <p style="color: #666;">You can view the full reply and respond in your dashboard.</p>
+          <a href="https://net2app.com/dashboard/support-tickets" style="display: inline-block; background: #1a73e8; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 10px;">View Ticket</a>
+          <p style="color: #999; font-size: 12px; margin-top: 20px;">Thank you for using Net2APP!</p>
+        </div>
+      `,
+    });
+    return true;
+  } catch (e) {
+    console.error("Failed to send support ticket reply notification:", e);
+    return false;
+  }
+}
+
+/**
  * Send welcome email to newly created email account
  */
 export async function sendWelcomeEmail(payload: {

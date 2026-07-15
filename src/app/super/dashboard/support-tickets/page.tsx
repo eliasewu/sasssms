@@ -17,12 +17,27 @@ interface Ticket {
   updated_at: string;
 }
 
+interface Attachment {
+  id: number;
+  fileName: string;
+  filePath: string;
+  fileSize: number;
+  mimeType: string;
+}
+
 interface Reply {
   id: number;
   replied_by: string;
   replied_by_name: string;
   message: string;
+  attachments?: Attachment[];
   created_at: string;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -44,6 +59,7 @@ export default function SuperSupportTicketsPage() {
   const [loading, setLoading] = useState(true);
   const [selectedTicket, setSelectedTicket] = useState<{ ticket: Ticket; replies: Reply[] } | null>(null);
   const [replyMsg, setReplyMsg] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
 
@@ -73,15 +89,27 @@ export default function SuperSupportTicketsPage() {
   };
 
   const handleReply = async (ticketId: number) => {
-    if (!replyMsg.trim()) return;
+    if (!replyMsg.trim() && selectedFiles.length === 0) return;
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/super/support-tickets/${ticketId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ message: replyMsg.trim() }),
-      });
+      let res: Response;
+      if (selectedFiles.length > 0) {
+        const formData = new FormData();
+        formData.append("message", replyMsg.trim());
+        selectedFiles.forEach(f => formData.append("files", f));
+        res = await fetch(`/api/super/support-tickets/${ticketId}`, {
+          method: "POST",
+          credentials: "include",
+          body: formData,
+        });
+      } else {
+        res = await fetch(`/api/super/support-tickets/${ticketId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ message: replyMsg.trim() }),
+        });
+      }
       if (res.ok) {
         const data = await res.json();
         if (selectedTicket) {
@@ -91,6 +119,7 @@ export default function SuperSupportTicketsPage() {
           });
         }
         setReplyMsg("");
+        setSelectedFiles([]);
         fetchTickets();
       }
     } catch { /* ignore */ }
@@ -230,6 +259,27 @@ export default function SuperSupportTicketsPage() {
                         {reply.replied_by === "super" ? reply.replied_by_name + " (Admin)" : reply.replied_by_name + " (Tenant)"}
                       </p>
                       <p className="text-sm whitespace-pre-wrap">{reply.message}</p>
+                      {reply.attachments && reply.attachments.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {reply.attachments.map((att) => (
+                            <a
+                              key={att.id}
+                              href={att.filePath}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={`flex items-center gap-2 text-xs rounded px-2 py-1 ${
+                                (reply.replied_by === "super" && !reply.message.startsWith("📌"))
+                                  ? "bg-white/20 hover:bg-white/30"
+                                  : "bg-slate-200 hover:bg-slate-300"
+                              }`}
+                            >
+                              <span>📎</span>
+                              <span className="truncate max-w-[180px]">{att.fileName}</span>
+                              <span className="opacity-60 shrink-0">({formatFileSize(att.fileSize)})</span>
+                            </a>
+                          ))}
+                        </div>
+                      )}
                       <p className="text-xs mt-1 opacity-50 text-right">
                         {new Date(reply.created_at).toLocaleString()}
                       </p>
@@ -242,22 +292,45 @@ export default function SuperSupportTicketsPage() {
 
           {/* Reply Box */}
           {selectedTicket.ticket.status !== "CLOSED" && (
-            <div className="p-4 border-t bg-white flex gap-3">
-              <input
-                type="text"
-                value={replyMsg}
-                onChange={e => setReplyMsg(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(selectedTicket.ticket.id); } }}
-                className="flex-1 border rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-orange-500"
-                placeholder="Type your reply..."
-              />
-              <button
-                onClick={() => handleReply(selectedTicket.ticket.id)}
-                disabled={submitting || !replyMsg.trim()}
-                className="px-5 py-2.5 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700 disabled:opacity-50 transition"
-              >
-                {submitting ? "Sending..." : "Send"}
-              </button>
+            <div className="p-4 border-t bg-white">
+              <div className="flex gap-3 mb-2">
+                <input
+                  type="text"
+                  value={replyMsg}
+                  onChange={e => setReplyMsg(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(selectedTicket.ticket.id); } }}
+                  className="flex-1 border rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-orange-500"
+                  placeholder="Type your reply..."
+                />
+                <button
+                  onClick={() => handleReply(selectedTicket.ticket.id)}
+                  disabled={submitting || (!replyMsg.trim() && selectedFiles.length === 0)}
+                  className="px-5 py-2.5 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700 disabled:opacity-50 transition"
+                >
+                  {submitting ? "Sending..." : "Send"}
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="cursor-pointer text-xs text-slate-500 hover:text-orange-600 transition flex items-center gap-1">
+                  <span className="text-base">📎</span> Attach files
+                  <input
+                    type="file"
+                    multiple
+                    onChange={e => setSelectedFiles(Array.from(e.target.files || []))}
+                    className="hidden"
+                  />
+                </label>
+                {selectedFiles.length > 0 && (
+                  <div className="flex items-center gap-2 flex-1 overflow-x-auto">
+                    {selectedFiles.map((f, i) => (
+                      <span key={i} className="text-xs bg-orange-50 text-orange-700 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+                        📎 {f.name} ({formatFileSize(f.size)})
+                        <button onClick={() => setSelectedFiles(prev => prev.filter((_, j) => j !== i))} className="ml-1 text-orange-400 hover:text-red-500">✕</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
