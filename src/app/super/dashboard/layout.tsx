@@ -15,6 +15,7 @@ const navItems = [
   { href: "/super/dashboard/email-accounts", label: "Email Accounts", icon: "📧" },
   { href: "/super/dashboard/admins", label: "Admins", icon: "🔐" },
   { href: "/super/dashboard/mcc-mnc", label: "MCC/MNC Database", icon: "🌍" },
+  { href: "/super/dashboard/support-tickets", label: "Support Tickets", icon: "🎫" },
   { href: "/super/dashboard/notifications", label: "Alerts", icon: "🔔" },
   { href: "/super/dashboard/settings", label: "Settings", icon: "⚙️" },
 ];

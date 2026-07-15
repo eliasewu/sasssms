@@ -457,3 +457,28 @@ export const translationAssignments = pgTable("translation_assignments", {
   priority: integer("priority").default(1).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
 });
+
+// ── Support Tickets (public schema, cross-tenant) ──
+export const supportTickets = pgTable("support_tickets", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull(),
+  schemaName: varchar("schema_name", { length: 100 }).notNull(),
+  subject: varchar("subject", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  status: varchar("status", { length: 20 }).default("OPEN").notNull(), // OPEN, IN_PROGRESS, RESOLVED, CLOSED
+  priority: varchar("priority", { length: 20 }).default("MEDIUM").notNull(), // LOW, MEDIUM, HIGH, URGENT
+  repliedBy: varchar("replied_by", { length: 20 }), // last reply direction: "tenant" | "super"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ── Support Ticket Replies (public schema) ──
+export const supportTicketReplies = pgTable("support_ticket_replies", {
+  id: serial("id").primaryKey(),
+  ticketId: integer("ticket_id").notNull(),
+  repliedBy: varchar("replied_by", { length: 20 }).notNull(), // "tenant" | "super"
+  repliedById: integer("replied_by_id"),
+  repliedByName: varchar("replied_by_name", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});

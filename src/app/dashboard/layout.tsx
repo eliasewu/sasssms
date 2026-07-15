@@ -101,6 +101,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { href: "/dashboard/users", label: "Users", icon: "👤" },
       { href: "/dashboard/roles", label: "Roles", icon: "🔐" },
       { href: "/dashboard/api-settings", label: "API Settings", icon: "📡" },
+      { href: "/dashboard/support-tickets", label: "Support Tickets", icon: "🎫" },
       { href: "/dashboard/notifications", label: "Notifications", icon: "🔔" },
     ],
   },
