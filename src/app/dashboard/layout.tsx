@@ -37,6 +37,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { href: "/dashboard/suppliers", label: "All Suppliers", icon: "🏭" },
       { href: "/dashboard/suppliers/rates", label: "Supplier Rates", icon: "💰" },
       { href: "/dashboard/connectors", label: "API Connectors", icon: "🔌" },
+      { href: "/dashboard/custom-api", label: "Custom API", icon: "⚡" },
       { href: "/dashboard/ott-devices", label: "OTT Devices", icon: "📲" },
       { href: "/dashboard/proxy-config", label: "Proxy Config", icon: "🔌" },
       { href: "/dashboard/voice-otp", label: "Voice OTP", icon: "📞" },

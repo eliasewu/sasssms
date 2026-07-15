@@ -20,6 +20,7 @@ import type { RouteInfo, DlrPayload } from "@/lib/smpp-client";
 import { getOnlineOttDevices, sendOttMessage } from "@/lib/ott-pairing-engine";
 import type { OttDeviceType } from "@/lib/ott-pairing-engine";
 import { lookupClientRate } from "@/lib/rates";
+import { buildUrl, evaluateCondition, extractFromResponse, parseHeaders } from "@/lib/api-connector-parser";
 
 // Use real Asterisk AMI executor, fall back to simulation if AMI is unavailable
 const amiExecutor = new AsteriskAmiExecutor();
@@ -439,8 +440,9 @@ export async function POST(request: Request) {
   // ── Real outbound SMS delivery for non-Voice OTP routes ──
   const isVoiceOtp = selectedRoute.connection_type === "VOICE_OTP" || selectedRoute.connection_type === "Voice OTP";
   const isOttRoute = selectedRoute.connection_type === "WhatsApp OTT" || selectedRoute.connection_type === "Telegram OTT";
+  const isCustomApi = selectedRoute.connection_type === "CUSTOM_API";
 
-  if (!isVoiceOtp && !isOttRoute && allRoutes.length > 0) {
+  if (!isVoiceOtp && !isOttRoute && !isCustomApi && allRoutes.length > 0) {
     deliveryResult = await deliverSmsWithFallback(
       tenant.tenantId,
       tenant.schemaName,
@@ -507,6 +509,73 @@ export async function POST(request: Request) {
     }
   }
 
+  // --- Custom API Connector delivery ---
+  let customApiSuccess = false;
+  let customApiMessageId: string | null = null;
+  if (isCustomApi && supplierId) {
+    try {
+      const suppResult = await tenantQuery(
+        tenant.schemaName,
+        "SELECT config FROM suppliers WHERE id = $1",
+        [supplierId]
+      );
+      const config = (suppResult.rows[0]?.config as Record<string, unknown>) || {};
+      const connectorId = config.custom_connector_id as number;
+
+      if (connectorId) {
+        const connResult = await tenantQuery(
+          tenant.schemaName,
+          "SELECT * FROM custom_api_connectors WHERE id = $1 AND is_active = true",
+          [connectorId]
+        );
+        if (connResult.rows.length > 0) {
+          const conn = connResult.rows[0];
+          const vars: Record<string, string> = {
+            dst: destination, message: content, sender: sender,
+            message_id: messageId, apiKey: "",
+          };
+
+          const url = buildUrl(conn.send_url_template as string, vars);
+          const fetchOptions: RequestInit = {
+            method: (conn.send_method as string) || "GET",
+            headers: parseHeaders(conn.send_headers as string || ""),
+          };
+
+          if (conn.send_body_template && conn.send_method === "POST") {
+            fetchOptions.body = (conn.send_body_template as string)
+              .replace(/\{\{dst\}\}/g, destination)
+              .replace(/\{\{message\}\}/g, content)
+              .replace(/\{\{sender\}\}/g, sender);
+          }
+
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 30000);
+          const res = await fetch(url, { ...fetchOptions, signal: controller.signal });
+          clearTimeout(timeout);
+
+          const responseBody = await res.text();
+          let parsed: Record<string, unknown> = {};
+          try { parsed = JSON.parse(responseBody); } catch { parsed = { raw: responseBody }; }
+
+          customApiSuccess = conn.send_success_condition
+            ? evaluateCondition(conn.send_success_condition as string, parsed)
+            : res.status === 200;
+
+          if (conn.send_message_id_path) {
+            customApiMessageId = String(extractFromResponse(parsed, conn.send_message_id_path as string) || "");
+          }
+
+          status = customApiSuccess ? "SENT" : "FAILED";
+          dlrStatus = customApiSuccess ? "PENDING" : "FAILED";
+        }
+      }
+    } catch (err) {
+      console.error("Custom API delivery error:", err);
+      status = "FAILED";
+      dlrStatus = "FAILED";
+    }
+  }
+
   // DLR callback URL captured above — used for OTT Worker
 
   // Insert message (store original + translated values)
@@ -516,8 +585,8 @@ export async function POST(request: Request) {
       route_plan_id, route_id, trunk_id, supplier_id, connection_type,
       cost, dlr_status, dlr_timestamp, otp_code, language, message_id,
       original_sender, original_destination, original_content, translation_notes,
-      dlr_callback_url)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
+      dlr_callback_url, supplier_message_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
     [
       clientId, sender, destination, content, status,
       routePlanId,
@@ -532,11 +601,12 @@ export async function POST(request: Request) {
       origSender, origDestination, origContent,
       appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null,
       dlrCallbackUrl,
+      deliveryResult?.supplierMessageId || customApiMessageId || null,
     ]
   );
 
   // Deduct balance (only on success)
-  if (deliveryResult?.success || isVoiceOtp || (isOttRoute && status === "SENT")) {
+  if (deliveryResult?.success || isVoiceOtp || (isOttRoute && status === "SENT") || customApiSuccess) {
     await tenantQuery(
       tenant.schemaName,
       "UPDATE clients SET balance = balance - $1, updated_at = NOW() WHERE id = $2",
@@ -553,7 +623,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    success: isVoiceOtp ? (callSuccess || dlrStatus === "DELIVERED") : (isOttRoute ? status === "SENT" : (deliveryResult?.success ?? false)),
+    success: isVoiceOtp ? (callSuccess || dlrStatus === "DELIVERED") : (isOttRoute ? status === "SENT" : (isCustomApi ? customApiSuccess : (deliveryResult?.success ?? false))),
     message: msgResult.rows[0],
     messageId,
     routing: {
@@ -566,6 +636,7 @@ export async function POST(request: Request) {
       failedRoutes: deliveryResult?.failedRoutes || 0,
     },
     cost: ratePerSms,
+    supplierMessageId: deliveryResult?.supplierMessageId || customApiMessageId || null,
     dlr: { status: dlrStatus, pushed_to: client.dlr_callback_url || client.webhook_url || null },
     ott: ottDeviceId ? {
       deviceId: ottDeviceId,

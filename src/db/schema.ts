@@ -483,6 +483,26 @@ export const supportTicketReplies = pgTable("support_ticket_replies", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// ── Custom API Connectors (per-tenant, public schema reference) ──
+export const customApiConnectors = pgTable("custom_api_connectors", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: varchar("type", { length: 20 }).notNull(), // HTTP_API, RCS_API, WHATSAPP, TELEGRAM
+  sendUrlTemplate: text("send_url_template").notNull(),
+  sendMethod: varchar("send_method", { length: 10 }).default("GET").notNull(),
+  sendHeaders: text("send_headers"),
+  sendBodyTemplate: text("send_body_template"),
+  sendSuccessCondition: text("send_success_condition"),
+  sendMessageIdPath: text("send_message_id_path"),
+  dlrUrlTemplate: text("dlr_url_template"),
+  dlrMethod: varchar("dlr_method", { length: 10 }).default("GET"),
+  dlrSuccessCondition: text("dlr_success_condition"),
+  dlrStatusPath: text("dlr_status_path"),
+  dlrDeliveredValue: varchar("dlr_delivered_value", { length: 100 }).default("Delivered"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // ── Support Ticket Attachments (public schema) ──
 export const supportTicketAttachments = pgTable("support_ticket_attachments", {
   id: serial("id").primaryKey(),
