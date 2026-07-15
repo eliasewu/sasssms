@@ -1,0 +1,2736 @@
+﻿country,country_code,mcc,mnc,operator,network_type,status
+Georgia,Ge,282,3,Iberiatel Ltd.,LTE,Active
+Georgia,Ge,282,6,JSC Compatel,LTE,Active
+Georgia,Ge,282,2,Magti GSM Ltd.,LTE,Active
+Georgia,Ge,282,4,MobiTel/Beeline,LTE,Active
+Georgia,Ge,282,5,Silknet,LTE,Active
+Georgia,Ge,282,8,Silknet,LTE,Active
+Turkey,Tu,286,286,Turkey all operators,LTE,Active
+Turkey,Tu,286,3,Avea,LTE,Active
+Turkey,Tu,286,4,Avea,LTE,Active
+Turkey,Tu,286,1,Turkcell,LTE,Active
+Turkey,Tu,286,2,Vodafone,LTE,Active
+Turkey,Tu,286,999,Fix Line,LTE,Active
+Albania,Al,276,276,Albania all operators,LTE,Active
+Albania,Al,276,3,ALBtelecom Mobile / Eagle,LTE,Active
+Albania,Al,276,1,One / AMC,LTE,Active
+Albania,Al,276,4,PLUS Communication Sh.a,LTE,Active
+Albania,Al,276,2,Vodafone,LTE,Active
+Iceland,Ic,274,274,Iceland all operators,LTE,Active
+Iceland,Ic,274,9,Amitelo,LTE,Active
+Iceland,Ic,274,7,IceCell,LTE,Active
+Iceland,Ic,274,4,IMC Island ehf.,LTE,Active
+Iceland,Ic,274,6,Nuii Niu Ehf,LTE,Active
+Iceland,Ic,274,1,Siminn hf.,LTE,Active
+Iceland,Ic,274,8,Siminn hf.,LTE,Active
+Iceland,Ic,274,2,Syn hf. / Vodafone,LTE,Active
+Iceland,Ic,274,3,Syn hf. / Vodafone,LTE,Active
+Iceland,Ic,274,5,Syn hf. / Vodafone,LTE,Active
+Iceland,Ic,274,11,NOVA,LTE,Active
+Iceland,Ic,274,12,Syn hf. / Vodafone,LTE,Active
+Iceland,Ic,274,16,Tismi BV,LTE,Active
+Iceland,Ic,274,31,Siminn hf.,LTE,Active
+Ireland,Ir,272,272,Ireland all operators,LTE,Active
+Ireland,Ir,272,4,Access Telecom Ltd.,LTE,Active
+Ireland,Ir,272,9,Clever Communications Ltd,LTE,Active
+Ireland,Ir,272,3,Meteor,LTE,Active
+Abkhazia,Ab,289,289,Abkhazia all operators,LTE,Active
+Ireland,Ir,272,7,Meteor,LTE,Active
+Ireland,Ir,272,8,Meteor,LTE,Active
+Ireland,Ir,272,2,Three,LTE,Active
+Ireland,Ir,272,5,Three,LTE,Active
+Ireland,Ir,272,1,Vodafone,LTE,Active
+Ireland,Ir,272,13,Lycamobile,LTE,Active
+Ireland,Ir,272,11,Tesco Mobile,LTE,Active
+Ireland,Ir,272,17,Three,LTE,Active
+Ireland,Ir,272,15,Virgin Media,LTE,Active
+Luxembourg,Lu,270,270,Luxembourg all operators,LTE,Active
+Luxembourg,Lu,270,10,Blue Communications,LTE,Active
+Luxembourg,Lu,270,81,e-LUX Mobile,LTE,Active
+Luxembourg,Lu,270,80,MNC-080,LTE,Active
+Luxembourg,Lu,270,78,IDM,LTE,Active
+Luxembourg,Lu,270,77,Tango,LTE,Active
+Luxembourg,Lu,270,5,Luxembourg Online,LTE,Active
+Luxembourg,Lu,270,2,MTX Connect S. r.l.,LTE,Active
+Luxembourg,Lu,270,1,Post,LTE,Active
+Luxembourg,Lu,270,99,Orange,LTE,Active
+Luxembourg,Lu,270,999,Fix Line,LTE,Active
+Malta,Ma,278,278,Malta all operators,LTE,Active
+Malta,Ma,278,999,Fix Line,LTE,Active
+Malta,Ma,278,21,GO Mobile,LTE,Active
+Malta,Ma,278,30,GO Mobile,LTE,Active
+Malta,Ma,278,77,Melita,LTE,Active
+Malta,Ma,278,1,Vodafone,LTE,Active
+Andorra,An,213,213,Andorra all operators,LTE,Active
+Andorra,An,213,3,Andorra Telecom SAU,LTE,Active
+Bosnia & Herzegov.,Bo,218,218,Bosnia & Herzegov. all operators,LTE,Active
+Bosnia & Herzegov.,Bo,218,90,BH Mobile,LTE,Active
+Bosnia & Herzegov.,Bo,218,3,Eronet,LTE,Active
+Bosnia & Herzegov.,Bo,218,5,m:tel,LTE,Active
+Croatia,Cr,219,219,Croatia all operators,LTE,Active
+Croatia,Cr,219,10,A1 / VIP,LTE,Active
+Croatia,Cr,219,12,TELE FOCUS,LTE,Active
+Croatia,Cr,219,2,Telemach / Tele2,LTE,Active
+Croatia,Cr,219,1,T-Mobile,LTE,Active
+Croatia,Cr,219,999,Fix Line,LTE,Active
+Hungary,Hu,216,216,Hungary all operators,LTE,Active
+Hungary,Hu,216,3,DIGI,LTE,Active
+Hungary,Hu,216,2,MVM NET Ltd.,LTE,Active
+Hungary,Hu,216,1,Pannon/Telenor,LTE,Active
+Hungary,Hu,216,99,Mav Co.,LTE,Active
+Hungary,Hu,216,20,Pannon/Telenor,LTE,Active
+Hungary,Hu,216,30,T-mobile/Magyar,LTE,Active
+Hungary,Hu,216,71,UPC Magyarorszag Kft.,LTE,Active
+Hungary,Hu,216,70,Vodafone,LTE,Active
+Hungary,Hu,216,999,Fix line,LTE,Active
+Monaco,Mo,212,212,Monaco all operators,LTE,Active
+Serbia,Se,212,1,Monaco Telecom,LTE,Active
+Monaco,Mo,212,10,Monaco Telecom,LTE,Active
+Spain,Sp,214,214,Spain all operators,LTE,Active
+Spain,Sp,214,15,BT Espana  SAU,LTE,Active
+Spain,Sp,214,18,Cableuropa SAU (ONO),LTE,Active
+Spain,Sp,214,12,Contacta Servicios Avanzados de Telecomunicaciones SL,LTE,Active
+Spain,Sp,214,13,Incotel Ingeniera y Consultaria SL,LTE,Active
+Spain,Sp,214,14,Incotel Servicioz Avanzados SL,LTE,Active
+Spain,Sp,214,10,Operadora de Telecomunicaciones Opera SL,LTE,Active
+Spain,Sp,214,11,Orange,LTE,Active
+Spain,Sp,214,17,R Cable y Telec. Galicia SA,LTE,Active
+Spain,Sp,214,19,Simyo/KPN,LTE,Active
+Spain,Sp,214,16,Telecable de Asturias SA,LTE,Active
+Spain,Sp,214,30,Compatel Limited,LTE,Active
+Spain,Sp,214,32,ION Mobile,LTE,Active
+Spain,Sp,214,31,"Red Digital De Telecomunicaciones de las Islas Baleares, S.L.",LTE,Active
+Spain,Sp,214,28,"Consorcio de Telecomunicaciones Avanzadas, S.A.",LTE,Active
+Spain,Sp,214,22,Digi Spain Telecom SL,LTE,Active
+Spain,Sp,214,20,fonYou Wireless SL,LTE,Active
+Spain,Sp,214,21,Jazz Telecom SAU,LTE,Active
+Spain,Sp,214,26,Lleida,LTE,Active
+Spain,Sp,214,23,Lycamobile SL,LTE,Active
+Spain,Sp,214,25,Lycamobile SL,LTE,Active
+Spain,Sp,214,29,"NEO-SKY 2002, S.A.",LTE,Active
+Spain,Sp,214,27,Truphone,LTE,Active
+Spain,Sp,214,24,"Vodafone (includes MVNOs / Vizzavi Espaa, S.L. / Eroski Mvil Espaa)",LTE,Active
+Spain,Sp,214,8,Euskaltel SA,LTE,Active
+Spain,Sp,214,5,Movistar,LTE,Active
+Spain,Sp,214,7,Movistar,LTE,Active
+Spain,Sp,214,3,Orange,LTE,Active
+Spain,Sp,214,9,Orange,LTE,Active
+Spain,Sp,214,1,Vodafone,LTE,Active
+Spain,Sp,214,6,Vodafone Enabler Espana SL,LTE,Active
+Spain,Sp,214,4,Yoigo,LTE,Active
+Spain,Sp,214,999,Fix Line,LTE,Active
+Austria,Au,232,232,Austria all operators,LTE,Active
+Austria,Au,232,1,A1 Telekom,LTE,Active
+Austria,Au,232,2,A1 Telekom,LTE,Active
+Austria,Au,232,8,A1 Telekom,LTE,Active
+Austria,Au,232,9,A1 Telekom,LTE,Active
+Austria,Au,232,0,Fix Line,LTE,Active
+Austria,Au,232,5,Hutchison Drei,LTE,Active
+Austria,Au,232,6,Hutchison Drei / 3,LTE,Active
+Austria,Au,232,3,T-Mobile / Magenta,LTE,Active
+Austria,Au,232,4,T-Mobile / Magenta,LTE,Active
+Austria,Au,232,7,T-Mobile / Magenta,LTE,Active
+Austria,Au,232,11,A1 Telekom,LTE,Active
+Austria,Au,232,12,A1 Telekom,LTE,Active
+Austria,Au,232,10,Hutchison Drei,LTE,Active
+Austria,Au,232,14,Hutchison Drei,LTE,Active
+Austria,Au,232,16,Hutchison Drei,LTE,Active
+Austria,Au,232,19,Hutchison Drei,LTE,Active
+Austria,Au,232,17,Mass Response Service,LTE,Active
+Austria,Au,232,18,smartspace,LTE,Active
+Austria,Au,232,13,T-Mobile / Magenta,LTE,Active
+Austria,Au,232,15,T-Mobile / Magenta,LTE,Active
+Austria,Au,232,25,Holding Graz,LTE,Active
+Austria,Au,232,26,LIWEST Mobil,LTE,Active
+Austria,Au,232,20,Mtel,LTE,Active
+Austria,Au,232,22,Plintron,LTE,Active
+Austria,Au,232,24,Smartel Services,LTE,Active
+Austria,Au,232,27,Tismi,LTE,Active
+Austria,Au,232,23,T-Mobile / Magenta,LTE,Active
+Austria,Au,232,91,OBB Infrastruktur,LTE,Active
+Austria,Au,232,999,Fix Line,LTE,Active
+Denmark,De,238,238,Denmark all operators,LTE,Active
+Denmark,De,238,10,TDC,LTE,Active
+Denmark,De,238,15,Cibicom Mobility,LTE,Active
+Denmark,De,238,13,Compatel,LTE,Active
+Denmark,De,238,17,Gotanet,LTE,Active
+Denmark,De,238,12,Lycamobile,LTE,Active
+Denmark,De,238,14,Monty Mobile,LTE,Active
+Denmark,De,238,16,Tismi,LTE,Active
+Denmark,De,238,23,Banedanmark,LTE,Active
+Denmark,De,238,28,LINK Mobility,LTE,Active
+Denmark,De,238,20,Telia,LTE,Active
+Denmark,De,238,25,Viahub,LTE,Active
+Denmark,De,238,88,Cobira,LTE,Active
+Denmark,De,238,42,Greenwave Mobile,LTE,Active
+Denmark,De,238,43,MobiWeb Limited,LTE,Active
+Denmark,De,238,6,Hi3G,LTE,Active
+Denmark,De,238,7,Mundio Mobile,LTE,Active
+Denmark,De,238,4,Nexcon.io,LTE,Active
+Denmark,De,238,3,Syniverse Technologies,LTE,Active
+Denmark,De,238,1,TDC,LTE,Active
+Denmark,De,238,2,Telenor,LTE,Active
+Denmark,De,238,5,Unknown,LTE,Active
+Denmark,De,238,8,Voxbone / Bandwidth,LTE,Active
+Denmark,De,238,73,Onomondo,LTE,Active
+Denmark,De,238,77,Telenor,LTE,Active
+Denmark,De,238,30,Pareteum,LTE,Active
+Denmark,De,238,96,Telia,LTE,Active
+Denmark,De,238,66,TT-Netvaerket P/S,LTE,Active
+Denmark,De,238,999,Fix Line,LTE,Active
+Denmark,De,238,779,MNC-779,LTE,Active
+Czech Republic,Cz,230,230,Czech Republic all operators,LTE,Active
+Czech Republic,Cz,230,7,Astelnet,LTE,Active
+Czech Republic,Cz,230,8,Compatel s.r.o.,LTE,Active
+Czech Republic,Cz,230,2,O2,LTE,Active
+Czech Republic,Cz,230,1,T-Mobile / RadioMobil,LTE,Active
+Czech Republic,Cz,230,5,Travel Telekommunikation s.r.o.,LTE,Active
+Czech Republic,Cz,230,4,Ufone,LTE,Active
+Czech Republic,Cz,230,3,Vodafone,LTE,Active
+Czech Republic,Cz,230,98,Sprva elezni?n dopravn cesty (Railway),LTE,Active
+Poland,Po,260,14,Sferia,LTE,Active
+Czech Republic,Cz,230,99,Vodafone,LTE,Active
+Czech Republic,Cz,230,999,Fix Line,LTE,Active
+Slovakia,Sl,231,231,Slovakia all operators,LTE,Active
+Slovakia,Sl,231,6,O2,LTE,Active
+Slovakia,Sl,231,1,Orange,LTE,Active
+Slovakia,Sl,231,5,Orange,LTE,Active
+Slovakia,Sl,231,3,Swan/4Ka,LTE,Active
+Slovakia,Sl,231,2,T-Mobile,LTE,Active
+Slovakia,Sl,231,4,T-Mobile,LTE,Active
+Slovakia,Sl,231,15,Orange,LTE,Active
+Slovakia,Sl,231,99,Zeleznice Slovenskej republiky (ZSR),LTE,Active
+United Kingdom,UK,234,234,United Kingdom all operators,LTE,Active
+United Kingdom,UK,234,99,08Direct,LTE,Active
+United Kingdom,UK,234,94,3,LTE,Active
+United Kingdom,UK,234,95,Network Rail,LTE,Active
+United Kingdom,UK,234,91,Vodafone,LTE,Active
+United Kingdom,UK,234,92,Vodafone,LTE,Active
+United Kingdom,UK,234,20,3,LTE,Active
+United Kingdom,UK,234,29,aql,LTE,Active
+United Kingdom,UK,234,24,Greenfone,LTE,Active
+United Kingdom,UK,234,23,Icron Network,LTE,Active
+United Kingdom,UK,234,21,LogicStar Ltd,LTE,Active
+United Kingdom,UK,234,26,Lycamobile,LTE,Active
+United Kingdom,UK,234,28,Marathon Telecom,LTE,Active
+United Kingdom,UK,234,27,Tata Communications Ltd,LTE,Active
+United Kingdom,UK,234,22,Telesign Mobile,LTE,Active
+United Kingdom,UK,234,25,Truphone,LTE,Active
+United Kingdom,UK,234,78,Airwave,LTE,Active
+Norway,No,242,12,Telenor,LTE,Active
+United Kingdom,Un,234,76,BT Group,LTE,Active
+United Kingdom,Un,234,72,Hanhaa Mobile,LTE,Active
+United Kingdom,Un,234,71,Home Office,LTE,Active
+United Kingdom,Un,234,75,Mass Response Service GmbH,LTE,Active
+United Kingdom,Un,234,74,Pareteum,LTE,Active
+United Kingdom,Un,234,77,Vodafone,LTE,Active
+United Kingdom,Un,234,0,BT Group,LTE,Active
+United Kingdom,Un,234,8,BT OnePhone,LTE,Active
+United Kingdom,Un,234,5,COLT Mobile Telecommunications Limited,LTE,Active
+United Kingdom,Un,234,4,FMS Solutions,LTE,Active
+United Kingdom,Un,234,6,Internet Computer Bureau Ltd,LTE,Active
+United Kingdom,Un,234,3,Jersey Airtel,LTE,Active
+United Kingdom,Un,234,2,O2,LTE,Active
+United Kingdom,Un,234,9,Tismi,LTE,Active
+United Kingdom,Un,234,1,Vectone Mobile,LTE,Active
+United Kingdom,Un,234,7,Vodafone,LTE,Active
+United Kingdom,Un,234,18,Cloud9,LTE,Active
+United Kingdom,Un,234,17,FlexTel,LTE,Active
+United Kingdom,Un,234,14,LINK Mobility,LTE,Active
+United Kingdom,Un,234,12,Network Rail,LTE,Active
+United Kingdom,Un,234,13,Network Rail,LTE,Active
+United Kingdom,Un,234,10,O2,LTE,Active
+United Kingdom,Un,234,11,O2,LTE,Active
+United Kingdom,Un,234,16,Talk Talk,LTE,Active
+United Kingdom,Un,234,19,TeleWare,LTE,Active
+United Kingdom,Un,234,15,Vodafone,LTE,Active
+United Kingdom,Un,234,86,EE (Everything Everywhere),LTE,Active
+United Kingdom,Un,234,88,MNC-088,LTE,Active
+United Kingdom,Un,234,89,Vodafone,LTE,Active
+United Kingdom,Un,234,39,Gamma Mobile,LTE,Active
+United Kingdom,Un,234,35,JSC Ingenicum,LTE,Active
+United Kingdom,Un,234,33,Orange,LTE,Active
+United Kingdom,Un,234,34,Orange,LTE,Active
+United Kingdom,Un,234,36,Sure Isle of Man,LTE,Active
+United Kingdom,Un,234,37,Synectiv,LTE,Active
+United Kingdom,Un,234,30,T-Mobile,LTE,Active
+United Kingdom,Un,234,31,T-Mobile,LTE,Active
+United Kingdom,Un,234,32,T-Mobile,LTE,Active
+United Kingdom,Un,234,38,Virgin Mobile,LTE,Active
+United Kingdom,Un,234,50,JT Mobile,LTE,Active
+United Kingdom,Un,234,53,Limitless Mobile Ltd,LTE,Active
+United Kingdom,Un,234,58,Manx Telecom Mobile,LTE,Active
+United Kingdom,Un,234,56,National Cyber Security Centre,LTE,Active
+United Kingdom,Un,234,51,now broadband,LTE,Active
+United Kingdom,Un,234,52,Shyham Telecom,LTE,Active
+United Kingdom,Un,234,57,Sky,LTE,Active
+United Kingdom,Un,234,55,Sure Guernsey,LTE,Active
+United Kingdom,Un,234,54,The Carphone Warehouse Ltd.,LTE,Active
+United Kingdom,Un,234,40,spusu,LTE,Active
+United Kingdom,Un,234,999,Fix Line,LTE,Active
+United Kingdom,Un,234,995,MNC-995,LTE,Active
+United Kingdom,Un,234,998,Virgin Mobile,LTE,Active
+United Kingdom,Un,235,1,EE (Everything Everywhere),LTE,Active
+United Kingdom,Un,235,2,Everyth. Ev.wh.,LTE,Active
+United Kingdom,Un,235,0,Mundio Mobile,LTE,Active
+United Kingdom,Un,235,3,UK Broadband Ltd,LTE,Active
+United Kingdom,Un,235,94,Hutchinson 3G,LTE,Active
+United Kingdom,Un,235,95,Network Rail Infrastucture Ltd,LTE,Active
+United Kingdom,Un,235,91,Vodafone,LTE,Active
+United Kingdom,Un,235,92,Vodafone (Cable & Wireless),LTE,Active
+United Kingdom,Un,235,77,O2 (formlery BT Group),LTE,Active
+Belarus,Be,257,257,Belarus all operators,LTE,Active
+Belarus,Be,257,3,BelCel JV,LTE,Active
+Belarus,Be,257,6,Belorussian Cloud Technologies,LTE,Active
+Belarus,Be,257,4,BeST,LTE,Active
+Belarus,Be,257,1,MDC/Velcom,LTE,Active
+Belarus,Be,257,2,MTS,LTE,Active
+Belarus,Be,257,5,Republican Unitary Telecommunication Enterprise (RUE) Beltelecom (National Telecommunications Operat,LTE,Active
+Belarus,Be,257,501,BelJel JV,LTE,Active
+Moldova,Mo,259,259,Moldova all operators,LTE,Active
+Moldova,Mo,259,4,Eventis Mobile,LTE,Active
+Moldova,Mo,259,3,IDC/Unite,LTE,Active
+Moldova,Mo,259,5,IDC/Unite,LTE,Active
+Moldova,Mo,259,2,Moldcell,LTE,Active
+Moldova,Mo,259,1,Orange/Voxtel,LTE,Active
+Moldova,Mo,259,99,IDC/Unite,LTE,Active
+Russia,Ru,250,250,Russia all operators,LTE,Active
+Russia,Ru,250,12,Baykal Westcom,LTE,Active
+Russia,Ru,250,10,DTC/Don Telecom,LTE,Active
+Russia,Ru,250,13,Kuban GSM,LTE,Active
+Russia,Ru,250,14,Megafon,LTE,Active
+Russia,Ru,250,16,NTC,LTE,Active
+Russia,Ru,250,19,OJSC Altaysvyaz,LTE,Active
+Russia,Ru,250,11,Orensot,LTE,Active
+Russia,Ru,250,17,UralTel,LTE,Active
+Russia,Ru,250,15,ZAO SMARTS,LTE,Active
+Russia,Ru,250,98,Baykal Westcom,LTE,Active
+Russia,Ru,250,99,BeeLine/VimpelCom,LTE,Active
+Russia,Ru,250,92,Printelefone,LTE,Active
+Russia,Ru,250,93,Telecom XXL,LTE,Active
+Russia,Ru,250,28,BeeLine/VimpelCom,LTE,Active
+Russia,Ru,250,22,Megafon (JT),LTE,Active
+Russia,Ru,250,23,Mobicon-Nosibirsk,LTE,Active
+Russia,Ru,250,20,Tele2/ECC/Volgogr.,LTE,Active
+Russia,Ru,250,2,Megafon,LTE,Active
+Russia,Ru,250,6,Moscow Cellular Comm (Skylink),LTE,Active
+Russia,Ru,250,1,MTS,LTE,Active
+Russia,Ru,250,3,NCC,LTE,Active
+Russia,Ru,250,8,Personnal Communicational,LTE,Active
+Russia,Ru,250,4,Sibchallenge,LTE,Active
+Russia,Ru,250,9,Siberian Cellular Systems,LTE,Active
+Russia,Ru,250,5,Tele2/ECC/Volgogr.,LTE,Active
+Russia,Ru,250,7,ZAO SMARTS,LTE,Active
+Russia,Ru,250,35,MOTIV/LLC Ekaterinburg-2000,LTE,Active
+Russia,Ru,250,38,Tambov GSM,LTE,Active
+Russia,Ru,250,39,UralTel,LTE,Active
+Russia,Ru,250,50,MTS / Bezlimitno.ru,LTE,Active
+Russia,Ru,250,44,StavTelesot,LTE,Active
+Russia,Ru,250,999,Fix Line,LTE,Active
+Russia,Ru,250,779,MNC-779,LTE,Active
+Ukraine,Uk,255,255,Ukraine all operators,LTE,Active
+Ukraine,Uk,255,6,Astelit/LIFE,LTE,Active
+Ukraine,Uk,255,2,Beeline,LTE,Active
+Ukraine,Uk,255,5,Golden Telecom,LTE,Active
+Ukraine,Uk,255,4,Intertelecom Ltd (IT),LTE,Active
+Ukraine,Uk,255,3,KyivStar,LTE,Active
+Ukraine,Uk,255,7,TriMob LLC,LTE,Active
+Ukraine,Uk,255,1,Vodafone/MTS,LTE,Active
+Ukraine,Uk,255,68,Beeline,LTE,Active
+Ukraine,Uk,255,67,KyivStar,LTE,Active
+Ukraine,Uk,255,23,CDMA Ukraine / Intertelecom,LTE,Active
+Ukraine,Uk,255,21,Telesystems Of Ukraine CJSC (TSU),LTE,Active
+Ukraine,Uk,255,39,Golden Telecom,LTE,Active
+Ukraine,Uk,255,99,Phoenix,LTE,Active
+Ukraine,Uk,255,50,Vodafone/MTS,LTE,Active
+Belgium,Be,206,206,Belgium all operators,LTE,Active
+Belgium,Be,206,20,Base/KPN,LTE,Active
+Belgium,Be,206,15,Elephant Talk Communications Schweiz,LTE,Active
+Belgium,Be,206,10,Mobistar/Orange,LTE,Active
+Belgium,Be,206,40,Join Experience (Belgium),LTE,Active
+Belgium,Be,206,6,Lycamobile Belgium,LTE,Active
+Belgium,Be,206,7,Mundio Mobile Belgium,LTE,Active
+Belgium,Be,206,1,Proximus,LTE,Active
+Belgium,Be,206,2,SNCT/NMBS,LTE,Active
+Belgium,Be,206,5,Telenet Mobile,LTE,Active
+Belgium,Be,206,8,VOO,LTE,Active
+Belgium,Be,206,30,Mobile Viking,LTE,Active
+Belgium,Be,206,999,Fix Line,LTE,Active
+France,Fr,208,208,France all operators,LTE,Active
+France,Fr,208,27,AFONE SA,LTE,Active
+France,Fr,208,28,Astrium,LTE,Active
+France,Fr,208,20,Bouygues Telecom,LTE,Active
+France,Fr,208,21,Bouygues Telecom,LTE,Active
+France,Fr,208,25,Lycamobile SARL,LTE,Active
+France,Fr,208,24,MobiquiThings,LTE,Active
+France,Fr,208,26,NRJ,LTE,Active
+France,Fr,208,29,Orange,LTE,Active
+France,Fr,208,22,Transatel SA,LTE,Active
+France,Fr,208,23,Virgin Mobile/Omer,LTE,Active
+France,Fr,208,92,Association Plate-forme Telecom,LTE,Active
+France,Fr,208,91,Orange,LTE,Active
+France,Fr,208,88,Bouygues Telecom,LTE,Active
+France,Fr,208,89,Virgin Mobile/Omer,LTE,Active
+France,Fr,208,5,GlobalStar,LTE,Active
+France,Fr,208,6,GlobalStar,LTE,Active
+France,Fr,208,7,GlobalStar,LTE,Active
+France,Fr,208,3,MobiquiThings,LTE,Active
+France,Fr,208,1,Orange,LTE,Active
+France,Fr,208,2,Orange,LTE,Active
+France,Fr,208,9,S.F.R.,LTE,Active
+France,Fr,208,4,SISTEER,LTE,Active
+France,Fr,208,0,Tel/Te,LTE,Active
+France,Fr,208,17,Legos - Local Exchange Global Operation Services SA,LTE,Active
+France,Fr,208,14,Lliad/FREE Mobile,LTE,Active
+France,Fr,208,15,Lliad/FREE Mobile,LTE,Active
+France,Fr,208,16,Lliad/FREE Mobile,LTE,Active
+France,Fr,208,10,S.F.R.,LTE,Active
+France,Fr,208,11,S.F.R.,LTE,Active
+France,Fr,208,13,S.F.R.,LTE,Active
+France,Fr,208,31,Mundio Mobile (France) Ltd,LTE,Active
+France,Fr,208,999,Fix Line,LTE,Active
+Greece,Gr,202,202,Greece all operators,LTE,Active
+Greece,Gr,202,7,AMD Telecom SA,LTE,Active
+Greece,Gr,202,6,Cosmoline,LTE,Active
+Greece,Gr,202,1,Cosmote,LTE,Active
+Greece,Gr,202,2,Cosmote,LTE,Active
+Greece,Gr,202,4,Organismos Sidirodromon Ellados (OSE),LTE,Active
+Greece,Gr,202,3,OTE Hellenic Telecommunications Organization SA,LTE,Active
+Greece,Gr,202,9,Tim/Wind,LTE,Active
+Greece,Gr,202,5,Vodafone,LTE,Active
+Greece,Gr,202,14,CyTa Mobile,LTE,Active
+Greece,Gr,202,10,Tim/Wind,LTE,Active
+Greece,Gr,202,999,Fix Line,LTE,Active
+Netherlands,Ne,204,204,Netherlands all operators,LTE,Active
+Netherlands,Ne,204,14,6GMOBILE BV,LTE,Active
+Netherlands,Ne,204,17,Intercity Mobile Communications BV,LTE,Active
+Netherlands,Ne,204,10,KPN Telecom B.V.,LTE,Active
+Netherlands,Ne,204,12,KPN/Telfort,LTE,Active
+Netherlands,Ne,204,19,Mixe Communication Solutions BV,LTE,Active
+Netherlands,Ne,204,11,MNC-011,LTE,Active
+Netherlands,Ne,204,16,T-Mobile B.V.,LTE,Active
+Netherlands,Ne,204,13,Unica Installatietechniek B.V.,LTE,Active
+Netherlands,Ne,204,18,UPC Nederland BV,LTE,Active
+Netherlands,Ne,204,15,Ziggo BV,LTE,Active
+Netherlands,Ne,204,65,AGMS Netherlands B.V.,LTE,Active
+Netherlands,Ne,204,61,BodyTrace Netherlands B.V.,LTE,Active
+Netherlands,Ne,204,69,KPN Telecom B.V.,LTE,Active
+Netherlands,Ne,204,60,Nextgen Mobile Ltd,LTE,Active
+Netherlands,Ne,204,67,RadioAccess B.V.,LTE,Active
+Netherlands,Ne,204,68,Unify Mobile,LTE,Active
+Netherlands,Ne,204,66,Utility Connect B.V.,LTE,Active
+Netherlands,Ne,204,64,Zetacom B.V.,LTE,Active
+Netherlands,Ne,204,23,Aspider Solutions,LTE,Active
+Netherlands,Ne,204,27,Breezz Nederland,LTE,Active
+Netherlands,Ne,204,25,CAPX B.V. / Private Mobile,LTE,Active
+Netherlands,Ne,204,28,Lancelot BV,LTE,Active
+Netherlands,Ne,204,22,Ministerie van Defensie,LTE,Active
+Netherlands,Ne,204,21,NS Railinfrabeheer B.V.,LTE,Active
+Netherlands,Ne,204,24,Private Mobility Nederland BV,LTE,Active
+Netherlands,Ne,204,26,SpeakUp B.V.,LTE,Active
+Netherlands,Ne,204,29,Teleware / Private Mobile Ltd,LTE,Active
+Netherlands,Ne,204,20,T-mobile/former Orange,LTE,Active
+Norway,No,242,17,Ventelo AS,LTE,Active
+Netherlands,Ne,204,5,Elephant Talk Communications Premium Rate Services Netherlands BV,LTE,Active
+Netherlands,Ne,204,8,KPN Telecom B.V.,LTE,Active
+Netherlands,Ne,204,9,Lycamobile Ltd,LTE,Active
+Netherlands,Ne,204,6,Mundio/Vectone Mobile,LTE,Active
+Netherlands,Ne,204,1,Scarlet / RadioAccess Network Services B.V.,LTE,Active
+Netherlands,Ne,204,2,Tele2,LTE,Active
+Netherlands,Ne,204,7,Teleena Holding BV,LTE,Active
+Netherlands,Ne,204,4,Vodafone Libertel,LTE,Active
+Netherlands,Ne,204,3,Voiceworks Mobile BV,LTE,Active
+Netherlands,Ne,204,99,MNC-099,LTE,Active
+Netherlands,Ne,204,98,T-Mobile B.V.,LTE,Active
+Netherlands,Ne,204,999,Fix Line,LTE,Active
+Estonia,Es,248,248,Estonia all operators,LTE,Active
+Estonia,Es,248,5,AS Bravocom Mobiil,LTE,Active
+Estonia,Es,248,9,Bravo Telecom O,LTE,Active
+Estonia,Es,248,1,EMT GSM,LTE,Active
+Estonia,Es,248,6,ProGroup Holding OY,LTE,Active
+Estonia,Es,248,2,Radiolinja Eesti,LTE,Active
+Estonia,Es,248,3,Tele2 Eesti AS,LTE,Active
+Estonia,Es,248,7,Televrgu AS,LTE,Active
+Estonia,Es,248,4,Top Connect OU,LTE,Active
+Estonia,Es,248,8,Vivex O,LTE,Active
+Estonia,Es,248,779,MNC-779,LTE,Active
+Finland,Fi,244,244,Finland all operators,LTE,Active
+Finland,Fi,244,14,Alands,LTE,Active
+Finland,Fi,244,12,DNA/Finnet,LTE,Active
+Finland,Fi,244,13,DNA/Finnet,LTE,Active
+Finland,Fi,244,11,Mundio Mobile (Finland) Ltd,LTE,Active
+Finland,Fi,244,16,Oy Finland Tele2 AB,LTE,Active
+Finland,Fi,244,15,Samk Student Test Network,LTE,Active
+Finland,Fi,244,10,TDC Oy Finland,LTE,Active
+Finland,Fi,244,26,Compatel Ltd,LTE,Active
+Finland,Fi,244,21,Elisa/Saunalahti,LTE,Active
+Finland,Fi,244,29,SCNL TRUPHONE,LTE,Active
+Finland,Fi,244,3,DNA/Finnet,LTE,Active
+Finland,Fi,244,4,DNA/Finnet,LTE,Active
+Finland,Fi,244,5,Elisa/Saunalahti,LTE,Active
+Finland,Fi,244,0,MNC-000,LTE,Active
+Finland,Fi,244,9,Nokia Oyj,LTE,Active
+Finland,Fi,244,82,ID-Mobile,LTE,Active
+Finland,Fi,244,91,TeliaSonera,LTE,Active
+Finland,Fi,244,31,Ukko Mobile,LTE,Active
+Finland,Fi,244,30,Vectone Mobile/ Mundio Mobile,LTE,Active
+Finland,Fi,244,32,Voxbone SA,LTE,Active
+Latvia,La,247,247,Latvia all operators,LTE,Active
+Latvia,La,247,4,Beta Telecom,LTE,Active
+Latvia,La,247,5,Bite,LTE,Active
+Latvia,La,247,1,Latvian Mobile Phone,LTE,Active
+Latvia,La,247,9,SIA Camel Mobile,LTE,Active
+Latvia,La,247,8,SIA IZZI,LTE,Active
+Latvia,La,247,7,SIA Master Telecom,LTE,Active
+Latvia,La,247,6,SIA Rigatta,LTE,Active
+Latvia,La,247,2,Tele2,LTE,Active
+Latvia,La,247,3,TRIATEL/Telekom Baltija,LTE,Active
+Lithuania,Li,246,246,Lithuania all operators,LTE,Active
+Lithuania,Li,246,2,Bite,LTE,Active
+Lithuania,Li,246,1,Omnitel,LTE,Active
+Lithuania,Li,246,3,Tele2,LTE,Active
+Lithuania,Li,246,23,MNC-023,LTE,Active
+Lithuania,Li,246,24,MNC-024,LTE,Active
+Norway,No,242,242,Norway all operators,LTE,Active
+Norway,No,242,9,Com4 AS,LTE,Active
+Norway,No,242,6,ICE Nordisk Mobiltelefon AS,LTE,Active
+Norway,No,242,0,MNC-000,LTE,Active
+Norway,No,242,8,TDC Mobil A/S,LTE,Active
+Norway,No,242,4,Tele2,LTE,Active
+Norway,No,242,1,Telenor,LTE,Active
+Norway,No,242,3,Teletopia,LTE,Active
+Norway,No,242,2,Telia/Netcom,LTE,Active
+Norway,No,242,5,Telia/Network Norway AS,LTE,Active
+Norway,No,242,7,Ventelo AS,LTE,Active
+Norway,No,242,14,ICE Nordisk Mobiltelefon AS,LTE,Active
+Norway,No,242,20,Jernbaneverket (GSM-R),LTE,Active
+Norway,No,242,21,Jernbaneverket (GSM-R),LTE,Active
+Norway,No,242,23,Lycamobile Ltd,LTE,Active
+Norway,No,242,24,Mobile Norway AS,LTE,Active
+Norway,No,242,22,Telia/Network Norway AS,LTE,Active
+Norway,No,242,999,Fix Line,LTE,Active
+Sweden,Sw,240,240,Sweden all operators,LTE,Active
+Sweden,Sw,240,16,42 Telecom AB,LTE,Active
+Sweden,Sw,240,13,A3 Allmanna IT,LTE,Active
+Sweden,Sw,240,11,Com Hem AB,LTE,Active
+Sweden,Sw,240,18,Generic Mobile Systems Sweden AB,LTE,Active
+Sweden,Sw,240,17,Gotalandsnatet AB,LTE,Active
+Sweden,Sw,240,12,Lycamobile Sweden Ltd,LTE,Active
+Sweden,Sw,240,15,Sierra Wireless Sweden AB,LTE,Active
+Sweden,Sw,240,10,Spring Mobil AB,LTE,Active
+Sweden,Sw,240,14,Tele2 Sverige AB,LTE,Active
+Sweden,Sw,240,19,Vectone Mobile Ltd,LTE,Active
+Sweden,Sw,240,35,42 Telecom Ltd,LTE,Active
+Sweden,Sw,240,32,Compatel Ltd,LTE,Active
+Sweden,Sw,240,36,interactive digital media GmbH / IDM,LTE,Active
+Sweden,Sw,240,33,Mobile Arts AB,LTE,Active
+Sweden,Sw,240,30,NextGen Mobile Ltd (CardBoardFish),LTE,Active
+Sweden,Sw,240,39,Primlight AB,LTE,Active
+Sweden,Sw,240,34,Pro Net Telecommunications Services Ltd.,LTE,Active
+Sweden,Sw,240,31,Rebtel Networks AB,LTE,Active
+Sweden,Sw,240,37,Sinch Sweden AB,LTE,Active
+Sweden,Sw,240,38,Voxbone SA,LTE,Active
+Sweden,Sw,240,9,Com4 Sweden AB,LTE,Active
+Sweden,Sw,240,0,Compatel / EUTel,LTE,Active
+Sweden,Sw,240,2,H3G Access AB,LTE,Active
+Sweden,Sw,240,5,Tele2 Sverige AB,LTE,Active
+Sweden,Sw,240,7,Tele2 Sverige AB,LTE,Active
+Sweden,Sw,240,4,Telenor Sverige AB,LTE,Active
+Sweden,Sw,240,6,Telenor Sverige AB,LTE,Active
+Sweden,Sw,240,8,Telenor Sverige AB,LTE,Active
+Sweden,Sw,240,1,Telia Mobile,LTE,Active
+Sweden,Sw,240,3,Teracom Mobil AB,LTE,Active
+Sweden,Sw,240,69,crisis management after determination by the Swedish Post- and Telecom Authority,LTE,Active
+Sweden,Sw,240,63,Fink Telecom Services GmbH,LTE,Active
+Sweden,Sw,240,65,shared use for closed networks,LTE,Active
+Sweden,Sw,240,66,shared use for closed networks,LTE,Active
+Sweden,Sw,240,67,shared use for test purpose,LTE,Active
+Sweden,Sw,240,68,shared use for test purpose,LTE,Active
+Sweden,Sw,240,22,Eu Tel AB,LTE,Active
+Sweden,Sw,240,27,Globetouch AB,LTE,Active
+Sweden,Sw,240,23,Infobip Ltd,LTE,Active
+Sweden,Sw,240,28,LINK Mobility AB,LTE,Active
+Sweden,Sw,240,29,MI Carrier Services AB,LTE,Active
+Poland,Po,260,2,T-Mobile/ERA,LTE,Active
+Sweden,Sw,240,25,Monty UK Global Ltd,LTE,Active
+Sweden,Sw,240,20,Sierra Wireless Messaging AB,LTE,Active
+Sweden,Sw,240,24,Telenor Sverige AB,LTE,Active
+Sweden,Sw,240,21,Trafikverket centralfunktion IT,LTE,Active
+Sweden,Sw,240,26,Twilio Ireland Ltd,LTE,Active
+Sweden,Sw,240,43,MobiWeb Ltd,LTE,Active
+Sweden,Sw,240,40,Netmore Group AB,LTE,Active
+Sweden,Sw,240,41,Shyam Telecom UK Ltd,LTE,Active
+Sweden,Sw,240,45,Spirius AB,LTE,Active
+Sweden,Sw,240,44,Telenabler AB,LTE,Active
+Sweden,Sw,240,42,Telenor Connexion AB,LTE,Active
+Sweden,Sw,240,48,Tismi BV,LTE,Active
+Sweden,Sw,240,46,Viahub,LTE,Active
+Sweden,Sw,240,47,Viatel Sweden AB,LTE,Active
+Sweden,Sw,240,999,Fix Line,LTE,Active
+Switzerland,Sw,228,228,Switzerland all operators,LTE,Active
+formally tele2),fo,228,8,"TDC Sunrise""",LTE,Active
+Switzerland,Sw,228,5,Comfone AG,LTE,Active
+Switzerland,Sw,228,9,Comfone AG,LTE,Active
+Switzerland,Sw,228,3,Salt/Orange,LTE,Active
+Switzerland,Sw,228,1,Swisscom,LTE,Active
+Switzerland,Sw,228,2,TDC Sunrise,LTE,Active
+Switzerland,Sw,228,7,TDC Sunrise,LTE,Active
+Switzerland,Sw,228,50,3G Mobile AG,LTE,Active
+Switzerland,Sw,228,51,BebbiCell AG,LTE,Active
+Switzerland,Sw,228,58,Beeone,LTE,Active
+Switzerland,Sw,228,54,Lycamobile AG,LTE,Active
+Switzerland,Sw,228,52,Mundio Mobile AG,LTE,Active
+Switzerland,Sw,228,56,SMSRelay AG,LTE,Active
+Switzerland,Sw,228,53,upc cablecom GmbH,LTE,Active
+Switzerland,Sw,228,12,TDC Sunrise,LTE,Active
+Switzerland,Sw,228,999,Fix Line,LTE,Active
+Switzerland,Sw,228,779,MNC-779,LTE,Active
+Italy,It,222,222,Italy all operators,LTE,Active
+Italy,It,222,40,Agile Telecom SpA,LTE,Active
+Italy,It,222,42,Enel SpA,LTE,Active
+Italy,It,222,44,Mundio Srl,LTE,Active
+Italy,It,222,43,Telecom Italia Mobile SpA,LTE,Active
+Italy,It,222,48,Telecom Italia Mobile SpA,LTE,Active
+Italy,It,222,49,Vianova SpA,LTE,Active
+Italy,It,222,98,Blu,LTE,Active
+Italy,It,222,99,Wind Tre SpA / Hi3G,LTE,Active
+Italy,It,222,34,BT Italia SpA,LTE,Active
+Italy,It,222,36,Digi Italy Srl,LTE,Active
+Italy,It,222,39,LINK Mobility Italia Srl,LTE,Active
+Italy,It,222,35,Lycamobile Srl,LTE,Active
+Italy,It,222,33,Poste Mobile SpA,LTE,Active
+Italy,It,222,30,Rete Ferroviaria Italiana SpA / RFI,LTE,Active
+Italy,It,222,37,Wind Tre SpA / Hi3G,LTE,Active
+Italy,It,222,53,COOP Italia Sociedad Cooperativa,LTE,Active
+Italy,It,222,50,Iliad Italia SpA,LTE,Active
+Italy,It,222,54,Plintron SpA,LTE,Active
+Italy,It,222,58,R&D Communication Srl / RdCom,LTE,Active
+Italy,It,222,56,spusu Italia Srl,LTE,Active
+Italy,It,222,51,Vei Srl,LTE,Active
+Italy,It,222,2,Elsacom,LTE,Active
+Italy,It,222,8,Fastweb SpA,LTE,Active
+Italy,It,222,4,Intermatica,LTE,Active
+Italy,It,222,7,Noverca Italia Srl,LTE,Active
+Italy,It,222,0,Premium Numbers,LTE,Active
+Italy,It,222,5,Telespazio,LTE,Active
+Italy,It,222,1,TIM,LTE,Active
+Italy,It,222,6,Vodafone,LTE,Active
+Italy,It,222,77,IPSE 2000,LTE,Active
+Italy,It,222,10,Vodafone,LTE,Active
+China,Ch,460,999,Fix Line,LTE,Active
+Italy,It,222,88,Wind Tre SpA / WIND,LTE,Active
+Italy,It,222,999,Fix Line,LTE,Active
+Serbia,Se,221,6,Dardafon.Net LLC,LTE,Active
+Serbia,Se,221,2,IPKO,LTE,Active
+Serbia,Se,221,3,MTS DOO,LTE,Active
+Serbia,Se,221,1,Vala,LTE,Active
+Romania,Ro,226,226,Romania all operators,LTE,Active
+Romania,Ro,226,5,Digi Mobil,LTE,Active
+Romania,Ro,226,2,Romtelecom SA,LTE,Active
+Romania,Ro,226,3,Telekom,LTE,Active
+Romania,Ro,226,4,Telekom Romania,LTE,Active
+Romania,Ro,226,6,Telekom Romania,LTE,Active
+Romania,Ro,226,1,Vodafone,LTE,Active
+Romania,Ro,226,11,Enigma Systems,LTE,Active
+Romania,Ro,226,16,Lycamobile,LTE,Active
+Romania,Ro,226,10,Orange,LTE,Active
+Serbia,Se,220,220,Serbia all operators,LTE,Active
+Serbia,Se,220,4,MNC-004,LTE,Active
+Serbia,Se,220,3,MTS/Telekom Srbija,LTE,Active
+Serbia,Se,220,1,Telenor/Mobtel,LTE,Active
+Serbia,Se,220,2,Telenor/Mobtel,LTE,Active
+Serbia,Se,220,5,VIP Mobile,LTE,Active
+Germany,Ge,262,262,Germany all operators,LTE,Active
+Germany,Ge,262,13,"Bundesamt für Ausrüstung, Informationstechnik und Nutzung der Bundeswehr",LTE,Active
+Germany,Ge,262,10,DB Netz AG,LTE,Active
+Germany,Ge,262,14,Lebara Ltd.,LTE,Active
+Germany,Ge,262,12,Telefonica / E-Plus,LTE,Active
+Germany,Ge,262,17,Telefonica / E-Plus,LTE,Active
+Germany,Ge,262,11,Telefonica / O2,LTE,Active
+Germany,Ge,262,16,Telefonica / O2,LTE,Active
+Germany,Ge,262,23,Drillisch Online AG,LTE,Active
+Germany,Ge,262,21,Multiconnect GmbH,LTE,Active
+Germany,Ge,262,22,sipgate Wireless GmbH,LTE,Active
+Germany,Ge,262,24,TelcoVillage GmbH,LTE,Active
+Germany,Ge,262,20,Telefonica / E-Plus,LTE,Active
+Germany,Ge,262,43,Lycamobile,LTE,Active
+Germany,Ge,262,42,Vodafone,LTE,Active
+Germany,Ge,262,33,sipgate Wireless GmbH,LTE,Active
+Germany,Ge,262,3,Telefonica / E-Plus,LTE,Active
+Germany,Ge,262,5,Telefonica / E-Plus,LTE,Active
+Germany,Ge,262,7,Telefonica / O2,LTE,Active
+Germany,Ge,262,8,Telefonica / O2,LTE,Active
+Germany,Ge,262,1,Telekom / T-mobile,LTE,Active
+Germany,Ge,262,6,Telekom / T-mobile,LTE,Active
+Germany,Ge,262,2,Vodafone,LTE,Active
+Germany,Ge,262,4,Vodafone,LTE,Active
+Germany,Ge,262,9,Vodafone,LTE,Active
+Germany,Ge,262,77,Telefonica / E-Plus,LTE,Active
+Germany,Ge,262,78,Telekom / T-mobile,LTE,Active
+Germany,Ge,262,999,Fix Line,LTE,Active
+Germany,Ge,262,779,MNC-779,LTE,Active
+Gibraltar,Gi,266,266,Gibraltar all operators,LTE,Active
+Gibraltar,Gi,266,6,CTS Mobile,LTE,Active
+Gibraltar,Gi,266,9,eazi telecom,LTE,Active
+Gibraltar,Gi,266,1,Gibtel GSM,LTE,Active
+Gibraltar,Gi,266,999,Fix Line,LTE,Active
+Poland,Po,260,260,Poland all operators,LTE,Active
+Poland,Po,260,4,Aero2,LTE,Active
+Poland,Po,260,8,e-Telko,LTE,Active
+Poland,Po,260,9,Lycamobile,LTE,Active
+Poland,Po,260,3,Orange/IDEA/Centertel,LTE,Active
+Poland,Po,260,5,Orange/IDEA/Centertel,LTE,Active
+Poland,Po,260,6,Play/P4,LTE,Active
+Poland,Po,260,7,Play/P4,LTE,Active
+Poland,Po,260,1,Polkomtel/Plus,LTE,Active
+Poland,Po,260,15,Aero2,LTE,Active
+Poland,Po,260,17,Aero2 SP,LTE,Active
+Poland,Po,260,18,AMD Telecom.,LTE,Active
+Poland,Po,260,12,Cyfrowy POLSAT S.A.,LTE,Active
+Poland,Po,260,16,Mobyland,LTE,Active
+Poland,Po,260,11,NORDISK Poland,LTE,Active
+Poland,Po,260,10,Sferia,LTE,Active
+Poland,Po,260,13,Sferia,LTE,Active
+Poland,Po,260,19,Teleena / Teleena Holding BV,LTE,Active
+Poland,Po,260,23,Amicomm / Amicomm Sp. z o.o.,LTE,Active
+Poland,Po,260,22,Arcomm / Arcomm Sp. z o.o.,LTE,Active
+Poland,Po,260,26,ATE / ATE-Advanced Technology & Experience Sp. z o.o.,LTE,Active
+Poland,Po,260,25,BS&T / Best Solutions & Technology Sp. z o.o.,LTE,Active
+Poland,Po,260,21,Exteri / Exteri Sp. z o.o.,LTE,Active
+Poland,Po,260,29,Interfonica / Interfonica Sp. z o.o.,LTE,Active
+Poland,Po,260,27,Intertelcom / Intertelcom Sp. z o.o.,LTE,Active
+Poland,Po,260,20,Mobile.Net / Mobile.Net Sp. z o.o.,LTE,Active
+Poland,Po,260,28,PhoneNet / PhoneNet Sp. z o.o.,LTE,Active
+Poland,Po,260,24,WideNet / WideNet Sp. z o.o.,LTE,Active
+Poland,Po,260,38,CallFreedom Sp. z o.o.,LTE,Active
+Poland,Po,260,32,Compatel Ltd / COMPATEL LIMITED,LTE,Active
+Poland,Po,260,30,GrandTel / GrandTel Sp. z o.o.,LTE,Active
+Poland,Po,260,36,Mundio Mobile Sp. z o.o.,LTE,Active
+Poland,Po,260,31,Phone IT / Phone IT Sp. z o.o.,LTE,Active
+Poland,Po,260,35,PKP Polskie Linie Kolejowe S.A.,LTE,Active
+Poland,Po,260,34,T-Mobile/ERA,LTE,Active
+Poland,Po,260,33,Truphone Poland / Truphone Poland Sp. Z o.o.,LTE,Active
+Poland,Po,260,98,Play/P4,LTE,Active
+Poland,Po,260,45,Virgin Mobile,LTE,Active
+Poland,Po,260,999,Fix Line,LTE,Active
+Portugal,Po,268,268,Portugal all operators,LTE,Active
+Portugal,Po,268,999,Fix Line,LTE,Active
+Portugal,Po,268,4,Lycamobile,LTE,Active
+Portugal,Po,268,6,MEO/TMN,LTE,Active
+Portugal,Po,268,0,MNC-000,LTE,Active
+Portugal,Po,268,5,MNC-005,LTE,Active
+Portugal,Po,268,3,NOS/Optimus,LTE,Active
+Portugal,Po,268,7,NOS/Optimus,LTE,Active
+Portugal,Po,268,1,Vodafone,LTE,Active
+Portugal,Po,268,21,Zapp Portugal,LTE,Active
+Greenland,Gr,290,290,Greenland all operators,LTE,Active
+Greenland,Gr,290,1,Tele Greenland A/S,LTE,Active
+Liechtenstein,Li,295,295,Liechtenstein all operators,LTE,Active
+Liechtenstein,Li,295,77,Alpmobile/Tele2,LTE,Active
+Liechtenstein,Li,295,6,CUBIC (Liechtenstein,LTE,Active
+Liechtenstein,Li,295,7,First Mobile AG,LTE,Active
+Liechtenstein,Li,295,2,Orange,LTE,Active
+Liechtenstein,Li,295,1,Swisscom FL AG,LTE,Active
+Liechtenstein,Li,295,5,Telecom FL1 AG,LTE,Active
+Liechtenstein,Li,295,779,MNC-779,LTE,Active
+Liechtenstein,Li,295,999,MNC-999,LTE,Active
+Macedonia,Ma,294,294,Macedonia all operators,LTE,Active
+Macedonia,Ma,294,4,Lycamobile,LTE,Active
+Macedonia,Ma,294,2,ONE/Cosmofone,LTE,Active
+Macedonia,Ma,294,1,T-Mobile/Mobimak,LTE,Active
+Macedonia,Ma,294,3,VIP Mobile,LTE,Active
+Macedonia,Ma,294,75,ONE/Cosmofone,LTE,Active
+Montenegro,Mo,297,297,Montenegro all operators,LTE,Active
+Montenegro,Mo,297,3,Mtel,LTE,Active
+Montenegro,Mo,297,2,Telekom / T-mobile,LTE,Active
+Montenegro,Mo,297,1,Telenor,LTE,Active
+Montenegro,Mo,297,4,T-Mobile Montenegro LLC,LTE,Active
+San Marino,Sa,292,1,Prima Telecom,LTE,Active
+Slovenia,Sl,293,293,Slovenia all operators,LTE,Active
+Slovenia,Sl,293,999,Fix Line,LTE,Active
+Slovenia,Sl,293,41,Mobitel,LTE,Active
+Slovenia,Sl,293,40,SI.Mobil,LTE,Active
+Slovenia,Sl,293,10,Slovenske zeleznice d.o.o.,LTE,Active
+Slovenia,Sl,293,64,T-2 d.o.o.,LTE,Active
+Slovenia,Sl,293,70,Telemach/TusMobil/VEGA,LTE,Active
+Afghanistan,Af,412,412,Afghanistan all operators,LTE,Active
+Afghanistan,Af,412,1,AWCC,LTE,Active
+Afghanistan,Af,412,3,WaselTelecom (WT),LTE,Active
+Afghanistan,Af,412,30,Etisalat,LTE,Active
+Afghanistan,Af,412,50,Etisalat,LTE,Active
+Afghanistan,Af,412,80,Mobifone,LTE,Active
+Afghanistan,Af,412,88,Mobifone,LTE,Active
+Afghanistan,Af,412,40,MTN,LTE,Active
+Afghanistan,Af,412,20,Roshan,LTE,Active
+Burma / Myanmar,Bu,414,414,Burma / Myanmar all operators,LTE,Active
+Burma / Myanmar,Bu,414,1,Myanmar Post & Teleco.,LTE,Active
+Burma / Myanmar,Bu,414,5,Oreedoo,LTE,Active
+Burma / Myanmar,Bu,414,6,Telenor,LTE,Active
+Myanmar,My,414,9,Mytel (Myanmar,LTE,Active
+Myanmar,My,414,999,Fix Line (Myanmar,LTE,Active
+Iraq,Ir,418,418,Iraq all operators,LTE,Active
+Iraq,Ir,418,5,Asia Cell,LTE,Active
+Iraq,Ir,418,1,MNC-001,LTE,Active
+Iraq,Ir,418,8,Sanatel,LTE,Active
+Iraq,Ir,418,66,Fastlink,LTE,Active
+Iraq,Ir,418,62,Itisaluna,LTE,Active
+Iraq,Ir,418,47,Iraq Central Cooperative Association for Communication and Transportation,LTE,Active
+Iraq,Ir,418,49,Iraqtel,LTE,Active
+Iraq,Ir,418,48,ITC Fanoos,LTE,Active
+Iraq,Ir,418,40,Korek,LTE,Active
+Iraq,Ir,418,45,Mobitel,LTE,Active
+Iraq,Ir,418,80,Iraqi Telecommunications & Post Company (ITPC),LTE,Active
+Iraq,Ir,418,81,ITPC (Al-Mazaya),LTE,Active
+Iraq,Ir,418,87,ITPC (Al-Seraj),LTE,Active
+Iraq,Ir,418,89,ITPC (Al-Shams),LTE,Active
+Iraq,Ir,418,85,ITPC (Anwar Yagotat Alkhalee),LTE,Active
+Iraq,Ir,418,84,ITPC (Eaamar Albasrah),LTE,Active
+Iraq,Ir,418,86,ITPC (Furatfone),LTE,Active
+Iraq,Ir,418,88,ITPC (High Link),LTE,Active
+Iraq,Ir,418,83,ITPC (Sader Al-Iraq),LTE,Active
+Iraq,Ir,418,82,Korek,LTE,Active
+Iraq,Ir,418,92,Itisaluna and Kalemat,LTE,Active
+Iraq,Ir,418,91,ITPC (Belad Babel),LTE,Active
+Iraq,Ir,418,93,ITPC (Iraqcell),LTE,Active
+Iraq,Ir,418,94,ITPC (Shaly),LTE,Active
+Iraq,Ir,418,70,Kalimat,LTE,Active
+Iraq,Ir,418,30,Orascom Telecom,LTE,Active
+Iraq,Ir,418,20,Zain,LTE,Active
+Jordan,Jo,416,416,Jordan all operators,LTE,Active
+Jordan,Jo,416,999,Fix Line,LTE,Active
+Jordan,Jo,416,77,Orange,LTE,Active
+Jordan,Jo,416,3,Umniah,LTE,Active
+Jordan,Jo,416,2,Xpress,LTE,Active
+Jordan,Jo,416,1,Zain,LTE,Active
+Kuwait,Ku,419,419,Kuwait all operators,LTE,Active
+Kuwait,Ku,419,999,Fix Line,LTE,Active
+Kuwait,Ku,419,3,Ooredoo,LTE,Active
+Kuwait,Ku,419,4,Viva,LTE,Active
+Kuwait,Ku,419,2,Zain,LTE,Active
+Lebanon,Le,415,415,Lebanon all operators,LTE,Active
+Lebanon,Le,415,32,Cellis,LTE,Active
+Lebanon,Le,415,33,Cellis,LTE,Active
+Lebanon,Le,415,35,Cellis,LTE,Active
+Lebanon,Le,415,34,FTML Cellis,LTE,Active
+Lebanon,Le,415,36,MIC2/LibanCell/MTC,LTE,Active
+Lebanon,Le,415,37,MIC2/LibanCell/MTC,LTE,Active
+Lebanon,Le,415,38,MIC2/LibanCell/MTC,LTE,Active
+Lebanon,Le,415,39,MIC2/LibanCell/MTC,LTE,Active
+Lebanon,Le,415,1,MIC1 (Alfa),LTE,Active
+Lebanon,Le,415,3,MIC2/LibanCell/MTC,LTE,Active
+Lebanon,Le,415,5,Ogero Telecom,LTE,Active
+Pakistan,Pa,410,410,Pakistan all operators,LTE,Active
+Pakistan,Pa,410,8,Instaphone,LTE,Active
+Pakistan,Pa,410,1,Jazz / Mobilink,LTE,Active
+Pakistan,Pa,410,7,Jazz / Warid Telecom,LTE,Active
+Pakistan,Pa,410,5,SCO Mobile,LTE,Active
+Pakistan,Pa,410,6,Telenor,LTE,Active
+Pakistan,Pa,410,3,UFONE/PAKTel,LTE,Active
+Pakistan,Pa,410,4,ZONG/CMPak,LTE,Active
+Sri Lanka,Sr,413,413,Sri Lanka all operators,LTE,Active
+Sri Lanka,Sr,413,5,Airtel,LTE,Active
+Sri Lanka,Sr,413,3,Etisalat/Tigo,LTE,Active
+Sri Lanka,Sr,413,8,H3G Hutchison,LTE,Active
+Sri Lanka,Sr,413,1,Mobitel Ltd.,LTE,Active
+Sri Lanka,Sr,413,2,MTN/Dialog,LTE,Active
+Syria,Sy,417,417,Syria all operators,LTE,Active
+Syria,Sy,417,2,MTN/Spacetel,LTE,Active
+Syria,Sy,417,1,Syriatel Holdings,LTE,Active
+Syria,Sy,417,9,Syriatel Holdings,LTE,Active
+Azerbaijan,Az,400,400,Azerbaijan all operators,LTE,Active
+Azerbaijan,Az,400,1,Azercell,LTE,Active
+Azerbaijan,Az,400,2,Bakcell,LTE,Active
+Azerbaijan,Az,400,3,FONEX,LTE,Active
+Azerbaijan,Az,400,4,Nar Mobile,LTE,Active
+Azerbaijan,Az,400,6,Naxtel,LTE,Active
+Azerbaijan,Az,400,5,Special State Protection Service of the Republic of Azerbaijan,LTE,Active
+Bhutan,Bh,402,402,Bhutan all operators,LTE,Active
+Bhutan,Bh,402,17,Bhutan Telecom Ltd (BTL),LTE,Active
+Bhutan,Bh,402,11,B-Mobile,LTE,Active
+Bhutan,Bh,402,77,TashiCell,LTE,Active
+India,In,404,17,Aircel,LTE,Active
+India,In,404,15,Aircel Digilink India,LTE,Active
+India,In,404,13,Barakhamba Sales & Serv.,LTE,Active
+India,In,404,10,Bharti Airtel Limited (Delhi),LTE,Active
+India,In,404,12,Escotel Mobile Communications,LTE,Active
+India,In,404,19,Escotel Mobile Communications,LTE,Active
+India,In,404,16,Hexcom India,LTE,Active
+India,In,404,18,Reliance Telecom Private,LTE,Active
+India,In,404,14,Spice,LTE,Active
+India,In,404,11,Sterling Cellular Ltd.,LTE,Active
+India,In,404,25,Aircel,LTE,Active
+India,In,404,28,Aircel,LTE,Active
+India,In,404,29,Aircel,LTE,Active
+India,In,404,22,Idea Cellular Ltd.,LTE,Active
+India,In,404,24,Idea Cellular Ltd.,LTE,Active
+India,In,404,23,"Idea Cellular Ltd., Maharashtra",LTE,Active
+India,In,404,21,"Loop/Jio (formerly BPL), Mumbai",LTE,Active
+India,In,404,20,Unknown,LTE,Active
+India,In,404,27,Unknown,LTE,Active
+India,In,404,33,Aircel,LTE,Active
+India,In,404,35,"Aircel / Dishnet Wireless Ltd., Himachal Pradesh",LTE,Active
+India,In,404,37,"Aircel / Dishnet Wireless Ltd, J&K",LTE,Active
+India,In,404,31,"AirTel (Bharti-Televentures), Kolkata",LTE,Active
+India,In,404,34,BSNL,LTE,Active
+India,In,404,38,BSNL,LTE,Active
+India,In,404,36,Reliance Telecom Private,LTE,Active
+India,In,404,30,Usha Martin Telecom,LTE,Active
+India,In,404,42,Aircel,LTE,Active
+India,In,404,49,"AirTel (Bharti-Televentures), Andra Pradesh",LTE,Active
+India,In,404,40,"AirTel (Bharti-Televentures), Chennai",LTE,Active
+India,In,404,45,Bharti Airtel Limited (Karnataka) (India),LTE,Active
+India,In,404,48,"Dishnet Wireless Ltd, Uttar Predesh West",LTE,Active
+India,In,404,41,RPG Cellular,LTE,Active
+India,In,404,44,Spice,LTE,Active
+India,In,404,43,Vodafone/Essar/Hutch,LTE,Active
+India,In,404,46,"Vodafone Essar / Hutchison Essar Cellular Ltd., Kerala",LTE,Active
+India,In,404,1,Aircel Digilink India,LTE,Active
+India,In,404,3,"AirTel (Bharti-Televentures), Himachal Pradesh",LTE,Active
+India,In,404,2,"AirTel (Bharti-Televentures), Punjab",LTE,Active
+India,In,404,6,"Bharti Airtel Limited, Karnataka",LTE,Active
+India,In,404,0,"Dishnet Wireless Ltd, Madhya Pradesh",LTE,Active
+India,In,404,5,Fascel,LTE,Active
+India,In,404,4,Idea Cellular Ltd.,LTE,Active
+India,In,404,7,Idea Cellular Ltd.,LTE,Active
+India,In,404,9,Reliance Telecom Private,LTE,Active
+India,In,404,60,Aircel Digilink India,LTE,Active
+India,In,404,62,BSNL,LTE,Active
+India,In,404,64,BSNL,LTE,Active
+India,In,404,66,BSNL,LTE,Active
+India,In,404,63,"Dishnet Wireless Ltd, Haryana",LTE,Active
+India,In,404,61,"Dishnet Wireless Ltd, Punjab",LTE,Active
+India,In,404,65,"Dishnet Wireless Ltd, Uttar Predesh East",LTE,Active
+India,In,404,68,Mahanagar Telephone Nigam,LTE,Active
+India,In,404,69,Mahanagar Telephone Nigam,LTE,Active
+India,In,404,67,Reliance Telecom Private,LTE,Active
+India,In,404,91,"Aircel / Dishnet Wireless Ltd, Kolkata",LTE,Active
+India,In,404,98,"AirTel (Bharti-Televentures), Gujarat",LTE,Active
+India,In,404,96,"AirTel (Bharti-Televentures), Haryana",LTE,Active
+India,In,404,95,"AirTel (Bharti-Televentures), Kerala",LTE,Active
+India,In,404,93,"AirTel (Bharti-Televentures), Madhya Pradesh",LTE,Active
+India,In,404,90,"AirTel (Bharti-Televentures), Maharashtra & Goa",LTE,Active
+India,In,404,92,"AirTel (Bharti-Televentures), Mumbai",LTE,Active
+India,In,404,94,"AirTel (Bharti-Televentures), Tamil Nadu",LTE,Active
+India,In,404,97,"AirTel (Bharti-Televentures), Uttar Predesh West",LTE,Active
+India,In,404,99,"Dishnet Wireless Ltd, Kerala",LTE,Active
+India,In,404,86,Barakhamba Sales & Serv.,LTE,Active
+India,In,404,80,BSNL,LTE,Active
+India,In,404,81,BSNL,LTE,Active
+India,In,404,82,Escorts Telecom Ltd.,LTE,Active
+India,In,404,87,Escorts Telecom Ltd.,LTE,Active
+India,In,404,88,Escorts Telecom Ltd.,LTE,Active
+India,In,404,89,Escorts Telecom Ltd.,LTE,Active
+India,In,404,83,Reliable Internet Services,LTE,Active
+India,In,404,85,Reliance Telecom Private,LTE,Active
+India,In,404,84,"Vodafone / Hutchison Essar South Ltd., Chennai",LTE,Active
+India,In,404,51,BSNL,LTE,Active
+India,In,404,53,BSNL,LTE,Active
+India,In,404,54,BSNL,LTE,Active
+India,In,404,55,BSNL,LTE,Active
+India,In,404,57,BSNL,LTE,Active
+India,In,404,58,BSNL,LTE,Active
+India,In,404,59,BSNL,LTE,Active
+Niger,Ni,614,1,Sahelcom,LTE,Active
+India,In,404,56,Escotel Mobile Communications,LTE,Active
+India,In,404,50,Reliance Telecom Private,LTE,Active
+India,In,404,52,Reliance Telecom Private,LTE,Active
+India,In,404,71,BSNL,LTE,Active
+India,In,404,72,BSNL,LTE,Active
+India,In,404,73,BSNL,LTE,Active
+India,In,404,74,BSNL,LTE,Active
+India,In,404,75,BSNL,LTE,Active
+India,In,404,76,BSNL,LTE,Active
+India,In,404,77,BSNL,LTE,Active
+India,In,404,79,CellOne A&N,LTE,Active
+India,In,404,70,Hexacom India,LTE,Active
+India,In,404,78,Idea Cellular Ltd.,LTE,Active
+India,In,404,998,Fix Line,LTE,Active
+India,In,404,999,Various Networks,LTE,Active
+India,In,404,927,Uninor Gujarat,LTE,Active
+India,In,404,450,MNC-450,LTE,Active
+India,In,404,818,Uninor Uttar Predesh West,LTE,Active
+India,In,405,405,India all operators,LTE,Active
+India,In,405,801,"Aircel, Andhra Pradesh",LTE,Active
+India,In,405,800,"Aircel, Delhi",LTE,Active
+India,In,405,807,"Aircel / Dishnet Wireless, Haryana",LTE,Active
+India,In,405,809,"Aircel / Dishnet Wireless, Kerala",LTE,Active
+India,In,405,808,"Aircel / Dishnet Wireless, Madhya Pradesh",LTE,Active
+India,In,405,802,"Aircel, Gujarat",LTE,Active
+India,In,405,803,"Aircel, Kamataka",LTE,Active
+India,In,405,804,"Aircel, Maharashtra & Goa",LTE,Active
+India,In,405,805,"Aircel, Mumbai",LTE,Active
+India,In,405,806,"Aircel, Rajasthan",LTE,Active
+India,In,405,812,"Aircel, Punjab",LTE,Active
+India,In,405,810,"Aircel, Uttar Predesh East",LTE,Active
+India,In,405,811,"Aircel, Uttar Predesh West",LTE,Active
+India,In,405,819,Uninor Andhra Pradesh,LTE,Active
+India,In,405,813,Uninor Haryana,LTE,Active
+India,In,405,814,Uninor Himachal Pradesh,LTE,Active
+India,In,405,815,Uninor Jammu & Kashmir,LTE,Active
+India,In,405,816,Uninor Punjab,LTE,Active
+India,In,405,817,Uninor Rajasthan,LTE,Active
+India,In,405,818,Uninor Uttar Pradesh (West),LTE,Active
+India,In,405,845,Idea Assam,LTE,Active
+India,In,405,846,Idea Jammu & Kashmir,LTE,Active
+India,In,405,847,Idea Karnataja,LTE,Active
+India,In,405,848,Idea Kolkata,LTE,Active
+India,In,405,849,Idea North East,LTE,Active
+India,In,405,844,Uninor Delhi,LTE,Active
+India,In,405,840,Videocon Tamil Nadu,LTE,Active
+India,In,405,841,Videocon Uttar Predesh East,LTE,Active
+India,In,405,842,Videocon Uttar Predesh West,LTE,Active
+India,In,405,843,Videocon West Bengal,LTE,Active
+India,In,405,850,Idea Orissa,LTE,Active
+India,In,405,851,Idea Punjab,LTE,Active
+India,In,405,852,Idea Tamil & Chennai,LTE,Active
+India,In,405,853,Idea West Bengal,LTE,Active
+India,In,405,854,Loop/Jio,LTE,Active
+India,In,405,855,Loop/Jio,LTE,Active
+India,In,405,856,Loop/Jio,LTE,Active
+India,In,405,857,Loop/Jio,LTE,Active
+India,In,405,858,Loop/Jio,LTE,Active
+India,In,405,859,Loop/Jio,LTE,Active
+India,In,405,860,Loop/Jio,LTE,Active
+India,In,405,861,Loop/Jio,LTE,Active
+India,In,405,862,Loop/Jio,LTE,Active
+India,In,405,863,Loop/Jio,LTE,Active
+India,In,405,864,Loop/Jio,LTE,Active
+India,In,405,865,Loop/Jio,LTE,Active
+India,In,405,866,Loop/Jio,LTE,Active
+India,In,405,867,Loop/Jio,LTE,Active
+India,In,405,868,Loop/Jio,LTE,Active
+India,In,405,869,Loop/Jio,LTE,Active
+India,In,405,870,Loop/Jio,LTE,Active
+India,In,405,871,Loop/Jio,LTE,Active
+India,In,405,872,Loop/Jio,LTE,Active
+India,In,405,873,Loop/Jio,LTE,Active
+India,In,405,874,Loop/Jio,LTE,Active
+India,In,405,875,Uninor Assam,LTE,Active
+India,In,405,876,Uninor Bihar,LTE,Active
+India,In,405,877,Uninor North East,LTE,Active
+India,In,405,878,Uninor Orissa,LTE,Active
+India,In,405,879,Uninor Uttar Predesh East,LTE,Active
+India,In,405,887,MTS Andhra Pradesh,LTE,Active
+India,In,405,888,MTS Assam,LTE,Active
+India,In,405,889,MTS Bihar,LTE,Active
+India,In,405,881,S Tel,LTE,Active
+India,In,405,882,S Tel,LTE,Active
+India,In,405,883,S Tel,LTE,Active
+India,In,405,884,S Tel,LTE,Active
+India,In,405,885,S Tel,LTE,Active
+India,In,405,886,S Tel,LTE,Active
+India,In,405,880,Uninor West bengal,LTE,Active
+India,In,405,890,MTS Delhi,LTE,Active
+India,In,405,891,MTS Gujarat,LTE,Active
+India,In,405,892,MTS Haryana,LTE,Active
+India,In,405,893,MTS Himachal Pradesh,LTE,Active
+India,In,405,894,MTS Jammu & Kashmir,LTE,Active
+India,In,405,895,MTS Karnataka,LTE,Active
+India,In,405,896,MTS Kerala,LTE,Active
+India,In,405,897,MTS Kolkata,LTE,Active
+India,In,405,898,MTS Madhya Pradesh,LTE,Active
+India,In,405,899,MTS Maharashtra,LTE,Active
+India,In,405,820,Uninor Karnataka,LTE,Active
+India,In,405,821,Uninor Kerala,LTE,Active
+India,In,405,822,Uninor Kolkata,LTE,Active
+India,In,405,823,Videocon Andhra Pradesh,LTE,Active
+India,In,405,824,Videocon Assam,LTE,Active
+India,In,405,825,Videocon Bihar,LTE,Active
+India,In,405,826,Videocon Delhi,LTE,Active
+India,In,405,827,Videocon Gujarat,LTE,Active
+India,In,405,828,Videocon Haryana,LTE,Active
+India,In,405,829,Videocon Himachal Pradesh,LTE,Active
+India,In,405,830,Videcon Jammu & Kashmir,LTE,Active
+India,In,405,831,Videocon Karnataka,LTE,Active
+India,In,405,832,Videocon Kerala,LTE,Active
+India,In,405,833,Videocon Kolkata,LTE,Active
+India,In,405,834,Videocon Madhya Pradesh,LTE,Active
+India,In,405,835,Videocon Maharashtra,LTE,Active
+India,In,405,836,Videocon Mumbai,LTE,Active
+India,In,405,837,Videocon North East,LTE,Active
+India,In,405,838,Videocon Orissa,LTE,Active
+India,In,405,839,Videocon Rajasthan,LTE,Active
+India,In,405,82,"Aircell Ltd, Andhra Pradesh",LTE,Active
+India,In,405,81,"Aircell Ltd, Delhi",LTE,Active
+India,In,405,83,"Aircell Ltd, Gujarat",LTE,Active
+India,In,405,84,"Aircell Ltd, Maharashtra",LTE,Active
+India,In,405,85,"Aircell Ltd, Mumbai",LTE,Active
+India,In,405,86,"Aircell Ltd, Rajasthan",LTE,Active
+India,In,405,87,Reliance Telecom Private,LTE,Active
+India,In,405,53,AirTel,LTE,Active
+India,In,405,56,"AirTel (Bharati Mobile), Assam",LTE,Active
+India,In,405,51,AirTel (Bharti-Televentures),LTE,Active
+India,In,405,52,"AirTel (Bharti-Televentures), Bihar",LTE,Active
+India,In,405,55,"AirTel (Bharti-Televentures), J&K",LTE,Active
+India,In,405,54,"AirTel (Bharti-Televentures), Uttar Predesh East",LTE,Active
+India,In,405,73,"Essar Spacetel Ltd, Assam",LTE,Active
+India,In,405,71,"Essar Spacetel Ltd, Himachal Pradesh",LTE,Active
+India,In,405,74,"Essar Spacetel Ltd, J&K",LTE,Active
+India,In,405,77,"Essar Spacetel Ltd, Maharashtra",LTE,Active
+India,In,405,72,"Essar Spacetel Ltd, North East",LTE,Active
+India,In,405,76,"Essar Spacetel Ltd, Orissa",LTE,Active
+India,In,405,70,"Idea (Aditya Birla Telecom Ltd), Bihar & Jharkhand",LTE,Active
+India,In,405,5,Fascel Limited,LTE,Active
+India,In,405,3,MNC-003,LTE,Active
+India,In,405,4,MNC-004,LTE,Active
+India,In,405,6,"Reliance Communications Ltd/GSM, Gujarat",LTE,Active
+India,In,405,7,"Reliance Communications Ltd/GSM, Haryana",LTE,Active
+India,In,405,8,"Reliance Infocomm Ltd, Himachal Pradesh",LTE,Active
+India,In,405,1,RELIANCE TELECOM,LTE,Active
+India,In,405,9,RELIANCE TELECOM,LTE,Active
+India,In,405,0,"Shyam Telelink Ltd, Rajasthan",LTE,Active
+India,In,405,24,Ping,LTE,Active
+India,In,405,20,"Reliance Communications Ltd/GSM, Tamilnadu",LTE,Active
+India,In,405,21,"Reliance Communications Ltd/GSM, Uttar Predesh East",LTE,Active
+India,In,405,22,"Reliance Communications Ltd/GSM, Uttar Predesh West",LTE,Active
+India,In,405,23,"Reliance Infocomm Ltd, West Bengal",LTE,Active
+India,In,405,25,"Tata DoCoMo, Andhra Pradesh",LTE,Active
+India,In,405,27,"Tata DoCoMo, Bihar",LTE,Active
+India,In,405,29,"Tata DoCoMo, Delhi",LTE,Active
+India,In,405,28,"Tata Teleservices Ltd, Chennai",LTE,Active
+India,In,405,10,"Reliance Communications Ltd,/GSM Karnataka",LTE,Active
+India,In,405,11,"Reliance Communications Ltd/GSM, Kerala",LTE,Active
+India,In,405,14,"Reliance Communications Ltd/GSM, Madhya Pradesh",LTE,Active
+India,In,405,13,"Reliance Communications Ltd/GSM, Maharashtra",LTE,Active
+India,In,405,18,"Reliance Communications Ltd/GSM, Punjab",LTE,Active
+India,In,405,12,"Reliance Infocomm Ltd, Kolkata",LTE,Active
+India,In,405,17,"Reliance Infocomm Ltd, Orissa",LTE,Active
+India,In,405,19,Reliance Telecom Private,LTE,Active
+India,In,405,15,"Reliance Telecom Private, Mumbai",LTE,Active
+India,In,405,33,"Reliance Infocomm Ltd, Bihar",LTE,Active
+India,In,405,30,"Tata DoCoMo, Gujarat",LTE,Active
+India,In,405,31,"Tata DoCoMo, Haryana",LTE,Active
+India,In,405,32,"Tata DoCoMo, Himachal Pradesh",LTE,Active
+India,In,405,35,"Tata DoCoMo, Kerala",LTE,Active
+India,In,405,36,"Tata DoCoMo, Kolkata",LTE,Active
+India,In,405,38,"Tata DoCoMo, Madhya Pradesh",LTE,Active
+India,In,405,37,"Tata DoCoMo, Maharashtra & Goa",LTE,Active
+India,In,405,39,"Tata DoCoMo, Mumbai",LTE,Active
+India,In,405,34,TATA / Karnataka,LTE,Active
+India,In,405,40,"Reliance Infocomm Ltd, Chennai",LTE,Active
+India,In,405,41,"Tata DoCoMo, Orissa",LTE,Active
+India,In,405,42,"Tata DoCoMo, Punjab",LTE,Active
+India,In,405,43,"Tata DoCoMo, Rajasthan",LTE,Active
+India,In,405,47,"Tata DoCoMo, Ro West Bengal",LTE,Active
+India,In,405,44,"Tata DoCoMo, Tamil Nadu",LTE,Active
+India,In,405,45,"Tata DoCoMo, Uttar Pradesh East",LTE,Active
+India,In,405,46,"Tata DoCoMo, Uttar Predesh West",LTE,Active
+India,In,405,67,"Vodafone / Hutchison Essar South Ltd, Orissa",LTE,Active
+India,In,405,66,"Vodafone / Hutchison Essar South Ltd, Uttar Predesh West",LTE,Active
+India,In,405,68,"Vodafone / Hutchison, Madhya Pradesh",LTE,Active
+India,In,405,912,Etisalat DB - Cheers Andhra Pradesh,LTE,Active
+India,In,405,913,Etisalat DB - Cheers Delhi,LTE,Active
+India,In,405,914,Etisalat DB - Cheers Gujarat,LTE,Active
+India,In,405,915,Etisalat DB - Cheers Haryana,LTE,Active
+India,In,405,916,Etisalat DB - Cheers Karnataka,LTE,Active
+India,In,405,917,Etisalat DB - Cheers Kerala,LTE,Active
+India,In,405,918,Etisalat DB - Cheers Maharashtra,LTE,Active
+India,In,405,919,Etisalat DB - Cheers Mumbai,LTE,Active
+India,In,405,910,Spice Haryana,LTE,Active
+India,In,405,911,Spice Maharashtra,LTE,Active
+India,In,405,930,Etisalat DB - Cheers Bihar,LTE,Active
+India,In,405,931,Etisalat DB - Cheers Madhya Pradesh,LTE,Active
+India,In,405,932,MNC-932,LTE,Active
+India,In,405,920,Etisalat DB - Cheers Punjab,LTE,Active
+India,In,405,921,Etisalat DB - Cheers Rajasthan,LTE,Active
+India,In,405,922,Etisalat DB - Cheers Tamil Nadu,LTE,Active
+India,In,405,923,Etisalat DB - Cheers Uttar Predesh East,LTE,Active
+India,In,405,924,Etisalat DB - Cheers Uttar Predesh West,LTE,Active
+India,In,405,925,Uninor,LTE,Active
+India,In,405,927,Uninor,LTE,Active
+India,In,405,928,Uninor Madhya Pradesh,LTE,Active
+India,In,405,929,Uninor Maharashtra,LTE,Active
+India,In,405,926,Uninor Mumbai,LTE,Active
+India,In,405,900,MTS Mumbai,LTE,Active
+India,In,405,901,MTS North East,LTE,Active
+India,In,405,902,MTS Orissa,LTE,Active
+India,In,405,903,MTS Punjab,LTE,Active
+India,In,405,904,MTS Tamil Nadu,LTE,Active
+India,In,405,905,MTS Uttar Predesh East,LTE,Active
+India,In,405,906,MTS Uttar Predesh West,LTE,Active
+India,In,405,907,MTS West Bengal,LTE,Active
+India,In,405,908,Spice Andhra Pradesh,LTE,Active
+India,In,405,909,Spice Delhi,LTE,Active
+India,In,405,799,Idea Mumbai,LTE,Active
+India,In,405,756,Vodafone,LTE,Active
+India,In,405,751,"Vodafone Essar Spacetel, Assam",LTE,Active
+India,In,405,752,"Vodafone Essar Spacetel, Bihar",LTE,Active
+India,In,405,754,"Vodafone Essar Spacetel, Himachal Pradesh",LTE,Active
+India,In,405,750,"Vodafone Essar Spacetel, J&K",LTE,Active
+India,In,405,755,"Vodafone Essar Spacetel Ltd, North East",LTE,Active
+India,In,405,753,"Vodafone Essar Spacetel, Orissa",LTE,Active
+Kazakhstan,Ka,401,1,Beeline/KaR-Tel LLP,LTE,Active
+Kazakhstan,Ka,401,7,Dalacom/Altel,LTE,Active
+Kazakhstan,Ka,401,8,Kazakhtelecom,LTE,Active
+Kazakhstan,Ka,401,2,K-Cell,LTE,Active
+Kazakhstan,Ka,401,77,Tele2/NEO/MTS,LTE,Active
+Kazakhstan,Ka,401,779,MNC-779,LTE,Active
+Bahrain,Ba,426,426,Bahrain all operators,LTE,Active
+Bahrain,Ba,426,1,Batelco,LTE,Active
+Bahrain,Ba,426,5,Batelco / Royal Court,LTE,Active
+Bahrain,Ba,426,3,Civil Aviation Authority,LTE,Active
+Bahrain,Ba,426,4,VIVA,LTE,Active
+Bahrain,Ba,426,2,ZAIN/Vodafone,LTE,Active
+Bahrain,Ba,426,999,Fix Line,LTE,Active
+Israel,Is,425,425,Israel all operators,LTE,Active
+Israel,Is,425,24,012 Telecom Ltd.,LTE,Active
+Israel,Is,425,23,Beezz Communication Solutions Ltd.,LTE,Active
+Israel,Is,425,20,Bezeq Ltd,LTE,Active
+Israel,Is,425,21,B.I.P Communications Ltd.,LTE,Active
+Israel,Is,425,25,IMOD,LTE,Active
+Israel,Is,425,11,365 Telecom (MVNO),LTE,Active
+Israel,Is,425,14,Alon Cellular Ltd,LTE,Active
+Israel,Is,425,18,Cellact Communications Ltd (MVNO),LTE,Active
+Israel,Is,425,17,Gale Phone (MVNO),LTE,Active
+Israel,Is,425,15,Home Cellular Ltd,LTE,Active
+Israel,Is,425,13,Ituran Cellular Communications,LTE,Active
+Israel,Is,425,12,Pelephone,LTE,Active
+Israel,Is,425,16,Rami Levy Hashikma Marketing Communications Ltd,LTE,Active
+Israel,Is,425,19,Telzar/AZI,LTE,Active
+Israel,Is,425,2,Cellcom ltd.,LTE,Active
+Israel,Is,425,4,Globalsim Ltd,LTE,Active
+Israel,Is,425,8,Golan Telekom,LTE,Active
+Israel,Is,425,7,Hot Mobile/Mirs,LTE,Active
+Israel,Is,425,1,Orange/Partner Co. Ltd.,LTE,Active
+Israel,Is,425,3,Pelephone,LTE,Active
+Israel,Is,425,6,Wataniya Mobile,LTE,Active
+Israel,Is,425,9,We4G/Marathon 018,LTE,Active
+Palestinian Territory,Pa,425,5,Jawwal,LTE,Active
+Israel,Is,425,77,Hot Mobile/Mirs,LTE,Active
+MCC-423,MC,423,5,MNC-005,LTE,Active
+Mongolia,Mo,428,428,Mongolia all operators,LTE,Active
+Mongolia,Mo,428,98,G-Mobile Corporation Ltd,LTE,Active
+Mongolia,Mo,428,99,Mobicom,LTE,Active
+Mongolia,Mo,428,91,Skytel Co. Ltd,LTE,Active
+Mongolia,Mo,428,0,Skytel Co. Ltd,LTE,Active
+Mongolia,Mo,428,88,Unitel,LTE,Active
+Nepal,Ne,429,429,Nepal all operators,LTE,Active
+Nepal,Ne,429,999,Fix Line,LTE,Active
+Nepal,Ne,429,2,Ncell,LTE,Active
+Nepal,Ne,429,1,NT Mobile / Namaste,LTE,Active
+Nepal,Ne,429,3,Sky / C-Phone / Nepal Telecom,LTE,Active
+Nepal,Ne,429,4,Smart Cell,LTE,Active
+Oman,Om,422,422,Oman all operators,LTE,Active
+Oman,Om,422,3,Nawras,LTE,Active
+Oman,Om,422,2,Oman Mobile/GTO,LTE,Active
+Qatar,Qa,427,427,Qatar all operators,LTE,Active
+Qatar,Qa,427,1,Ooredoo/Qtel,LTE,Active
+Qatar,Qa,427,2,Vodafone,LTE,Active
+Saudi Arabia,Sa,420,420,Saudi Arabia all operators,LTE,Active
+Saudi Arabia,Sa,420,3,Etihad/Etisalat/Mobily,LTE,Active
+Saudi Arabia,Sa,420,6,Lebara Mobile,LTE,Active
+Saudi Arabia,Sa,420,2,Mobily  Etihad Etisalat,LTE,Active
+Saudi Arabia,Sa,420,1,STC/Al Jawal,LTE,Active
+Saudi Arabia,Sa,420,5,Virgin Mobile,LTE,Active
+Saudi Arabia,Sa,420,4,Zain,LTE,Active
+Saudi Arabia,Sa,420,7,Zain,LTE,Active
+United Arab Emirates,Un,424,424,United Arab Emirates all operators,LTE,Active
+United Arab Emirates,Un,424,3,DU,LTE,Active
+United Arab Emirates,Un,424,2,Etisalat,LTE,Active
+Yemen,Ye,421,421,Yemen all operators,LTE,Active
+Yemen,Ye,421,999,Fix Line,LTE,Active
+Yemen,Ye,421,4,HITS/Y Unitel,LTE,Active
+Yemen,Ye,421,2,MTN/Spacetel,LTE,Active
+Yemen,Ye,421,1,Sabaphone,LTE,Active
+Yemen,Ye,421,3,Yemen Mob. CDMA,LTE,Active
+Bangladesh,Ba,470,7,Airtel/Warid,LTE,Active
+Bangladesh,Ba,470,5,Citycell,LTE,Active
+Bangladesh,Ba,470,6,Citycell,LTE,Active
+Bangladesh,Ba,470,1,GrameenPhone,LTE,Active
+Bangladesh,Ba,470,3,Orascom/Banglalink,LTE,Active
+Bangladesh,Ba,470,2,Robi/Aktel,LTE,Active
+Bangladesh,Ba,470,4,TeleTalk,LTE,Active
+Maldives,Ma,472,472,Maldives all operators,LTE,Active
+Maldives,Ma,472,1,Dhiraagu/C&W,LTE,Active
+Maldives,Ma,472,2,Ooredo/Wataniya,LTE,Active
+Cambodia,Ca,456,456,Cambodia all operators,LTE,Active
+Cambodia,Ca,456,4,Cambodia Advance Communications,LTE,Active
+Cambodia,Ca,456,1,Cellcard,LTE,Active
+Cambodia,Ca,456,8,Metfone,LTE,Active
+Cambodia,Ca,456,3,QB/Cambodia Adv. Comms.,LTE,Active
+Cambodia,Ca,456,2,Smart,LTE,Active
+Cambodia,Ca,456,5,Smart,LTE,Active
+Cambodia,Ca,456,6,Smart,LTE,Active
+Cambodia,Ca,456,9,Sotelco/Beeline,LTE,Active
+Cambodia,Ca,456,18,Cellcard,LTE,Active
+Cambodia,Ca,456,11,Seatel,LTE,Active
+Hong Kong,Ho,454,454,Hong Kong all operators,LTE,Active
+Hong Kong,Ho,454,11,China-HongKong Telecom Ltd (CHKTL),LTE,Active
+Hong Kong,Ho,454,12,China Mobile/Peoples,LTE,Active
+Hong Kong,Ho,454,13,China Mobile/Peoples,LTE,Active
+Malaysia,Ma,502,10,DiGi,LTE,Active
+Hong Kong,Ho,454,18,CSL Ltd.,LTE,Active
+Hong Kong,Ho,454,10,CSL/New World PCS Ltd.,LTE,Active
+Hong Kong,Ho,454,14,H3G/Hutchinson,LTE,Active
+Hong Kong,Ho,454,16,HKT/PCCW,LTE,Active
+Hong Kong,Ho,454,19,HKT/PCCW,LTE,Active
+Hong Kong,Ho,454,15,Vodafone/SmarTone,LTE,Active
+Hong Kong,Ho,454,17,Vodafone/SmarTone,LTE,Active
+Hongkong,Ho,454,28,China Mobile/Peoples,LTE,Active
+Hong Kong,Ho,454,20,HKT/PCCW,LTE,Active
+Hong Kong,Ho,454,29,HKT/PCCW,LTE,Active
+Hongkong,Ho,454,24,Multibyte Info Technology Ltd,LTE,Active
+Hong Kong,Ho,454,22,P Plus,LTE,Active
+Hong Kong,Ho,454,9,China Motion,LTE,Active
+Hong Kong,Ho,454,7,China Unicom Ltd,LTE,Active
+Hong Kong,Ho,454,1,Citic Telecom Ltd.,LTE,Active
+Hong Kong,Ho,454,0,CSL Ltd.,LTE,Active
+Hong Kong,Ho,454,2,CSL Ltd.,LTE,Active
+Hong Kong,Ho,454,3,H3G/Hutchinson,LTE,Active
+Hong Kong,Ho,454,4,H3G/Hutchinson,LTE,Active
+Hong Kong,Ho,454,5,H3G/Hutchinson,LTE,Active
+Hong Kong,Ho,454,8,Truephone,LTE,Active
+Hong Kong,Ho,454,6,Vodafone/SmarTone,LTE,Active
+Hongkong,Ho,454,31,CTExcel,LTE,Active
+Hong Kong,Ho,454,40,shared by private TETRA systems,LTE,Active
+Hong Kong,Ho,454,47,shared by private TETRA systems,LTE,Active
+Hong Kong,Ho,454,999,MNC-999,LTE,Active
+Brazil,Br,724,35,Telcom,LTE,Active
+"Korea S, Republic of",Ko,450,450,"Korea S, Republic of all operators",LTE,Active
+"Korea S, Republic of",Ko,450,2,KT Corp,LTE,Active
+"Korea S, Republic of",Ko,450,4,KT Corp,LTE,Active
+"Korea S, Republic of",Ko,450,8,KT Corp,LTE,Active
+"Korea S, Republic of",Ko,450,6,LG UPlus Corp,LTE,Active
+"Korea S, Republic of",Ko,450,3,SK Telecom,LTE,Active
+"Korea S, Republic of",Ko,450,5,SK Telecom Co. Ltd,LTE,Active
+South Korea,So,450,7,KT Powertel Co. Ltd,LTE,Active
+"Korea S, Republic of",Ko,450,99,MNC-099,LTE,Active
+"Korea S, Republic of",Ko,450,11,SK Telecom Co. Ltd,LTE,Active
+South Korea,So,450,12,SK Telecom Co. Ltd,LTE,Active
+Laos P.D.R.,La,457,457,Laos P.D.R. all operators,LTE,Active
+Laos P.D.R.,La,457,8,Beeline/Tigo/Millicom,LTE,Active
+Laos P.D.R.,La,457,2,ETL Mobile,LTE,Active
+Laos P.D.R.,La,457,1,Lao Tel,LTE,Active
+Laos P.D.R.,La,457,3,UNITEL/LAT,LTE,Active
+"Macao, China",Ma,455,455,"Macao, China all operators",LTE,Active
+"Macao, China",Ma,455,2,China Telecom,LTE,Active
+"Macao, China",Ma,455,1,C.T.M. TELEMOVEL+,LTE,Active
+"Macao, China",Ma,455,4,C.T.M. TELEMOVEL+,LTE,Active
+"Macao, China",Ma,455,3,Hutchison Telephone Co. Ltd,LTE,Active
+"Macao, China",Ma,455,5,Hutchison Telephone Co. Ltd,LTE,Active
+"Macao, China",Ma,455,0,Smartone Mobile,LTE,Active
+"Macao, China",Ma,455,6,Smartone Mobile,LTE,Active
+Vietnam,Vi,452,452,Vietnam all operators,LTE,Active
+Vietnam,Vi,452,7,Gmobile,LTE,Active
+Vietnam,Vi,452,8,I-Telecom,LTE,Active
+Vietnam,Vi,452,1,MobiFone,LTE,Active
+Vietnam,Vi,452,9,Reddi,LTE,Active
+Vietnam,Vi,452,3,S-Fone/Telecom,LTE,Active
+Vietnam,Vi,452,5,Vietnamobile,LTE,Active
+Vietnam,Vi,452,4,Viettel,LTE,Active
+Vietnam,Vi,452,6,Viettel,LTE,Active
+Vietnam,Vi,452,2,VinaPhone,LTE,Active
+China,Ch,460,460,China all operators,LTE,Active
+China,Ch,460,0,China Mobile GSM,LTE,Active
+China,Ch,460,2,China Mobile GSM,LTE,Active
+China,Ch,460,7,China Mobile GSM,LTE,Active
+China,Ch,460,4,China Space Mobile Satellite Telecommunications Co. Ltd (China Spacecom),LTE,Active
+China,Ch,460,3,China Telecom,LTE,Active
+China,Ch,460,5,China Telecom,LTE,Active
+China,Ch,460,1,China Unicom,LTE,Active
+China,Ch,460,6,China Unicom,LTE,Active
+China,Ch,460,11,China Unicom,LTE,Active
+"Korea N., Dem. Peoples Rep.",Ko,467,192,"CHEO Technology JV Co.""",LTE,Active
+"Korea N., Dem. Peoples Rep.",Ko,467,193,"Sun Net""",LTE,Active
+"Korea N., Dem. Peoples Rep.",Ko,467,5,"Koryolink""",LTE,Active
+Taiwan,Ta,466,466,Taiwan all operators,LTE,Active
+Taiwan,Ta,466,68,ACeS Taiwan - ACeS Taiwan Telecommunications Co Ltd,LTE,Active
+Taiwan,Ta,466,5,Asia Pacific Telecom Co. Ltd (APT),LTE,Active
+Taiwan,Ta,466,1,Far EasTone,LTE,Active
+Taiwan,Ta,466,2,Far EasTone,LTE,Active
+Taiwan,Ta,466,3,Far EasTone,LTE,Active
+Taiwan,Ta,466,6,Far EasTone,LTE,Active
+Taiwan,Ta,466,7,Far EasTone,LTE,Active
+Taiwan,Ta,466,9,VMAX Telecom Co. Ltd,LTE,Active
+Taiwan,Ta,466,11,Chunghwa Telecom LDM,LTE,Active
+Taiwan,Ta,466,10,Global Mobile Corp.,LTE,Active
+Taiwan,Ta,466,92,Chunghwa Telecom LDM,LTE,Active
+Taiwan,Ta,466,93,Mobitai,LTE,Active
+Taiwan,Ta,466,97,Taiwan Cellular,LTE,Active
+Taiwan,Ta,466,99,TransAsia,LTE,Active
+Taiwan,Ta,466,90,T-Star/VIBO,LTE,Active
+Taiwan,Ta,466,56,International Telecom Co. Ltd (FITEL),LTE,Active
+Taiwan,Ta,466,88,KG Telecom,LTE,Active
+Taiwan,Ta,466,89,T-Star/VIBO,LTE,Active
+Taiwan,Ta,466,779,MNC-779,LTE,Active
+Iran,Ir,432,432,Iran all operators,LTE,Active
+Iran,Ir,432,999,Fix Line,LTE,Active
+Iran,Ir,432,11,MCI/TCI,LTE,Active
+Iran,Ir,432,19,Mobile Telecommunications Company of Esfahan JV-PJS (MTCE),LTE,Active
+Iran,Ir,432,14,TKC/KFZO,LTE,Active
+Iran,Ir,432,70,MTCE,LTE,Active
+Iran,Ir,432,35,MTN/IranCell,LTE,Active
+Iran,Ir,432,32,Taliya,LTE,Active
+Iran,Ir,432,20,Rightel,LTE,Active
+Kyrgyzstan,Ky,437,437,Kyrgyzstan all operators,LTE,Active
+Kyrgyzstan,Ky,437,3,AkTel LLC,LTE,Active
+Kyrgyzstan,Ky,437,1,Beeline/Bitel,LTE,Active
+Kyrgyzstan,Ky,437,5,MEGACOM,LTE,Active
+Kyrgyzstan,Ky,437,9,O!/NUR Telecom,LTE,Active
+Tajikistan,Ta,436,436,Tajikistan all operators,LTE,Active
+Tajikistan,Ta,436,4,Babilon-M,LTE,Active
+Tajikistan,Ta,436,5,Bee Line,LTE,Active
+Tajikistan,Ta,436,2,CJSC Indigo Tajikistan,LTE,Active
+Tajikistan,Ta,436,3,Megafon,LTE,Active
+Tajikistan,Ta,436,1,Tcell/JC Somoncom,LTE,Active
+Tajikistan,Ta,436,12,Tcell/JC Somoncom,LTE,Active
+Turkmenistan,Tu,438,438,Turkmenistan all operators,LTE,Active
+Turkmenistan,Tu,438,2,Altyn Asyr/TM-Cell,LTE,Active
+Turkmenistan,Tu,438,1,MTS/Barash Communication,LTE,Active
+United Arab Emirates,Un,430,2,Etisalat,LTE,Active
+United Arab Emirates,Un,431,2,Etisalat,LTE,Active
+Uzbekistan,Uz,434,434,Uzbekistan all operators,LTE,Active
+Uzbekistan,Uz,434,4,Bee Line/Unitel,LTE,Active
+Uzbekistan,Uz,434,1,Buztel,LTE,Active
+Uzbekistan,Uz,434,7,MTS/Uzdunrobita,LTE,Active
+Japan,Ja,440,36,NTT DoCoMo Inc.,LTE,Active
+Uzbekistan,Uz,434,6,Perfectum Mobile / Rubion wireless Communication,LTE,Active
+Uzbekistan,Uz,434,5,Ucell/Coscom,LTE,Active
+Uzbekistan,Uz,434,2,Uzmacom,LTE,Active
+Japan,Ja,440,440,Japan all operators,LTE,Active
+Japan,Ja,440,7,KDDI Corporation,LTE,Active
+Japan,Ja,440,8,KDDI Corporation,LTE,Active
+Japan,Ja,440,1,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,2,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,3,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,9,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,4,SoftBank Corp,LTE,Active
+Japan,Ja,440,6,SoftBank Corp,LTE,Active
+Japan,Ja,440,0,Y-Mobile,LTE,Active
+Japan,Ja,440,50,KDDI Corporation,LTE,Active
+Japan,Ja,440,51,KDDI Corporation,LTE,Active
+Japan,Ja,440,52,KDDI Corporation,LTE,Active
+Japan,Ja,440,53,KDDI Corporation,LTE,Active
+Japan,Ja,440,54,KDDI Corporation,LTE,Active
+Japan,Ja,440,55,KDDI Corporation,LTE,Active
+Japan,Ja,440,56,KDDI Corporation,LTE,Active
+Japan,Ja,440,58,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,70,KDDI Corporation,LTE,Active
+Japan,Ja,440,71,KDDI Corporation,LTE,Active
+Japan,Ja,440,72,KDDI Corporation,LTE,Active
+Japan,Ja,440,73,KDDI Corporation,LTE,Active
+Japan,Ja,440,74,KDDI Corporation,LTE,Active
+Japan,Ja,440,75,KDDI Corporation,LTE,Active
+Japan,Ja,440,76,KDDI Corporation,LTE,Active
+Japan,Ja,440,77,KDDI Corporation,LTE,Active
+Japan,Ja,440,79,KDDI Corporation,LTE,Active
+Japan,Ja,440,78,Okinawa Cellular Telephone,LTE,Active
+Japan,Ja,440,80,KDDI Corporation,LTE,Active
+Japan,Ja,440,81,KDDI Corporation,LTE,Active
+Japan,Ja,440,82,KDDI Corporation,LTE,Active
+Japan,Ja,440,83,KDDI Corporation,LTE,Active
+Japan,Ja,440,84,KDDI Corporation,LTE,Active
+Japan,Ja,440,85,KDDI Corporation,LTE,Active
+Japan,Ja,440,86,KDDI Corporation,LTE,Active
+Japan,Ja,440,88,KDDI Corporation,LTE,Active
+Japan,Ja,440,89,KDDI Corporation,LTE,Active
+Japan,Ja,440,87,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,10,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,11,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,12,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,13,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,14,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,15,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,16,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,17,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,18,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,19,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,21,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,22,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,23,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,24,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,25,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,26,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,27,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,28,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,29,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,20,SoftBank Corp,LTE,Active
+Japan,Ja,440,30,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,31,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,32,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,33,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,34,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,35,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,37,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,38,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,39,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,49,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,40,SoftBank Corp,LTE,Active
+Japan,Ja,440,41,SoftBank Corp,LTE,Active
+Japan,Ja,440,42,SoftBank Corp,LTE,Active
+Japan,Ja,440,43,SoftBank Corp,LTE,Active
+Japan,Ja,440,44,SoftBank Corp,LTE,Active
+Japan,Ja,440,45,SoftBank Corp,LTE,Active
+Japan,Ja,440,46,SoftBank Corp,LTE,Active
+Japan,Ja,440,47,SoftBank Corp,LTE,Active
+Japan,Ja,440,48,SoftBank Corp,LTE,Active
+Japan,Ja,440,60,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,61,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,62,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,63,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,64,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,65,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,66,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,67,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,68,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,69,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,99,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,440,90,SoftBank Corp,LTE,Active
+Japan,Ja,440,92,SoftBank Corp,LTE,Active
+Japan,Ja,440,93,SoftBank Corp,LTE,Active
+Japan,Ja,440,94,SoftBank Corp,LTE,Active
+Japan,Ja,440,95,SoftBank Corp,LTE,Active
+Japan,Ja,440,96,SoftBank Corp,LTE,Active
+Japan,Ja,440,97,SoftBank Corp,LTE,Active
+Japan,Ja,440,98,SoftBank Corp,LTE,Active
+Japan,Ja,441,70,KDDI Corporation,LTE,Active
+Japan,Ja,441,40,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,441,41,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,441,42,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,441,43,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,441,44,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,441,45,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,441,90,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,441,91,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,441,92,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,441,93,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,441,94,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,441,98,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,441,99,NTT DoCoMo Inc.,LTE,Active
+Japan,Ja,441,61,SoftBank Corp,LTE,Active
+Japan,Ja,441,62,SoftBank Corp,LTE,Active
+Japan,Ja,441,63,SoftBank Corp,LTE,Active
+Japan,Ja,441,64,SoftBank Corp,LTE,Active
+Japan,Ja,441,65,SoftBank Corp,LTE,Active
+Japan,Ja,441,50,TU-KA Cellular Tokyo Inc.,LTE,Active
+Japan,Ja,441,51,TU-KA Phone Kansai Inc.,LTE,Active
+Algeria,Al,603,603,Algeria all operators,LTE,Active
+Algeria,Al,603,2,Djezzy,LTE,Active
+Algeria,Al,603,1,Mobils,LTE,Active
+Algeria,Al,603,3,Ooredoo,LTE,Active
+Libya,Li,606,606,Libya all operators,LTE,Active
+Libya,Li,606,6,Hatef,LTE,Active
+Libya,Li,606,1,Al-Madar,LTE,Active
+Libya,Li,606,2,Al-Madar,LTE,Active
+Libya,Li,606,0,Libyaa,LTE,Active
+Libya,Li,606,3,Libyaa,LTE,Active
+Egypt,Eg,602,602,Egypt all operators,LTE,Active
+Egypt,Eg,602,3,ETISALAT,LTE,Active
+Egypt,Eg,602,1,Orange/Mobinil,LTE,Active
+Egypt,Eg,602,2,Vodafone/Mirsfone,LTE,Active
+Egypt,Eg,602,4,WE/Telecom,LTE,Active
+Gambia,Ga,607,607,Gambia all operators,LTE,Active
+Gambia,Ga,607,2,Africel,LTE,Active
+Gambia,Ga,607,3,Comium,LTE,Active
+Gambia,Ga,607,1,Gamcel,LTE,Active
+Gambia,Ga,607,4,Q-Cell,LTE,Active
+Gambia,Ga,607,779,MNC-779,LTE,Active
+Mauritania,Ma,609,609,Mauritania all operators,LTE,Active
+Mauritania,Ma,609,2,Chinguitel,LTE,Active
+Mauritania,Ma,609,1,Mattel,LTE,Active
+Mauritania,Ma,609,10,Mauritel,LTE,Active
+Morocco,Mo,604,604,Morocco all operators,LTE,Active
+Morocco,Mo,604,4,Al Houria Telecom,LTE,Active
+Morocco,Mo,604,1,IAM/Itissallat,LTE,Active
+Morocco,Mo,604,6,IAM/Itissallat,LTE,Active
+Morocco,Mo,604,2,INWI/WANA,LTE,Active
+Morocco,Mo,604,5,INWI/WANA,LTE,Active
+Morocco,Mo,604,0,Orange/Medi Telecom,LTE,Active
+Morocco,Mo,604,99,Al Houria Telecom,LTE,Active
+Senegal,Se,608,608,Senegal all operators,LTE,Active
+Senegal,Se,608,3,Expresso/Sudatel,LTE,Active
+Senegal,Se,608,1,Orange/Sonatel,LTE,Active
+Senegal,Se,608,2,TIGO/Sentel GSM,LTE,Active
+Senegal,Se,608,779,MNC-779,LTE,Active
+Tunisia,Tu,605,605,Tunisia all operators,LTE,Active
+Tunisia,Tu,605,999,Fix Line,LTE,Active
+Tunisia,Tu,605,1,Orange,LTE,Active
+Tunisia,Tu,605,3,Oreedo/Orascom,LTE,Active
+Tunisia,Tu,605,2,TuniCell/Tunisia Telecom,LTE,Active
+Tunisia,Tu,605,6,TuniCell/Tunisia Telecom,LTE,Active
+Angola,An,631,631,Angola all operators,LTE,Active
+Angola,An,631,3,Angola Telecom (AKA MoviCel),LTE,Active
+Angola,An,631,4,MoviCel,LTE,Active
+Angola,An,631,2,Unitel,LTE,Active
+"Congo, Dem. Rep.",Co,630,630,"Congo, Dem. Rep. all operators",LTE,Active
+"Congo, Dem. Rep.",Co,630,90,Africell,LTE,Active
+"Congo, Dem. Rep.",Co,630,2,Airtel/ZAIN,LTE,Active
+"Congo, Dem. Rep.",Co,630,3,MNC-003,LTE,Active
+"Congo, Dem. Rep.",Co,630,5,SuperCell,LTE,Active
+"Congo, Dem. Rep.",Co,630,1,Vodacom,LTE,Active
+"Congo, Dem. Rep.",Co,630,86,Orange RDC sarl,LTE,Active
+"Congo, Dem. Rep.",Co,630,89,TIGO/Oasis,LTE,Active
+"Congo, Dem. Rep.",Co,630,88,Yozma Timeturns sprl (YTT),LTE,Active
+Djibouti,Dj,638,638,Djibouti all operators,LTE,Active
+Djibouti,Dj,638,1,Djibouti Telecom SA / Evatis,LTE,Active
+Ethiopia,Et,636,636,Ethiopia all operators,LTE,Active
+Ethiopia,Et,636,1,Ethio Mobile,LTE,Active
+Guinea-Bissau,Gu,632,632,Guinea-Bissau all operators,LTE,Active
+Guinea-Bissau,Gu,632,999,Fix     Line,LTE,Active
+Guinea-Bissau,Gu,632,1,GuineTel,LTE,Active
+Guinea-Bissau,Gu,632,7,GuineTel,LTE,Active
+Guinea-Bissau,Gu,632,3,Orange,LTE,Active
+Guinea-Bissau,Gu,632,2,SpaceTel,LTE,Active
+Rwanda,Rw,635,635,Rwanda all operators,LTE,Active
+Rwanda,Rw,635,14,Airtel,LTE,Active
+Rwanda,Rw,635,10,MTN/Rwandacell,LTE,Active
+Rwanda,Rw,635,12,Rwandatel,LTE,Active
+Rwanda,Rw,635,13,TIGO,LTE,Active
+Seychelles,Se,633,633,Seychelles all operators,LTE,Active
+Seychelles,Se,633,10,Airtel,LTE,Active
+Seychelles,Se,633,1,C&W,LTE,Active
+Seychelles,Se,633,2,Smartcom,LTE,Active
+Somalia,So,637,637,Somalia all operators,LTE,Active
+Somalia,So,637,30,Golis,LTE,Active
+Somalia,So,637,50,Hormuud,LTE,Active
+Somalia,So,637,25,Hormuud Telecom Somalia,LTE,Active
+Somalia,So,637,19,HorTel,LTE,Active
+Somalia,So,637,10,Nationlink,LTE,Active
+Somalia,So,637,0,MNC-000,LTE,Active
+Somalia,So,637,4,Somafone,LTE,Active
+Somalia,So,637,1,Telesom,LTE,Active
+Somalia,So,637,99,MNC-099,LTE,Active
+Somalia,So,637,60,Nationlink,LTE,Active
+Somalia,So,637,71,Somtel,LTE,Active
+Somalia,So,637,82,Somtel,LTE,Active
+Sudan,Su,634,634,Sudan all operators,LTE,Active
+Sudan,Su,634,0,Canar Telecom,LTE,Active
+Sudan,Su,634,5,Canar Telecom,LTE,Active
+Sudan,Su,634,8,Canar Telecom,LTE,Active
+Sudan,Su,634,2,MTN,LTE,Active
+Sudan,Su,634,3,MTN,LTE,Active
+Sudan,Su,634,9,Privet Network / NEC,LTE,Active
+Sudan,Su,634,7,Sudani One,LTE,Active
+Sudan,Su,634,1,Zain,LTE,Active
+Sudan,Su,634,6,Zain,LTE,Active
+Sudan,Su,634,22,MTN,LTE,Active
+Sudan,Su,634,99,MTN,LTE,Active
+Sudan,Su,634,15,Sudani One,LTE,Active
+Sudan,Su,634,999,Fix Line,LTE,Active
+Benin,Be,616,616,Benin all operators,LTE,Active
+Benin,Be,616,0,Bell Benin/BBCOM,LTE,Active
+Benin,Be,616,4,Bell Benin/BBCOM,LTE,Active
+Benin,Be,616,2,Etisalat/MOOV,LTE,Active
+Benin,Be,616,5,GloMobile,LTE,Active
+Benin,Be,616,1,Libercom,LTE,Active
+Benin,Be,616,3,MTN/Spacetel,LTE,Active
+Burkina Faso,Bu,613,613,Burkina Faso all operators,LTE,Active
+Burkina Faso,Bu,613,2,Orange,LTE,Active
+Burkina Faso,Bu,613,3,Telecel,LTE,Active
+Burkina Faso,Bu,613,1,Telmob,LTE,Active
+Guinea,Gu,611,611,Guinea all operators,LTE,Active
+Guinea,Gu,611,5,Celcom,LTE,Active
+Guinea,Gu,611,3,Intercel,LTE,Active
+Guinea,Gu,611,4,MTN/Areeba,LTE,Active
+Guinea,Gu,611,1,Orange/Sonatel/Spacetel,LTE,Active
+Guinea,Gu,611,2,SotelGui,LTE,Active
+Ivory Coast,Iv,612,612,Ivory Coast all operators,LTE,Active
+Ivory Coast,Iv,612,7,Aircomm SA,LTE,Active
+Ivory Coast,Iv,612,4,Comium,LTE,Active
+Ivory Coast,Iv,612,1,Comstar,LTE,Active
+Ivory Coast,Iv,612,2,Moov,LTE,Active
+Ivory Coast,Iv,612,5,MTN,LTE,Active
+Ivory Coast,Iv,612,3,Orange,LTE,Active
+Ivory Coast,Iv,612,6,OriCell,LTE,Active
+Liberia,Li,618,618,Liberia all operators,LTE,Active
+Liberia,Li,618,3,Celcom,LTE,Active
+Liberia,Li,618,4,Comium British Virgin Islands,LTE,Active
+Liberia,Li,618,2,Libercell,LTE,Active
+Liberia,Li,618,1,Lonestar,LTE,Active
+Liberia,Li,618,7,Orange,LTE,Active
+Liberia,Li,618,20,LibTelco,LTE,Active
+Mali,Ma,610,610,Mali all operators,LTE,Active
+Mali,Ma,610,3,ATEL SA,LTE,Active
+Mali,Ma,610,1,Malitel,LTE,Active
+Mali,Ma,610,2,Orange/IKATEL,LTE,Active
+Mauritius,Ma,617,617,Mauritius all operators,LTE,Active
+Mauritius,Ma,617,2,CHILI/MTML,LTE,Active
+Mauritius,Ma,617,3,CHILI/MTML,LTE,Active
+Mauritius,Ma,617,1,Orange/Cellplus,LTE,Active
+Mauritius,Ma,617,10,Emtel Ltd,LTE,Active
+Niger,Ni,614,614,Niger all operators,LTE,Active
+Niger,Ni,614,2,Airtel/Zain/CelTel,LTE,Active
+Niger,Ni,614,3,MOOV/TeleCel,LTE,Active
+Niger,Ni,614,4,Orange,LTE,Active
+Sierra Leone,Si,619,619,Sierra Leone all operators,LTE,Active
+Sierra Leone,Si,619,3,Africel,LTE,Active
+Sierra Leone,Si,619,5,Africel,LTE,Active
+Sierra Leone,Si,619,4,Comium,LTE,Active
+Sierra Leone,Si,619,9,Intergroup Telecom,LTE,Active
+Sierra Leone,Si,619,1,Orange,LTE,Active
+Sierra Leone,Si,619,7,Qcell,LTE,Active
+Sierra Leone,Si,619,2,Tigo/Millicom,LTE,Active
+Sierra Leone,Si,619,50,Datatel (SL) Ltd CDMA,LTE,Active
+Sierra Leone,Si,619,40,Datatel (SL) Ltd GSM,LTE,Active
+Sierra Leone,Si,619,25,Mobitel,LTE,Active
+Togo,To,615,615,Togo all operators,LTE,Active
+Togo,To,615,3,Atlantique Telecom / Moov,LTE,Active
+Togo,To,615,2,Telecel/MOOV,LTE,Active
+Togo,To,615,1,Togo Cellulaire / TogoCel,LTE,Active
+Botswana,Bo,652,652,Botswana all operators,LTE,Active
+Botswana,Bo,652,4,beMobile,LTE,Active
+Botswana,Bo,652,1,Mascom,LTE,Active
+Botswana,Bo,652,0,MNC-000,LTE,Active
+Botswana,Bo,652,2,Orange,LTE,Active
+Comoros,Co,654,654,Comoros all operators,LTE,Active
+Comoros,Co,654,1,HURI - SNPT,LTE,Active
+Comoros,Co,654,2,TELMA TELCO SA,LTE,Active
+Eritrea,Er,657,1,Eritrea Telecommunication Services Corp. / Eritel,LTE,Active
+Lesotho,Le,651,651,Lesotho all operators,LTE,Active
+Lesotho,Le,651,2,Econet/Ezi-cel,LTE,Active
+Lesotho,Le,651,1,Vodacom Lesotho,LTE,Active
+Malawi,Ma,650,650,Malawi all operators,LTE,Active
+Malawi,Ma,650,10,Airtel/Zain/Celtel ltd.,LTE,Active
+Malawi,Ma,650,1,TNM/Telekom Network Ltd.,LTE,Active
+South Africa,So,655,655,South Africa all operators,LTE,Active
+South Africa,So,655,30,Bokamoso Consortium,LTE,Active
+South Africa,So,655,32,Ilizwi Telecommunications,LTE,Active
+Malaysia,Ma,502,16,DiGi,LTE,Active
+South Africa,So,655,31,Karabo Telecoms,LTE,Active
+South Africa,So,655,33,Thinta Thinta Telecommunications,LTE,Active
+South Africa,So,655,21,Cape Town Metropolitan,LTE,Active
+South Africa,So,655,7,Cell C,LTE,Active
+South Africa,So,655,6,Sentech,LTE,Active
+South Africa,So,655,2,Telkom/8.ta,LTE,Active
+South Africa,So,655,1,Vodacom,LTE,Active
+South Africa,So,655,10,MTN,LTE,Active
+South Africa,So,655,12,MTN,LTE,Active
+South Africa,So,655,16,Phoenix Systems Integration (Pty) Ltd,LTE,Active
+South Africa,So,655,11,South African Police Service Gauteng,LTE,Active
+South Africa,So,655,19,Wireless Business Solutions (Pty) Ltd,LTE,Active
+South Sudan (Republic of),So,659,659,South Sudan (Republic of) all operators,LTE,Active
+South Sudan (Republic of),So,659,97,Gemtel,LTE,Active
+South Sudan (Republic of),So,659,92,MTN-South Sudan,LTE,Active
+South Sudan (Republic of),So,659,95,Vivacel/NOW,LTE,Active
+South Sudan (Republic of),So,659,91,Zain-South Sudan,LTE,Active
+South Sudan (Republic of),So,659,3,Gemtel Ltd (South Sudan,LTE,Active
+South Sudan (Republic of),So,659,0,MNC-000,LTE,Active
+South Sudan (Republic of),So,659,2,MTN,LTE,Active
+South Sudan (Republic of),So,659,4,Network of The World Ltd (NOW) (South Sudan,LTE,Active
+South Sudan (Republic of),So,659,7,Sudani,LTE,Active
+South Sudan (Republic of),So,659,5,Vivacell,LTE,Active
+South Sudan (Republic of),So,659,6,Zain,LTE,Active
+South Sudan (Republic of),So,659,12,Sudani/Sudatel,LTE,Active
+Swaziland,Sw,653,653,Swaziland all operators,LTE,Active
+Swaziland,Sw,653,779,MNC-779,LTE,Active
+Swaziland,Sw,653,2,Swazi Mobile,LTE,Active
+Swaziland,Sw,653,1,SwaziTelecom,LTE,Active
+Swaziland,Sw,653,10,Swazi MTN,LTE,Active
+Burundi,Bu,642,642,Burundi all operators,LTE,Active
+Burundi,Bu,642,2,Africel / Safaris,LTE,Active
+Burundi,Bu,642,8,Lumitel/Viettel,LTE,Active
+Burundi,Bu,642,3,Onatel / Telecel,LTE,Active
+Guyana,Gu,738,0,MNC-000,LTE,Active
+Burundi,Bu,642,7,Smart Mobile / LACELL,LTE,Active
+Burundi,Bu,642,1,Spacetel / Econet / Leo,LTE,Active
+Burundi,Bu,642,82,Spacetel / Econet / Leo,LTE,Active
+Burundi,Bu,642,999,Fix   Line,LTE,Active
+Madagascar,Ma,646,646,Madagascar all operators,LTE,Active
+Madagascar,Ma,646,1,Airtel/MADACOM,LTE,Active
+Madagascar,Ma,646,2,Orange/Soci,LTE,Active
+Madagascar,Ma,646,3,Sacel,LTE,Active
+Madagascar,Ma,646,4,Telma,LTE,Active
+Mozambique,Mo,643,643,Mozambique all operators,LTE,Active
+Mozambique,Mo,643,1,mCel,LTE,Active
+Mozambique,Mo,643,3,Movitel,LTE,Active
+Mozambique,Mo,643,4,Vodacom,LTE,Active
+Namibia,Na,649,649,Namibia all operators,LTE,Active
+Namibia,Na,649,1,MTC,LTE,Active
+Namibia,Na,649,2,Switch/Nam. Telec.,LTE,Active
+Namibia,Na,649,3,TN Mobile,LTE,Active
+Reunion,Re,647,647,Reunion all operators,LTE,Active
+Reunion,Re,647,0,Orange,LTE,Active
+Reunion,Re,647,2,Outremer Telecom,LTE,Active
+Reunion,Re,647,10,SFR,LTE,Active
+Uganda,Ug,641,641,Uganda all operators,LTE,Active
+Uganda,Ug,641,1,Airtel,LTE,Active
+Uganda,Ug,641,4,Lycamobile,LTE,Active
+Uganda,Ug,641,22,Airtel,LTE,Active
+Uganda,Ug,641,66,i-Tel Ltd,LTE,Active
+Uganda,Ug,641,30,K2 Telecom Ltd,LTE,Active
+Uganda,Ug,641,33,Smile,LTE,Active
+Uganda,Ug,641,11,Mango,LTE,Active
+Uganda,Ug,641,10,MTN,LTE,Active
+Uganda,Ug,641,14,Orange,LTE,Active
+Uganda,Ug,641,18,Suretelecom Uganda Ltd,LTE,Active
+Uganda,Ug,641,999,Fix Line,LTE,Active
+Zambia,Za,645,645,Zambia all operators,LTE,Active
+Zambia,Za,645,1,Airtel,LTE,Active
+Zambia,Za,645,2,MTN,LTE,Active
+Zambia,Za,645,3,Zamtel,LTE,Active
+Zimbabwe,Zi,648,4,Econet,LTE,Active
+Zimbabwe,Zi,648,1,Net One,LTE,Active
+Cameroon,Ca,624,624,Cameroon all operators,LTE,Active
+Cameroon,Ca,624,1,MTN,LTE,Active
+Cameroon,Ca,624,4,Nextel,LTE,Active
+Cameroon,Ca,624,2,Orange,LTE,Active
+Cape Verde,Ca,625,625,Cape Verde all operators,LTE,Active
+Cape Verde,Ca,625,1,CV Movel,LTE,Active
+Cape Verde,Ca,625,2,T+ Telecom,LTE,Active
+Central African Rep.,Ce,623,623,Central African Rep. all operators,LTE,Active
+Central African Rep.,Ce,623,1,Centrafr. Telecom+,LTE,Active
+Central African Rep.,Ce,623,4,Nationlink,LTE,Active
+Central African Rep.,Ce,623,3,Orange/Celca,LTE,Active
+Central African Rep.,Ce,623,2,Telecel Centraf.,LTE,Active
+Chad,Ch,622,622,Chad all operators,LTE,Active
+Chad,Ch,622,1,Airtel Tchad SA,LTE,Active
+Chad,Ch,622,4,Mobilsotel SA,LTE,Active
+Chad,Ch,622,3,Moov Africa Tchad SA,LTE,Active
+Chad,Ch,622,7,Salam/Sotel,LTE,Active
+Chad,Ch,622,2,Tchad Mobile,LTE,Active
+"Congo, Republic",Co,629,629,"Congo, Republic all operators",LTE,Active
+"Congo, Republic",Co,629,1,Airtel SA,LTE,Active
+"Congo, Republic",Co,629,2,Azur SA (ETC),LTE,Active
+"Congo, Republic",Co,629,7,Warid,LTE,Active
+"Congo, Republic",Co,629,10,MTN/Libertis,LTE,Active
+Equatorial Guinea,Eq,627,627,Equatorial Guinea all operators,LTE,Active
+Equatorial Guinea,Eq,627,3,HiTs-GE,LTE,Active
+Equatorial Guinea,Eq,627,1,ORANGE/GETESA,LTE,Active
+Gabon,Ga,628,628,Gabon all operators,LTE,Active
+Gabon,Ga,628,3,Airtel/ZAIN/Celtel Gabon S.A.,LTE,Active
+Gabon,Ga,628,4,Azur/Usan S.A.,LTE,Active
+Gabon,Ga,628,1,Libertis S.A.,LTE,Active
+Gabon,Ga,628,2,MOOV/Telecel,LTE,Active
+Ghana,Gh,620,620,Ghana all operators,LTE,Active
+Ghana,Gh,620,3,Airtel/Tigo,LTE,Active
+Ghana,Gh,620,6,Airtel/Tigo,LTE,Active
+Ghana,Gh,620,4,Expresso Ghana Ltd,LTE,Active
+Ghana,Gh,620,7,GloMobile,LTE,Active
+Ghana,Gh,620,1,MTN,LTE,Active
+Ghana,Gh,620,2,Vodafone,LTE,Active
+Nigeria,Ni,621,621,Nigeria all operators,LTE,Active
+Nigeria,Ni,621,60,9mobile,LTE,Active
+Nigeria,Ni,621,20,Airtel,LTE,Active
+Nigeria,Ni,621,27,Smile,LTE,Active
+Nigeria,Ni,621,25,Visafone,LTE,Active
+Nigeria,Ni,621,50,Glo Mobile,LTE,Active
+Nigeria,Ni,621,97,MNC-097,LTE,Active
+Nigeria,Ni,621,96,Starcomms,LTE,Active
+Nigeria,Ni,621,99,Starcomms,LTE,Active
+Nigeria,Ni,621,30,MTN,LTE,Active
+Nigeria,Ni,621,40,ntel,LTE,Active
+Nigeria,Ni,621,1,Visafone,LTE,Active
+Nigeria,Ni,621,999,MNC-999,LTE,Active
+Nigeria,Ni,621,997,Multi-Links,LTE,Active
+Nigeria,Ni,621,998,Starcomms,LTE,Active
+Nigeria,Ni,621,996,Visafone,LTE,Active
+Sao Tome & Principe,Sa,626,1,CSTmovel,LTE,Active
+Malaysia,Ma,502,12,Maxis,LTE,Active
+American Samoa,Am,544,544,American Samoa all operators,LTE,Active
+American Samoa,Am,544,998,American Samoa Telecom,LTE,Active
+American Samoa,Am,544,11,BlueSky,LTE,Active
+Cook Islands,Co,548,548,Cook Islands all operators,LTE,Active
+Cook Islands,Co,548,1,Telecom Cook Islands Ltd,LTE,Active
+Fiji,Fi,542,542,Fiji all operators,LTE,Active
+Fiji,Fi,542,2,DigiCell,LTE,Active
+Fiji,Fi,542,0,MNC-000,LTE,Active
+Fiji,Fi,542,3,Telecom Fiji Ltd (CDMA),LTE,Active
+Fiji,Fi,542,1,Vodafone,LTE,Active
+French Polynesia,Fr,547,547,French Polynesia all operators,LTE,Active
+French Polynesia,Fr,547,15,Pacific Mobile Telecom (PMT),LTE,Active
+French Polynesia,Fr,547,20,Vini/Tikiphone,LTE,Active
+Kiribati,Ki,545,9,Kiribati Frigate,LTE,Active
+Kiribati,Ki,545,1,Kiribati TSKL / Telecom Services Kiribati Ltd,LTE,Active
+New Caledonia,Ne,546,546,New Caledonia all operators,LTE,Active
+New Caledonia,Ne,546,1,OPT Mobilis,LTE,Active
+Samoa,Sa,549,0,Digicel,LTE,Active
+Samoa,Sa,549,1,Telecom Samoa Cellular Ltd.,LTE,Active
+Samoa,Sa,549,27,Samoatel Mobile,LTE,Active
+Samoa,Sa,549,999,Fix Line,LTE,Active
+Solomon Islands,So,540,540,Solomon Islands all operators,LTE,Active
+Solomon Islands,So,540,2,bemobile,LTE,Active
+Solomon Islands,So,540,1,BREEZE,LTE,Active
+Solomon Islands,So,540,0,MNC-000,LTE,Active
+Solomon Islands,So,540,10,BREEZE,LTE,Active
+Vanuatu,Va,541,541,Vanuatu all operators,LTE,Active
+Vanuatu,Va,541,5,DigiCel,LTE,Active
+Vanuatu,Va,541,1,SMILE,LTE,Active
+Wallis and Futuna,Wa,543,1,Service des Postes et des Telecommunications (Wallis and Futuna,LTE,Active
+Australia,Au,505,505,Australia all operators,LTE,Active
+Australia,Au,505,14,AAPT Ltd.,LTE,Active
+Australia,Au,505,12,H3G Ltd.,LTE,Active
+Australia,Au,505,19,Lycamobile Pty Ltd,LTE,Active
+Australia,Au,505,13,Railcorp/Vodafone,LTE,Active
+Australia,Au,505,11,Telstra Corp. Ltd.,LTE,Active
+Australia,Au,505,16,Victorian Rail Track Corp. (VicTrack),LTE,Active
+Norfolk Island,No,505,10,Norfolk Telecom,LTE,Active
+Australia,Au,505,24,Advanced Comm Tech Pty.,LTE,Active
+Australia,Au,505,26,Dialogue Communications Pty Ltd,LTE,Active
+Australia,Au,505,9,Airnet Commercial Australia Ltd..,LTE,Active
+Australia,Au,505,4,Department of Defense,LTE,Active
+Australia,Au,505,6,H3G Ltd.,LTE,Active
+Australia,Au,505,8,Railcorp/Vodafone,LTE,Active
+Australia,Au,505,2,Singtel Optus,LTE,Active
+Australia,Au,505,1,Telstra Corp. Ltd.,LTE,Active
+Australia,Au,505,5,The Ozitel Network Pty.,LTE,Active
+Australia,Au,505,3,Vodafone,LTE,Active
+Australia,Au,505,7,Vodafone,LTE,Active
+Australia,Au,505,88,Pivotel Group Ltd,LTE,Active
+Australia,Au,505,99,Railcorp/Vodafone,LTE,Active
+Australia,Au,505,90,Singtel Optus,LTE,Active
+Australia,Au,505,71,Telstra Corp. Ltd.,LTE,Active
+Australia,Au,505,72,Telstra Corp. Ltd.,LTE,Active
+Australia,Au,505,32,Thales Australia,LTE,Active
+Australia,Au,505,38,"Vodafone (previously Crazy John""s)",LTE,Active
+Australia,Au,505,999,Fix Line,LTE,Active
+Malaysia,Ma,502,502,Malaysia all operators,LTE,Active
+Malaysia,Ma,502,152,Yes,LTE,Active
+Malaysia,Ma,502,156,Altel Communications,LTE,Active
+Malaysia,Ma,502,151,Baraka Telecom Sdn Bhd,LTE,Active
+Malaysia,Ma,502,155,Samata Communications Sdn Bhd,LTE,Active
+Malaysia,Ma,502,154,Tron/Talk Focus Sdn Bhd,LTE,Active
+Malaysia,Ma,502,150,Tune Talk,LTE,Active
+Malaysia,Ma,502,153,Webe Digital,LTE,Active
+Malaysia,Ma,502,198,Celcom,LTE,Active
+Malaysia,Ma,502,195,XOX Com,LTE,Active
+Malaysia,Ma,502,1,Art900,LTE,Active
+Malaysia,Ma,502,13,Celcom,LTE,Active
+Malaysia,Ma,502,19,Celcom,LTE,Active
+Malaysia,Ma,502,17,Maxis,LTE,Active
+Malaysia,Ma,502,11,Telekom Malaysia,LTE,Active
+Malaysia,Ma,502,14,Telekom Malaysia,LTE,Active
+Malaysia,Ma,502,18,U Mobile,LTE,Active
+Malaysia,Ma,502,20,Electcoms Wireless Sdn Bhd,LTE,Active
+Malaysia,Ma,502,999,Fix Line,LTE,Active
+Brunei Darussalam,Br,528,528,Brunei Darussalam all operators,LTE,Active
+Brunei Darussalam,Br,528,2,b-mobile,LTE,Active
+Brunei Darussalam,Br,528,1,Telekom Brunei Bhd (TelBru),LTE,Active
+Brunei Darussalam,Br,528,11,Datastream (DTSCom),LTE,Active
+Singapore,Si,525,525,Singapore all operators,LTE,Active
+Singapore,Si,525,999,Fix Line,LTE,Active
+Singapore,Si,525,12,GRID Communications Pte Ltd,LTE,Active
+Singapore,Si,525,3,MobileOne Ltd,LTE,Active
+Singapore,Si,525,1,Singtel,LTE,Active
+Singapore,Si,525,2,Singtel,LTE,Active
+Singapore,Si,525,7,Singtel,LTE,Active
+Singapore,Si,525,5,Starhub,LTE,Active
+Singapore,Si,525,6,Starhub,LTE,Active
+Thailand,Th,520,520,Thailand all operators,LTE,Active
+Thailand,Th,520,20,ACeS Thailand - ACeS Regional Services Co Ltd,LTE,Active
+Thailand,Th,520,23,Digital Phone Co.,LTE,Active
+Thailand,Th,520,25,True Move,LTE,Active
+Thailand,Th,520,15,ACT Mobile,LTE,Active
+Thailand,Th,520,10,MNC-010,LTE,Active
+Thailand,Th,520,18,Total Access (DTAC),LTE,Active
+Thailand,Th,520,1,AIS/Advanced Info Service,LTE,Active
+Thailand,Th,520,3,AIS/Advanced Info Service,LTE,Active
+Thailand,Th,520,0,Hutch/CAT CDMA,LTE,Active
+Thailand,Th,520,5,Total Access (DTAC),LTE,Active
+Thailand,Th,520,2,True Move Co. Ltd.Move (CAT),LTE,Active
+Thailand,Th,520,4,True Move/Orange,LTE,Active
+Thailand,Th,520,88,MNC-088,LTE,Active
+Thailand,Th,520,47,TOT Public Company Limited,LTE,Active
+Thailand,Th,520,99,True Move/Orange,LTE,Active
+Thailand,Th,520,999,Fix Line,LTE,Active
+East Timor,Ea,514,999,Fix Line,LTE,Active
+Timor-Leste,Ti,514,1,Telin/ Telkomcel,LTE,Active
+Timor-Leste,Ti,514,2,Timor Telecom,LTE,Active
+Timor-Leste,Ti,514,3,Viettel Timor-Leste,LTE,Active
+Indonesia,In,510,510,Indonesia all operators,LTE,Active
+Indonesia,In,510,8,Axis/Natrindo,LTE,Active
+Indonesia,In,510,7,Flexi (PT Telkom) (CDMA),LTE,Active
+Indonesia,In,510,1,Indosat/Satelindo/M3,LTE,Active
+Indonesia,In,510,0,PT Pasifik Satelit Nusantara (PSN),LTE,Active
+Indonesia,In,510,3,PT Pasifik Satelit Nusantara (PSN),LTE,Active
+Indonesia,In,510,9,PT Smartfren Telecom Tbk,LTE,Active
+Indonesia,In,510,99,Esia (PT Bakrie Telecom) (CDMA),LTE,Active
+Indonesia,In,510,89,H3G CP,LTE,Active
+Indonesia,In,510,21,Indosat/Satelindo/M3,LTE,Active
+Indonesia,In,510,27,PT Sampoerna Telekomunikasi Indonesia (STI),LTE,Active
+Indonesia,In,510,28,PT Smartfren Telecom Tbk,LTE,Active
+Indonesia,In,510,20,Telkomsel / TELKOMMobile,LTE,Active
+Indonesia,In,510,11,PT. Excelcom,LTE,Active
+Indonesia,In,510,10,Telkomsel,LTE,Active
+Indonesia,In,510,999,Fix Line,LTE,Active
+Philippines,Ph,515,515,Philippines all operators,LTE,Active
+Philippines,Ph,515,0,Fix Line,LTE,Active
+Philippines,Ph,515,1,Globe Telecom,LTE,Active
+Philippines,Ph,515,2,Globe Telecom,LTE,Active
+Philippines,Ph,515,3,Smart,LTE,Active
+Philippines,Ph,515,5,SUN/Digitel,LTE,Active
+Philippines,Ph,515,99,MNC-099,LTE,Active
+Philippines,Ph,515,88,Next Mobile,LTE,Active
+Philippines,Ph,515,11,PLDT / ACeS,LTE,Active
+Philippines,Ph,515,18,RED Mobile/Cure,LTE,Active
+Philippines,Ph,515,999,Fix Line,LTE,Active
+Marshall Islands,Ma,551,1,Marshall Islands National Telecommunications Authority (MINTA),LTE,Active
+Micronesia,Mi,550,1,FSM Telecommunications Corp.,LTE,Active
+Niue,Ni,555,1,Niue Telecom,LTE,Active
+Palau,Pa,552,2,PECI/PalauTel (Palau,LTE,Active
+Palau (Republic of),Pa,552,1,Palau National Communications Corp. (PNCC) (Palau,LTE,Active
+Palau (Republic of),Pa,552,80,Palau Mobile Corp. (PMC) (Palau,LTE,Active
+Tuvalu,Tu,553,1,Tuvalu Telecommunication Corporation (TTC),LTE,Active
+MCC-534,MC,534,400,MNC-400,LTE,Active
+Nauru,Na,536,1,Digicell,LTE,Active
+Nauru,Na,536,2,Digicell,LTE,Active
+New Zealand,Ne,530,530,New Zealand all operators,LTE,Active
+New Zealand,Ne,530,28,2degrees,LTE,Active
+New Zealand,Ne,530,24,Two Degrees Mobile,LTE,Active
+New Zealand,Ne,530,2,Spark Mobile,LTE,Active
+New Zealand,Ne,530,5,Spark Mobile,LTE,Active
+New Zealand,Ne,530,0,Telecom NZ,LTE,Active
+New Zealand,Ne,530,6,Telecom NZ,LTE,Active
+New Zealand,Ne,530,4,Telstra,LTE,Active
+New Zealand,Ne,530,1,Vodafone,LTE,Active
+New Zealand,Ne,530,3,Walker Wireless Ltd.,LTE,Active
+New Zealand,Ne,530,999,Fix Line,LTE,Active
+Papua New Guinea,Pa,537,537,Papua New Guinea all operators,LTE,Active
+Papua New Guinea,Pa,537,3,Digicel,LTE,Active
+Papua New Guinea,Pa,537,2,GreenCom PNG Ltd,LTE,Active
+Papua New Guinea,Pa,537,1,Pacific Mobile,LTE,Active
+Papua New Guinea,Pa,537,999,Fix Line,LTE,Active
+Tonga,To,539,539,Tonga all operators,LTE,Active
+Tonga,To,539,88,Digicel,LTE,Active
+Tonga,To,539,43,Shoreline Communication,LTE,Active
+Tonga,To,539,1,Tonga Communications,LTE,Active
+Tonga,To,539,999,Fix Line,LTE,Active
+Anguilla,An,365,365,Anguilla all operators,LTE,Active
+Anguilla,An,365,850,Digicel,LTE,Active
+Anguilla,An,365,840,Flow,LTE,Active
+Anguilla,An,365,50,Digicell,LTE,Active
+Anguilla,An,365,10,Digicell / Wireless Vent. Ltd / Weblinks,LTE,Active
+Anguilla,An,365,99,MNC-099,LTE,Active
+Anguilla,An,365,930,MNC-930,LTE,Active
+Aruba,Ar,363,363,Aruba all operators,LTE,Active
+Aruba,Ar,363,2,Digicel,LTE,Active
+Aruba,Ar,363,1,SETAR,LTE,Active
+Aruba,Ar,363,20,Digicel,LTE,Active
+Bahamas,Ba,364,364,Bahamas all operators,LTE,Active
+Bahamas,Ba,364,490,Aliv,LTE,Active
+Bahamas,Ba,364,30,Cybercell / BaTelCo,LTE,Active
+Bahamas,Ba,364,39,Cybercell / BaTelCo,LTE,Active
+Bahamas,Ba,364,3,Smart Communications,LTE,Active
+Bahamas,Ba,364,390,Cybercell / BaTelCo,LTE,Active
+Netherlands Antilles,Ne,362,362,Netherlands Antilles all operators,LTE,Active
+"Bonaire, Sint Eustatius and Saba",Bo,362,999,Fix Line,LTE,Active
+Netherlands Antilles,Ne,362,951,UTS Wireless,LTE,Active
+Curacao,Cu,362,95,EOCG Wireless NV,LTE,Active
+Sint Maarten (Netherlands),Si,362,91,SETEL GSM,LTE,Active
+Curacao,Cu,362,69,Polycom N.V./ Digicel,LTE,Active
+Netherlands Antilles,Ne,362,0,MNC-000,LTE,Active
+Sint Maarten (Netherlands),Si,362,51,TELCELL GSM,LTE,Active
+Netherlands Antilles,Ne,362,630,Cingular Wireless,LTE,Active
+Netherlands Antilles,Ne,362,779,MNC-779,LTE,Active
+Cuba,Cu,368,368,Cuba all operators,LTE,Active
+Cuba,Cu,368,1,CubaCel/C-COM,LTE,Active
+Cuba,Cu,368,999,Fix Line,LTE,Active
+Dominica,Do,366,366,Dominica all operators,LTE,Active
+Dominica,Do,366,20,Cingular Wireless/Digicel,LTE,Active
+Dominica,Do,366,50,Wireless Ventures (Dominica) Ltd (Digicel Dominica),LTE,Active
+Dominica,Do,366,110,C & W,LTE,Active
+Dominica,Do,366,998,Orange Dominica,LTE,Active
+Saint Vincent & Grenadines,Sa,360,360,Saint Vincent & Grenadines all operators,LTE,Active
+Saint Vincent and the Grenadines,Sa,360,10,Cingular,LTE,Active
+Saint Vincent & Grenadines,Sa,360,50,Digicel,LTE,Active
+Saint Vincent & Grenadines,Sa,360,70,Digicel,LTE,Active
+Saint Vincent & Grenadines,Sa,360,1,MNC-001,LTE,Active
+Saint Vincent & Grenadines,Sa,360,100,Cingular,LTE,Active
+Saint Vincent & Grenadines,Sa,360,110,C & W,LTE,Active
+Antigua and Barbuda,An,344,344,Antigua and Barbuda all operators,LTE,Active
+Antigua and Barbuda,An,344,50,Digicel,LTE,Active
+Antigua and Barbuda,An,344,93,Digicel,LTE,Active
+Antigua and Barbuda,An,344,92,Flow,LTE,Active
+Antigua and Barbuda,An,344,3,imobile / APUA,LTE,Active
+Antigua and Barbuda,An,344,30,imobile / APUA,LTE,Active
+Mexico,Me,344,66,"TELFONOS DE MXICO, S.A.B. DE C.V",LTE,Active
+Antigua and Barbuda,An,344,930,Digicel,LTE,Active
+Antigua and Barbuda,An,344,920,Flow,LTE,Active
+Barbados,Ba,342,342,Barbados all operators,LTE,Active
+Barbados,Ba,342,810,Cingular Wireless,LTE,Active
+Barbados,Ba,342,820,Sunbeach,LTE,Active
+Barbados,Ba,342,50,Digicel,LTE,Active
+Barbados,Ba,342,750,Digicel,LTE,Active
+Barbados,Ba,342,600,LIME,LTE,Active
+British Virgin Islands,Br,348,348,British Virgin Islands all operators,LTE,Active
+British Virgin Islands,Br,348,570,Caribbean Cellular,LTE,Active
+British Virgin Islands,Br,348,770,Digicel,LTE,Active
+British Virgin Islands,Br,348,170,LIME,LTE,Active
+Cayman Islands,Ca,346,346,Cayman Islands all operators,LTE,Active
+Cayman Islands,Ca,346,140,Cable & Wireless,LTE,Active
+Cayman Islands,Ca,346,380,Cingular Wireless (AT&T),LTE,Active
+Cayman Islands,Ca,346,50,Digicel Cayman Ltd,LTE,Active
+Cayman Islands,Ca,346,6,Digicel Ltd.,LTE,Active
+Cayman Islands,Ca,346,1,WestTel Ltd,LTE,Active
+Cayman Islands,Ca,346,998,Wireless Ventures Cayman Islands,LTE,Active
+Guadeloupe,Gu,340,340,Guadeloupe all operators,LTE,Active
+French Guiana,Fr,340,11,TelCell GSM,LTE,Active
+Guadeloupe,Gu,340,10,Unknown,LTE,Active
+Martinique (French Department of),Ma,340,12,UTS Caraibe,LTE,Active
+Guadeloupe,Gu,340,20,Bouygues/DigiCel,LTE,Active
+Guadeloupe,Gu,340,8,Dauphin Telecom SU (Guadeloupe Telecom),LTE,Active
+Guadeloupe,Gu,340,1,Orange Caribe,LTE,Active
+Guadeloupe,Gu,340,2,Outremer Telecom,LTE,Active
+Guadeloupe,Gu,340,3,TelCell GSM,LTE,Active
+Bermuda,Be,350,350,Bermuda all operators,LTE,Active
+Bermuda,Be,350,0,Bermuda Digital Communications Ltd (BDC),LTE,Active
+Bermuda,Be,350,3,CellOne Ltd,LTE,Active
+Bermuda,Be,350,2,M3 Wireless Ltd,LTE,Active
+Bermuda,Be,350,1,Telecommunications (Bermuda & West Indies) Ltd (Digicel Bermuda),LTE,Active
+Bermuda,Be,350,99,CellOne Ltd,LTE,Active
+Bermuda,Be,350,10,DigiCel / Cingular,LTE,Active
+Grenada,Gr,352,352,Grenada all operators,LTE,Active
+Grenada,Gr,352,110,Cable & Wireless,LTE,Active
+Grenada,Gr,352,130,Digicel,LTE,Active
+Grenada,Gr,352,30,Digicel,LTE,Active
+Grenada,Gr,352,50,Digicel,LTE,Active
+Grenada,Gr,352,5,MNC-005,LTE,Active
+Montserrat,Mo,354,354,Montserrat all operators,LTE,Active
+Montserrat,Mo,354,860,Cable & Wireless,LTE,Active
+Saint Kitts and Nevis,Sa,356,356,Saint Kitts and Nevis all operators,LTE,Active
+Saint Kitts and Nevis,Sa,356,110,Cable & Wireless,LTE,Active
+Saint Kitts and Nevis,Sa,356,50,Digicel,LTE,Active
+Saint Kitts and Nevis,Sa,356,70,UTS Cariglobe,LTE,Active
+Saint Lucia,Sa,358,358,Saint Lucia all operators,LTE,Active
+Saint Lucia,Sa,358,110,Cable & Wireless,LTE,Active
+Saint Lucia,Sa,358,30,Cingular Wireless,LTE,Active
+Saint Lucia,Sa,358,50,Digicel (St Lucia) Limited,LTE,Active
+Saint Lucia,Sa,358,5,MNC-005,LTE,Active
+United States,Un,310,310,United States all operators,LTE,Active
+Bermuda,Be,310,59,CellularOne Bermuda,LTE,Active
+United States,Un,310,50,Unknown,LTE,Active
+Guam,Gu,310,33,Guam Teleph. Auth,LTE,Active
+Guam,Gu,310,32,IT&E OverSeas,LTE,Active
+United States,Un,310,35,ETEX Communications dba ETEX Wireless,LTE,Active
+United States,Un,310,34,Nevada Wireless LLC,LTE,Active
+United States of America,Un,310,31,T-Mobile,LTE,Active
+United States,Un,310,30,Unknown,LTE,Active
+United States,Un,310,38,USA 3650 AT&T,LTE,Active
+United States,Un,310,70,AT&T Wireless Inc.,LTE,Active
+United States,Un,310,72,MNC-072,LTE,Active
+United States,Un,310,60,Consolidated Telcom,LTE,Active
+United States,Un,310,90,Edge Wireless LLC,LTE,Active
+United States,Un,310,99,MNC-099,LTE,Active
+United States,Un,310,16,Leap Wireless International Inc.,LTE,Active
+United States,Un,310,17,North Sight Communications Inc,LTE,Active
+United States,Un,310,11,Northstar,LTE,Active
+United States,Un,310,14,Testing,LTE,Active
+United States,Un,310,15,Unknown,LTE,Active
+United States,Un,310,10,Verizon Wireless,LTE,Active
+United States,Un,310,12,Verizon Wireless,LTE,Active
+United States,Un,310,13,Verizon Wireless,LTE,Active
+United States,Un,310,40,Matanuska Tel. Assn. Inc.,LTE,Active
+United States,Un,310,46,SIMMETRY,LTE,Active
+United States,Un,310,0,MNC-000,LTE,Active
+United States,Un,310,5,MNC-005,LTE,Active
+United States,Un,310,9,MNC-009,LTE,Active
+United States of America,Un,310,6,Consolidated Telcom,LTE,Active
+United States,Un,310,3,Unknown,LTE,Active
+United States,Un,310,4,Verizon Wireless,LTE,Active
+United States of America,Un,310,23,Unknown,LTE,Active
+United States of America,Un,310,24,Unknown,LTE,Active
+United States of America,Un,310,25,Unknown,LTE,Active
+United States of America,Un,310,26,Unknown,LTE,Active
+United States,Un,310,20,Union Telephone Co.,LTE,Active
+United States,Un,310,80,Unknown,LTE,Active
+Guam,Gu,310,480,Choice Phone LLC,LTE,Active
+United States,Un,310,410,AT&T Wireless Inc.,LTE,Active
+United States,Un,310,420,Cincinnati Bell Wireless LLC,LTE,Active
+United States,Un,310,440,Dobson Cellular Systems,LTE,Active
+United States,Un,310,470,Docomo,LTE,Active
+United States,Un,310,430,GCI Communication Corp.,LTE,Active
+United States,Un,310,400,Minnesota South. Wirel. Co. / Hickory,LTE,Active
+United States,Un,310,450,Northeast Colorado Cellular Inc.,LTE,Active
+United States,Un,310,490,Triton PCS,LTE,Active
+United States,Un,310,460,TMP Corporation,LTE,Active
+United States,Un,310,850,Aeris Comm. Inc.,LTE,Active
+United States,Un,310,830,Caprock Cellular Ltd.,LTE,Active
+United States,Un,310,870,Kaplan Telephone Company Inc.,LTE,Active
+United States,Un,310,810,LCFR LLC,LTE,Active
+United States,Un,310,820,South Canadian Cellular Communications Co. LP,LTE,Active
+United States,Un,310,840,Telecom North America Mobile Inc,LTE,Active
+United States,Un,310,860,Texas RSA 15B2 Limited Partnership,LTE,Active
+United States,Un,310,800,T-Mobile,LTE,Active
+United States,Un,310,880,Unknown,LTE,Active
+United States,Un,310,890,Verizon Wireless,LTE,Active
+United States,Un,310,510,Airtel Wireless LLC,LTE,Active
+United States,Un,310,560,AT&T Wireless Inc.,LTE,Active
+United States,Un,310,570,MTPCS LLC,LTE,Active
+United States,Un,310,580,PCS ONE,LTE,Active
+United States,Un,310,500,Public Service Cellular Inc.,LTE,Active
+United States,Un,310,540,Unknown,LTE,Active
+United States,Un,310,520,VeriSign,LTE,Active
+United States,Un,310,590,Verizon Wireless,LTE,Active
+United States,Un,310,530,West Virginia Wireless,LTE,Active
+United States,Un,310,550,Wireless Solutions International,LTE,Active
+United States,Un,310,710,Arctic Slope Telephone Association Cooperative Inc.,LTE,Active
+United States,Un,310,700,Cross Valliant Cellular Partnership,LTE,Active
+United States,Un,310,702,MNC-702,LTE,Active
+United States,Un,310,750,East Kentucky Network LLC,LTE,Active
+United States,Un,310,770,Iowa Wireless Services LLC,LTE,Active
+United States,Un,310,779,MNC-779,LTE,Active
+United States,Un,310,780,Message Express Co. / Airlink PCS,LTE,Active
+United States,Un,310,760,Panhandle Telephone Cooperative Inc.,LTE,Active
+United States,Un,310,740,Telemetrix Inc.,LTE,Active
+United States,Un,310,730,United States Cellular Corp.,LTE,Active
+United States,Un,310,790,Unknown,LTE,Active
+United States,Un,310,720,Wireless Solutions International,LTE,Active
+United States,Un,310,150,AT&T Wireless Inc.,LTE,Active
+United States,Un,310,170,AT&T Wireless Inc.,LTE,Active
+United States,Un,310,180,Cingular Wireless,LTE,Active
+United States,Un,310,140,GTA Wireless,LTE,Active
+United States,Un,310,130,North Carolina RSA 3 Cellular Tel. Co.,LTE,Active
+United States,Un,310,110,Pacific Telecom Inc,LTE,Active
+United States,Un,310,100,Plateau Telecommunications Inc.,LTE,Active
+United States,Un,310,120,Sprint Spectrum,LTE,Active
+United States,Un,310,160,T-Mobile,LTE,Active
+United States,Un,310,190,Unknown,LTE,Active
+United States,Un,310,380,AT&T Wireless Inc.,LTE,Active
+United States,Un,310,360,Cellular Network Partnership LLC,LTE,Active
+United States,Un,310,370,Docomo,LTE,Active
+United States,Un,310,350,Mohave Cellular LP,LTE,Active
+United States,Un,310,320,Smith Bagley Inc.,LTE,Active
+United States,Un,310,300,T-Mobile,LTE,Active
+United States,Un,310,310,T-Mobile,LTE,Active
+United States,Un,310,330,T-Mobile,LTE,Active
+United States,Un,310,340,"Westlink Communications, LLC",LTE,Active
+United States,Un,310,390,Yorkville Telephone Cooperative,LTE,Active
+United States,Un,310,680,AT&T Wireless Inc.,LTE,Active
+United States,Un,310,620,Coleman County Telco /Trans TX,LTE,Active
+United States,Un,310,621,MNC-621,LTE,Active
+United States,Un,310,610,Elkhart TelCo. / Epic Touch Co.,LTE,Active
+United States,Un,310,650,Jasper,LTE,Active
+United States,Un,310,653,MNC-653,LTE,Active
+United States,Un,310,654,MNC-654,LTE,Active
+United States,Un,310,656,MNC-656,LTE,Active
+United States,Un,310,657,MNC-657,LTE,Active
+United States,Un,310,690,Keystone Wireless LLC,LTE,Active
+United States,Un,310,600,New-Cell Inc.,LTE,Active
+United States,Un,310,670,Northstar,LTE,Active
+United States,Un,310,660,T-Mobile,LTE,Active
+United States,Un,310,630,Unknown,LTE,Active
+United States,Un,310,640,Unknown,LTE,Active
+United States,Un,310,980,AT&T Wireless Inc.,LTE,Active
+United States,Un,310,900,Cable & Communications Corp.,LTE,Active
+United States,Un,310,990,E.N.M.R. Telephone Coop.,LTE,Active
+United States,Un,310,999,Various Networks,LTE,Active
+United States,Un,310,920,Get Mobile Inc.,LTE,Active
+United States,Un,310,940,Poka Lambro Telco Ltd.,LTE,Active
+United States,Un,310,960,Uintah Basin Electronics Telecommunications Inc.,LTE,Active
+United States,Un,310,930,Unknown,LTE,Active
+United States,Un,310,950,Unknown,LTE,Active
+United States,Un,310,970,Unknown,LTE,Active
+United States,Un,310,910,Verizon Wireless,LTE,Active
+United States,Un,310,290,NEP Cellcorp Inc.,LTE,Active
+United States,Un,310,200,T-Mobile,LTE,Active
+United States,Un,310,210,T-Mobile,LTE,Active
+United States,Un,310,220,T-Mobile,LTE,Active
+United States,Un,310,230,T-Mobile,LTE,Active
+United States,Un,310,240,T-Mobile,LTE,Active
+United States,Un,310,250,T-Mobile,LTE,Active
+United States,Un,310,260,T-Mobile,LTE,Active
+United States,Un,310,270,T-Mobile,LTE,Active
+United States,Un,310,280,T-Mobile,LTE,Active
+United States,Un,311,311,United States all operators,LTE,Active
+Guam,Gu,311,250,Wave Runner LLC,LTE,Active
+United States,Un,311,200,ARINC,LTE,Active
+United States,Un,311,230,Cellular South Licenses Inc.,LTE,Active
+United States,Un,311,290,Pinpoint Wireless Inc.,LTE,Active
+United States,Un,311,260,SLO Cellular Inc / Cellular One of San Luis,LTE,Active
+United States,Un,311,220,United States Cellular Corp.,LTE,Active
+United States,Un,311,210,Unknown,LTE,Active
+United States,Un,311,240,Unknown,LTE,Active
+United States,Un,311,270,Verizon Wireless,LTE,Active
+United States,Un,311,271,Verizon Wireless,LTE,Active
+United States,Un,311,272,Verizon Wireless,LTE,Active
+United States,Un,311,273,Verizon Wireless,LTE,Active
+United States,Un,311,274,Verizon Wireless,LTE,Active
+United States,Un,311,275,Verizon Wireless,LTE,Active
+United States,Un,311,276,Verizon Wireless,LTE,Active
+United States,Un,311,277,Verizon Wireless,LTE,Active
+United States,Un,311,278,Verizon Wireless,LTE,Active
+United States,Un,311,279,Verizon Wireless,LTE,Active
+United States,Un,311,280,Verizon Wireless,LTE,Active
+United States,Un,311,281,Verizon Wireless,LTE,Active
+United States,Un,311,282,Verizon Wireless,LTE,Active
+United States,Un,311,283,Verizon Wireless,LTE,Active
+United States,Un,311,284,Verizon Wireless,LTE,Active
+United States,Un,311,285,Verizon Wireless,LTE,Active
+United States,Un,311,286,Verizon Wireless,LTE,Active
+United States,Un,311,287,Verizon Wireless,LTE,Active
+United States,Un,311,288,Verizon Wireless,LTE,Active
+United States,Un,311,289,Verizon Wireless,LTE,Active
+United States,Un,311,560,Bend Cable Communications LLC,LTE,Active
+United States,Un,311,590,California RSA No. 3 Limited Partnership,LTE,Active
+United States,Un,311,580,California RSA No3 Ltd Partnership dba Golden State Cellular,LTE,Active
+United States,Un,311,500,Cambridge Telephone Company Inc.,LTE,Active
+United States,Un,311,510,Light Squared LP,LTE,Active
+United States,Un,311,530,New Core Wireless,LTE,Active
+United States,Un,311,550,OTZ Communications Inc,LTE,Active
+United States,Un,311,570,United States Cellular,LTE,Active
+United States,Un,311,520,Unknown,LTE,Active
+United States,Un,311,540,Unknown,LTE,Active
+United States,Un,311,970,Big River Broadband LLC,LTE,Active
+United States,Un,311,940,Clearwire Corporation,LTE,Active
+United States,Un,311,900,Gigsky inc,LTE,Active
+United States,Un,311,980,LigTel Communications,LTE,Active
+United States,Un,311,960,Lycamobile USA Inc,LTE,Active
+United States,Un,311,920,Missouri RSA No 5 Partnership,LTE,Active
+United States,Un,311,950,Sunman Telecommunications corp.,LTE,Active
+United States,Un,311,910,Unknown,LTE,Active
+United States,Un,311,990,VTel Wireless,LTE,Active
+United States,Un,311,440,Bluegrass Wireless LLC,LTE,Active
+United States,Un,311,460,Fisher Wireless Services Inc.,LTE,Active
+United States,Un,311,410,Iowa RSA No. 2 Limited Partnership,LTE,Active
+United States,Un,311,420,Northwest Missouri Cellular Limited Partnership,LTE,Active
+United States,Un,311,450,Panhandle Telecommunication Systems Inc.,LTE,Active
+United States,Un,311,430,RSA 1 Limited Partnership,LTE,Active
+United States,Un,311,490,Sprint Spectrum,LTE,Active
+United States,Un,311,480,Verizon Wireless,LTE,Active
+United States,Un,311,481,Verizon Wireless,LTE,Active
+United States,Un,311,482,Verizon Wireless,LTE,Active
+United States,Un,311,483,Verizon Wireless,LTE,Active
+United States,Un,311,484,Verizon Wireless,LTE,Active
+United States,Un,311,485,Verizon Wireless,LTE,Active
+United States,Un,311,486,Verizon Wireless,LTE,Active
+United States,Un,311,487,Verizon Wireless,LTE,Active
+United States,Un,311,488,Verizon Wireless,LTE,Active
+United States,Un,311,489,Verizon Wireless,LTE,Active
+United States,Un,311,470,Vitelcom Cellular Inc dba Innovative Wireless,LTE,Active
+United States,Un,311,800,Bluegrass Wireless LLC,LTE,Active
+United States,Un,311,810,Bluegrass Wireless LLC,LTE,Active
+United States,Un,311,890,Globecom Network Services Corporation,LTE,Active
+United States,Un,311,820,Kineto Wireless Inc,LTE,Active
+United States,Un,311,840,Nsight Spectrum LLC,LTE,Active
+United States,Un,311,850,Nsight Spectrum LLC,LTE,Active
+United States,Un,311,870,Sprint Spectrum,LTE,Active
+United States,Un,311,880,Sprint Spectrum,LTE,Active
+United States,Un,312,200,Voyager Mobility LLC,LTE,Active
+United States,Un,311,830,Thumb Cellular Limited Partnership,LTE,Active
+United States,Un,311,860,Uintah Basin Electronics Telecommunications Inc.,LTE,Active
+United States,Un,311,160,Cellular One DCS (Dobson / EMW) / Light Squared LP,LTE,Active
+United States,Un,311,120,Choice Phone LLC,LTE,Active
+United States,Un,311,180,"Cingular Wireless (AT&T), Licensee Pacific Telesis Mobile Services, LLC",LTE,Active
+United States,Un,311,140,Cross Wireless Telephone Co.,LTE,Active
+United States,Un,311,170,PetroCom,LTE,Active
+United States,Un,311,100,Unknown,LTE,Active
+United States,Un,311,130,Unknown,LTE,Active
+United States,Un,311,150,Unknown,LTE,Active
+United States,Un,311,190,Unknown,LTE,Active
+United States,Un,311,110,Verizon Wireless,LTE,Active
+United States,Un,311,320,Commnet Wireless LLC,LTE,Active
+United States,Un,311,311,Farmers,LTE,Active
+United States,Un,311,310,Lamar County Cellular,LTE,Active
+United States,Un,311,370,GCI Communication Corp.,LTE,Active
+United States,Un,311,340,Illinois Valley Cellular RSA 2 Partnership,LTE,Active
+United States,Un,311,330,Michigan Wireless LLC,LTE,Active
+United States,Un,311,300,Nexus Communications Inc.,LTE,Active
+United States,Un,311,350,Sagebrush Cellular Inc.,LTE,Active
+United States,Un,311,360,Stelera Wireless Corp.,LTE,Active
+United States,Un,311,380,Unknown,LTE,Active
+United States,Un,311,390,Verizon Wireless,LTE,Active
+United States,Un,311,630,Corr Wireless Communications,LTE,Active
+United States,Un,311,600,Cox TMI Wireless LLC,LTE,Active
+United States,Un,311,680,GreenFly LLC,LTE,Active
+United States,Un,311,610,North Dakota Network Company,LTE,Active
+United States,Un,311,670,"Pine Belt Cellular, Inc.",LTE,Active
+United States,Un,311,640,Standing Rock Telecommunications,LTE,Active
+United States,Un,311,690,TeleBeeper of New Mexico Inc,LTE,Active
+United States,Un,311,620,Terrestar Networks Inc,LTE,Active
+United States,Un,311,650,United Wireless Communications Inc.,LTE,Active
+United States,Un,311,660,Unknown,LTE,Active
+United States,Un,311,760,Edigen Inc,LTE,Active
+United States,Un,311,720,Maine PCS LLC,LTE,Active
+United States,Un,311,750,NetAmerica Alliance LLC,LTE,Active
+United States,Un,311,710,Northeast Wireless Networks LLC,LTE,Active
+United States,Un,311,770,Radio Mobile Access Inc,LTE,Active
+United States,Un,311,700,TotalSolutions Telecom LLC,LTE,Active
+United States,Un,311,730,Unknown,LTE,Active
+United States,Un,311,740,Unknown,LTE,Active
+United States,Un,311,60,Farmers Cellular / Space Data Corporation,LTE,Active
+United States,Un,311,10,Missouri RSA No 5 Partnership,LTE,Active
+United States,Un,311,20,Missouri RSA No 5 Partnership,LTE,Active
+United States,Un,311,50,Thumb Cellular Limited Partnership,LTE,Active
+United States,Un,311,0,Unknown,LTE,Active
+United States,Un,311,30,Unknown,LTE,Active
+United States,Un,311,40,Unknown,LTE,Active
+United States,Un,311,80,Unknown,LTE,Active
+United States,Un,311,90,Unknown,LTE,Active
+United States,Un,311,70,Wisconsin RSA #7 Limited Partnership,LTE,Active
+United States,Un,312,90,Allied Wireless Communications Corporation,LTE,Active
+United States,Un,312,60,CoverageCo,LTE,Active
+United States,Un,312,30,Cross Wireless Telephone Co.,LTE,Active
+United States,Un,312,40,Custer Telephone Cooperative Inc.,LTE,Active
+United States,Un,312,50,Fuego Wireless LLC,LTE,Active
+United States,Un,312,20,Infrastructure Networks LLC,LTE,Active
+United States,Un,312,10,Missouri RSA No 5 Partnership,LTE,Active
+United States,Un,312,80,South Georgia Regional Information Technology Authority,LTE,Active
+United States,Un,312,270,Cellular Network Partnership LLC,LTE,Active
+United States,Un,312,280,Cellular Network Partnership LLC,LTE,Active
+United States,Un,312,220,Missouri RSA No 5 Partnership,LTE,Active
+United States,Un,312,230,North Dakota Network Company,LTE,Active
+United States,Un,312,290,Uintah Basin Electronics Telecommunications Inc.,LTE,Active
+United States,Un,312,100,ClearSky Technologies Inc,LTE,Active
+United States,Un,312,140,Cleveland Unlimited Inc,LTE,Active
+United States,Un,312,120,East Kentucky Network LLC,LTE,Active
+United States,Un,312,130,East Kentucky Network LLC,LTE,Active
+United States,Un,312,170,Iowa RSA No. 2 Limited Partnership,LTE,Active
+Costa Rica,Co,712,999,Fix Line,LTE,Active
+United States,Un,312,180,Keystone Wireless LLC,LTE,Active
+United States,Un,312,150,Northwest Cell,LTE,Active
+United States,Un,312,160,RSA 1 Limited Partnership,LTE,Active
+United States,Un,312,190,Sprint Spectrum,LTE,Active
+United States,Un,312,110,Texas Energy Network LLC,LTE,Active
+United States of America,Un,312,530,Sprint Spectrum,LTE,Active
+United States,Un,312,380,Unknown,LTE,Active
+United States,Un,313,100,Assigned to public safety,LTE,Active
+United States,Un,316,11,Southern Communications Services Inc.,LTE,Active
+United States,Un,316,10,Sprint Spectrum,LTE,Active
+Canada,Ca,302,290,Airtel Wireless,LTE,Active
+Canada,Ca,302,250,ALO Mobile Inc,LTE,Active
+Canada,Ca,302,270,Bragg Communications,LTE,Active
+Canada,Ca,302,220,Telus Mobility,LTE,Active
+Canada,Ca,302,221,Telus Mobility,LTE,Active
+Canada,Ca,302,222,Telus Mobility,LTE,Active
+Canada,Ca,302,652,BC Tel Mobility,LTE,Active
+Canada,Ca,302,651,Bell Mobility,LTE,Active
+Canada,Ca,302,655,MTS Mobility,LTE,Active
+Canada,Ca,302,657,Quebectel Mobility,LTE,Active
+Canada,Ca,302,654,Sask Tel Mobility,LTE,Active
+Canada,Ca,302,656,Tbay Mobility,LTE,Active
+Canada,Ca,302,653,Telus Mobility,LTE,Active
+Canada,Ca,302,630,Bell Aliant,LTE,Active
+Canada,Ca,302,610,Bell Mobility,LTE,Active
+Canada,Ca,302,690,Bell Mobility,LTE,Active
+Canada,Ca,302,670,CityWest Mobility,LTE,Active
+Canada,Ca,302,620,Ice Wireless,LTE,Active
+Canada,Ca,302,640,Latitude Wireless,LTE,Active
+Canada,Ca,302,660,MTS Mobility,LTE,Active
+Canada,Ca,302,680,Sask Tel Mobility,LTE,Active
+Canada,Ca,302,360,Clearnet,LTE,Active
+Canada,Ca,302,361,Clearnet,LTE,Active
+Canada,Ca,302,380,DMTS Mobility,LTE,Active
+Canada,Ca,302,390,DMTS Mobility  / Dryden Moblility,LTE,Active
+Canada,Ca,302,340,Execulink,LTE,Active
+Canada,Ca,302,370,FIDO (Rogers AT&T/ Microcell),LTE,Active
+Canada,Ca,302,350,FIRST Networks Operations,LTE,Active
+Canada,Ca,302,320,mobilicity,LTE,Active
+Canada,Ca,302,710,Globalstar Canada,LTE,Active
+Canada,Ca,302,779,MNC-779,LTE,Active
+Canada,Ca,302,770,Rural Com,LTE,Active
+Canada,Ca,302,702,MT&T Mobility,LTE,Active
+Canada,Ca,302,701,NB Tel Mobility,LTE,Active
+Canada,Ca,302,703,New Tel Mobility,LTE,Active
+Canada,Ca,302,790,NetSet Communications,LTE,Active
+Canada,Ca,302,760,Public Mobile,LTE,Active
+Canada,Ca,302,720,Rogers AT&T Wireless,LTE,Active
+Canada,Ca,302,750,Sask Tel Mobility,LTE,Active
+Canada,Ca,302,780,Sask Tel Mobility,LTE,Active
+Canada,Ca,302,740,Shaw Telecom,LTE,Active
+Canada,Ca,302,730,TerreStar Solutions,LTE,Active
+Canada,Ca,302,530,Keewatinook Okimakinak,LTE,Active
+Canada,Ca,302,570,LightSquared,LTE,Active
+Canada,Ca,302,560,Lynx Mobility,LTE,Active
+Canada,Ca,302,590,Quadro Communication,LTE,Active
+Canada,Ca,302,500,Videotron,LTE,Active
+Canada,Ca,302,510,Videotron,LTE,Active
+Canada,Ca,302,520,Videotron,LTE,Active
+Canada,Ca,302,480,SSi Connexions,LTE,Active
+Canada,Ca,302,490,WIND,LTE,Active
+Canada,Ca,302,880,Telus Communications company (possibly others too),LTE,Active
+Canada,Ca,302,860,Telus Mobility,LTE,Active
+Canada,Ca,302,990,Test,LTE,Active
+Canada,Ca,302,940,Wrightman Telecom,LTE,Active
+Saint Pierre & Miquelon,Sa,308,1,Ameris,LTE,Active
+Dominican Republic,Do,370,2,Claro,LTE,Active
+Dominican Republic,Do,370,1,Orange,LTE,Active
+Dominican Republic,Do,370,3,TRIcom,LTE,Active
+Dominican Republic,Do,370,4,Viva,LTE,Active
+Dominican Republic,Do,370,779,MNC-779,LTE,Active
+Dominican Republic,Do,370,998,MNC-998,LTE,Active
+Haiti,Ha,372,1,Comcel,LTE,Active
+Haiti,Ha,372,2,Digicel,LTE,Active
+Haiti,Ha,372,0,Haitel,LTE,Active
+Haiti,Ha,372,3,Natcom,LTE,Active
+Haiti,Ha,372,50,Digicel,LTE,Active
+Haiti,Ha,372,779,MNC-779,LTE,Active
+Trinidad and Tobago,Tr,374,374,Trinidad and Tobago all operators,LTE,Active
+Trinidad and Tobago,Tr,374,12,Bmobile/TSTT,LTE,Active
+Trinidad and Tobago,Tr,374,120,Bmobile/TSTT,LTE,Active
+Trinidad and Tobago,Tr,374,129,Bmobile/TSTT,LTE,Active
+Trinidad and Tobago,Tr,374,130,Digicel,LTE,Active
+Trinidad and Tobago,Tr,374,140,LaqTel Ltd.,LTE,Active
+Turks and Caicos Islands,Tu,376,376,Turks and Caicos Islands all operators,LTE,Active
+Turks and Caicos Islands,Tu,376,360,IslandCom Communications Ltd.,LTE,Active
+United States Virgin Islands,Un,376,350,Cable & Wireless (TCI) Ltd,LTE,Active
+United States Virgin Islands,Un,376,352,IslandCom Communications Ltd.,LTE,Active
+Turks and Caicos Islands,Tu,376,5,MNC-005,LTE,Active
+United States Virgin Islands,Un,376,50,Digicel TCI Ltd,LTE,Active
+Jamaica,Ja,338,338,Jamaica all operators,LTE,Active
+Jamaica,Ja,338,20,Cable & Wireless,LTE,Active
+Jamaica,Ja,338,70,Claro / Oceanic  Digital Jamaica Limited,LTE,Active
+Jamaica,Ja,338,50,DIGICEL/Mossel,LTE,Active
+Jamaica,Ja,338,5,MNC-005,LTE,Active
+Jamaica,Ja,338,110,Cable & Wireless,LTE,Active
+Jamaica,Ja,338,180,Cable & Wireless,LTE,Active
+Jamaica,Ja,338,509,MNC-509,LTE,Active
+Jamaica,Ja,338,779,MNC-779,LTE,Active
+Mexico,Me,334,334,Mexico all operators,LTE,Active
+Mexico,Me,334,4,AT&T/IUSACell,LTE,Active
+Mexico,Me,334,5,AT&T/IUSACell,LTE,Active
+Mexico,Me,334,3,Movistar/Pegaso,LTE,Active
+Mexico,Me,334,1,NEXTEL,LTE,Active
+Mexico,Me,334,9,NEXTEL,LTE,Active
+Mexico,Me,334,0,SAI PCS,LTE,Active
+Mexico,Me,334,2,TelCel/America Movil,LTE,Active
+Mexico,Me,334,40,AT&T/IUSACell,LTE,Active
+Mexico,Me,334,50,AT&T/IUSACell,LTE,Active
+Mexico,Me,334,30,Movistar/Pegaso,LTE,Active
+Mexico,Me,334,10,NEXTEL,LTE,Active
+Mexico,Me,334,90,NEXTEL,LTE,Active
+Mexico,Me,334,70,Operadora Unefon SA de CV,LTE,Active
+Mexico,Me,334,80,Operadora Unefon SA de CV,LTE,Active
+Mexico,Me,334,60,SAI PCS,LTE,Active
+Mexico,Me,334,20,TelCel/America Movil,LTE,Active
+Mexico,Me,334,202,MNC-202,LTE,Active
+Puerto Rico,Pu,330,330,Puerto Rico all operators,LTE,Active
+Puerto Rico,Pu,330,30,AT&T Mobility,LTE,Active
+Puerto Rico,Pu,330,0,Open Mobile,LTE,Active
+Puerto Rico,Pu,330,11,Puerto Rico Telephone Company Inc. (PRTC),LTE,Active
+Puerto Rico,Pu,330,20,Sprint,LTE,Active
+Puerto Rico,Pu,330,120,PR Wireless Inc (Open Mobile),LTE,Active
+Puerto Rico,Pu,330,110,Puerto Rico Telephone Company Inc. (PRTC),LTE,Active
+Puerto Rico,Pu,330,490,T-mobile (Suncom),LTE,Active
+Argentina Republic,Ar,722,722,Argentina Republic all operators,LTE,Active
+Argentina,Ar,722,31,Claro,LTE,Active
+Argentina Republic,Ar,722,30,MNC-030,LTE,Active
+Argentina Republic,Ar,722,34,Personal,LTE,Active
+Argentina Republic,Ar,722,40,Globalstar,LTE,Active
+Argentina Republic,Ar,722,2,MNC-002,LTE,Active
+Argentina Republic,Ar,722,7,Movistar,LTE,Active
+Argentina Republic,Ar,722,10,Movistar,LTE,Active
+Argentina Republic,Ar,722,70,Movistar,LTE,Active
+Argentina Republic,Ar,722,20,Nextel,LTE,Active
+Argentina,Ar,722,999,Fix Line,LTE,Active
+Argentina Republic,Ar,722,310,Claro,LTE,Active
+Argentina Republic,Ar,722,320,Claro,LTE,Active
+Argentina Republic,Ar,722,330,Claro,LTE,Active
+Argentina Republic,Ar,722,340,Personal,LTE,Active
+Argentina Republic,Ar,722,341,Personal,LTE,Active
+Argentina Republic,Ar,722,350,PORT-HABLE (Hutchison Telecommunications Argentina),LTE,Active
+Brazil,Br,724,724,Brazil all operators,LTE,Active
+Brazil,Br,724,24,Amazonia Celular S/A,LTE,Active
+Brazil,Br,724,26,AmericaNet,LTE,Active
+Brazil,Br,724,23,Vivo S.A./Telemig,LTE,Active
+Brazil,Br,724,16,Brazil Telcom,LTE,Active
+Brazil,Br,724,12,Claro/Albra/America Movil,LTE,Active
+Brazil,Br,724,18,Datora (MVNO),LTE,Active
+Brazil,Br,724,15,Sercontel Cel,LTE,Active
+Brazil,Br,724,10,Vivo S.A./Telemig,LTE,Active
+Brazil,Br,724,11,Vivo S.A./Telemig,LTE,Active
+Brazil,Br,724,19,Vivo S.A./Telemig,LTE,Active
+Brazil,Br,724,5,Claro/Albra/America Movil,LTE,Active
+Brazil,Br,724,7,CTBC/Triangulo,LTE,Active
+Brazil,Br,724,0,Nextel (Telet),LTE,Active
+Brazil,Br,724,2,TIM,LTE,Active
+Brazil,Br,724,3,TIM,LTE,Active
+Brazil,Br,724,4,TIM,LTE,Active
+Brazil,Br,724,8,TIM,LTE,Active
+Brazil,Br,724,1,Vivo S.A./Telemig,LTE,Active
+Brazil,Br,724,6,Vivo S.A./Telemig,LTE,Active
+Brazil,Br,724,38,Claro/Albra/America Movil,LTE,Active
+Brazil,Br,724,32,CTBC Celular SA (CTBC),LTE,Active
+Brazil,Br,724,33,CTBC Celular SA (CTBC),LTE,Active
+Brazil,Br,724,34,CTBC Celular SA (CTBC),LTE,Active
+Brazil,Br,724,39,Nextel (Telet),LTE,Active
+Brazil,Br,724,30,Oi (TNL PCS / Oi),LTE,Active
+Brazil,Br,724,31,Oi (TNL PCS / Oi),LTE,Active
+Brazil,Br,724,36,Options,LTE,Active
+Brazil,Br,724,37,Unicel do Brasil Telecomunicacoes Ltda,LTE,Active
+Brazil,Br,724,99,Local (STFC),LTE,Active
+Brazil,Br,724,54,PORTO SEGURO TELECOMUNICACOES,LTE,Active
+Belize,Be,702,702,Belize all operators,LTE,Active
+Belize,Be,702,67,DigiCell,LTE,Active
+Belize,Be,702,68,International Telco (INTELCO),LTE,Active
+Belize,Be,702,99,Speednet (Smart),LTE,Active
+Belize,Be,702,779,MNC-779,LTE,Active
+El Salvador,El,706,706,El Salvador all operators,LTE,Active
+El Salvador,El,706,1,CLARO/CTE,LTE,Active
+El Salvador,El,706,2,Digicel,LTE,Active
+El Salvador,El,706,5,INTELFON SA de CV,LTE,Active
+El Salvador,El,706,4,Telefonica,LTE,Active
+El Salvador,El,706,3,Telemovil,LTE,Active
+El Salvador,El,706,11,MNC-011,LTE,Active
+El Salvador,El,706,779,MNC-779,LTE,Active
+Guatemala,Gu,704,704,Guatemala all operators,LTE,Active
+Guatemala,Gu,704,1,Claro,LTE,Active
+Guatemala,Gu,704,3,Telefonica,LTE,Active
+Guatemala,Gu,704,2,TIGO/COMCEL,LTE,Active
+Honduras,Ho,708,708,Honduras all operators,LTE,Active
+Honduras,Ho,708,40,Digicel,LTE,Active
+Honduras,Ho,708,30,HonduTel,LTE,Active
+Honduras,Ho,708,20,MNC-020,LTE,Active
+Honduras,Ho,708,1,SERCOM/CLARO,LTE,Active
+Honduras,Ho,708,2,Telefonica/CELTEL,LTE,Active
+Bolivia,Bo,736,736,Bolivia all operators,LTE,Active
+Bolivia,Bo,736,2,Entel Pcs,LTE,Active
+Bolivia,Bo,736,4,MNC-004,LTE,Active
+Bolivia,Bo,736,3,Tigo,LTE,Active
+Bolivia,Bo,736,1,Viva/Nuevatel,LTE,Active
+Chile,Ch,730,730,Chile all operators,LTE,Active
+Chile,Ch,730,6,Blue Two Chile SA,LTE,Active
+Chile,Ch,730,3,Claro,LTE,Active
+Chile,Ch,730,1,Entel Telefonia Mov,LTE,Active
+Chile,Ch,730,4,Nextel SA,LTE,Active
+Chile,Ch,730,5,Nextel SA,LTE,Active
+Chile,Ch,730,9,Nextel SA,LTE,Active
+Chile,Ch,730,2,TELEFONICA,LTE,Active
+Chile,Ch,730,7,TELEFONICA,LTE,Active
+Chile,Ch,730,0,TESAM SA,LTE,Active
+Chile,Ch,730,8,VTR Banda Ancha SA,LTE,Active
+Chile,Ch,730,11,Celupago SA,LTE,Active
+Chile,Ch,730,15,Cibeles Telecom SA,LTE,Active
+Chile,Ch,730,10,Entel Telefonia,LTE,Active
+Chile,Ch,730,14,Netline Telefonica Movil Ltda,LTE,Active
+Chile,Ch,730,19,Sociedad Falabella Movil SPA,LTE,Active
+Chile,Ch,730,12,Telestar Movil SA,LTE,Active
+Chile,Ch,730,13,Tribe Mobile SPA,LTE,Active
+Colombia,Co,732,732,Colombia all operators,LTE,Active
+Colombia,Co,732,130,Avantel,LTE,Active
+Colombia,Co,732,101,Claro,LTE,Active
+Colombia,Co,732,102,Movistar,LTE,Active
+Colombia,Co,732,103,Tigo,LTE,Active
+Colombia,Co,732,187,eTb,LTE,Active
+Colombia,Co,732,123,Movistar,LTE,Active
+Colombia,Co,732,199,SUMA movil,LTE,Active
+Colombia,Co,732,111,Tigo,LTE,Active
+Colombia,Co,732,165,Tigo,LTE,Active
+Colombia,Co,732,142,UNE,LTE,Active
+Colombia,Co,732,154,Virgin Mobile,LTE,Active
+Colombia,Co,732,666,Claro,LTE,Active
+Colombia,Co,732,2,Edatel,LTE,Active
+Colombia,Co,732,3,MNC-003,LTE,Active
+Colombia,Co,732,1,Movistar,LTE,Active
+Colombia,Co,732,20,UNE,LTE,Active
+Colombia,Co,732,999,Fix Line,LTE,Active
+Colombia,Co,732,240,Flash Mobile,LTE,Active
+Colombia,Co,732,220,Libre Tecnologias,LTE,Active
+Colombia,Co,732,230,Setroc Mobile,LTE,Active
+Colombia,Co,732,360,WOM,LTE,Active
+Guyana,Gu,738,738,Guyana all operators,LTE,Active
+Guyana,Gu,738,2,Cellink Plus,LTE,Active
+Guyana,Gu,738,1,DigiCel,LTE,Active
+Venezuela,Ve,734,734,Venezuela all operators,LTE,Active
+Venezuela,Ve,734,1,DigiTel C.A.,LTE,Active
+Venezuela,Ve,734,2,DigiTel C.A.,LTE,Active
+Venezuela,Ve,734,3,DigiTel C.A.,LTE,Active
+Venezuela,Ve,734,6,Movilnet C.A.,LTE,Active
+Venezuela,Ve,734,4,Movistar/TelCel,LTE,Active
+Costa Rica,Co,712,712,Costa Rica all operators,LTE,Active
+Costa Rica,Co,712,3,Claro,LTE,Active
+Costa Rica,Co,712,1,ICE,LTE,Active
+Costa Rica,Co,712,2,ICE,LTE,Active
+Costa Rica,Co,712,4,Movistar,LTE,Active
+Costa Rica,Co,712,20,Virtualis,LTE,Active
+Costa Rica,Co,712,779,MNC-779,LTE,Active
+Nicaragua,Ni,710,710,Nicaragua all operators,LTE,Active
+Nicaragua,Ni,710,73,Claro,LTE,Active
+Nicaragua,Ni,710,21,Empresa Nicaraguense de Telecomunicaciones SA (ENITEL),LTE,Active
+Nicaragua,Ni,710,30,Movistar,LTE,Active
+Nicaragua,Ni,710,999,Fix Line,LTE,Active
+Panama,Pa,714,714,Panama all operators,LTE,Active
+Panama,Pa,714,1,Cable & W./Mas Movil,LTE,Active
+Panama,Pa,714,3,Claro,LTE,Active
+Panama,Pa,714,4,Digicel,LTE,Active
+Panama,Pa,714,2,Movistar,LTE,Active
+Panama,Pa,714,20,Movistar,LTE,Active
+Panama,Pa,714,999,Fix Line,LTE,Active
+Peru,Pe,716,716,Peru all operators,LTE,Active
+Peru,Pe,716,10,Claro /Amer.Mov./TIM,LTE,Active
+Peru,Pe,716,17,Nextel,LTE,Active
+Peru,Pe,716,15,Viettel Mobile,LTE,Active
+Peru,Pe,716,20,Claro /Amer.Mov./TIM,LTE,Active
+Peru,Pe,716,1,GlobalStar,LTE,Active
+Peru,Pe,716,2,GlobalStar,LTE,Active
+Peru,Pe,716,6,Movistar,LTE,Active
+Peru,Pe,716,7,Nextel,LTE,Active
+Ecuador,Ec,740,740,Ecuador all operators,LTE,Active
+Ecuador,Ec,740,1,Claro/Port,LTE,Active
+Ecuador,Ec,740,2,CNT Mobile,LTE,Active
+Ecuador,Ec,740,0,Failed Call(s),LTE,Active
+Ecuador,Ec,740,3,Tuenti,LTE,Active
+MCC-742,MC,742,1,MNC-001,LTE,Active
+MCC-742,MC,742,2,MNC-002,LTE,Active
+MCC-742,MC,742,8,MNC-008,LTE,Active
+MCC-742,MC,742,20,MNC-020,LTE,Active
+Paraguay,Pa,744,744,Paraguay all operators,LTE,Active
+Paraguay,Pa,744,2,Claro/Hutchison,LTE,Active
+Paraguay,Pa,744,3,Compa,LTE,Active
+Paraguay,Pa,744,6,Copaco,LTE,Active
+Paraguay,Pa,744,1,Hola/VOX,LTE,Active
+Paraguay,Pa,744,4,Tigo/Telecel,LTE,Active
+Paraguay,Pa,744,5,TIM/Nucleo/Personal,LTE,Active
+Suriname,Su,746,746,Suriname all operators,LTE,Active
+Suriname,Su,746,3,Digicel,LTE,Active
+Suriname,Su,746,2,Telecommunicatiebedrijf Suriname (TELESUR),LTE,Active
+Suriname,Su,746,1,Telesur,LTE,Active
+Suriname,Su,746,4,UNIQA,LTE,Active
+Suriname,Su,746,999,Fix Line,LTE,Active
+Uruguay,Ur,748,748,Uruguay all operators,LTE,Active
+Uruguay,Ur,748,0,Ancel/Antel,LTE,Active
+Uruguay,Ur,748,1,Ancel/Antel,LTE,Active
+Uruguay,Ur,748,3,Ancel/Antel,LTE,Active
+Uruguay,Ur,748,7,MOVISTAR,LTE,Active
+Uruguay,Ur,748,10,Claro/AM Wireless,LTE,Active
+Falkland Islands,Fa,750,1,Sure South Atlantic Ltd (Falkland Islands,LTE,Active
+International,In,901,14,AeroMobile,LTE,Active
+International,In,901,13,Antarctica,LTE,Active
+International,In,901,10,Asia Cellular Satellite (AceS),LTE,Active
+International,In,901,18,Cingular Wireless / AWS Bermuda (Maritime Roaming),LTE,Active
+International,In,901,11,InMarSAT,LTE,Active
+International,In,901,16,"Jasper Wireless, Inc",LTE,Active
+International,In,901,17,Jersey Telecom,LTE,Active
+International,In,901,12,Maritime Communications Partner AS,LTE,Active
+International,In,901,15,OnAir N.V. (Formerly SITA on behalf of Onair),LTE,Active
+International,In,901,19,Vodafone Malta (Vodafone Group),LTE,Active
+International,In,901,36,Azerfon LLC,LTE,Active
+International,In,901,31,France Telecom Orange,LTE,Active
+International,In,901,35,Globecomm Network Services,LTE,Active
+International,In,901,32,MegaFon,LTE,Active
+International,In,901,39,MTX Connect,LTE,Active
+International,In,901,38,Multiregional TransitTelecom (MTT),LTE,Active
+International,In,901,33,"Smart Communications , Inc",LTE,Active
+International,In,901,37,TRANSATEL,LTE,Active
+International,In,901,34,Tyntec GmbH,LTE,Active
+International,In,901,41,BodyTrace Netherlands B.V.,LTE,Active
+International,In,901,42,DCN Hub ehf,LTE,Active
+International,In,901,40,Deutsche Telekom AG,LTE,Active
+International,In,901,1,ICO Global Communications,LTE,Active
+International,In,901,3,Iridium Communications Inc,LTE,Active
+International,In,901,5,Thuraya Satellite,LTE,Active
+International,In,901,6,Thuraya Satellite Telecommunications Company,LTE,Active
+International,In,901,20,Intermatica,LTE,Active
+International,In,901,22,MediaLincc Ltd,LTE,Active
+International,In,901,27,OnAir N.V. (Formerly SITA on behalf of Onair),LTE,Active
+International,In,901,26,Telecom Italia,LTE,Active
+International,In,901,29,Telenor Connexion AB,LTE,Active
+International,In,901,28,Vodafone Group,LTE,Active
+International,In,901,24,Voxbone SA,LTE,Active
+International,In,901,21,Wins Limited (Formerly Seanet Maritime Communications),LTE,Active
+International,In,901,88,UN Office for the Coordination of Humanitarian Affairs (OCHA),LTE,Active
+MCC-840,MC,840,3,MNC-003,LTE,Active
+Kenya,Ke,639,639,Kenya all operators,LTE,Active
+Kenya,Ke,639,3,Airtel,LTE,Active
+Kenya,Ke,639,5,Airtel,LTE,Active
+Kenya,Ke,639,6,Finserve Africa,LTE,Active
+Kenya,Ke,639,9,Homeland Media,LTE,Active
+Kenya,Ke,639,4,Mobile Pay,LTE,Active
+Kenya,Ke,639,1,Safaricom,LTE,Active
+Kenya,Ke,639,2,Safaricom,LTE,Active
+Kenya,Ke,639,7,Telkom,LTE,Active
+Kenya,Ke,639,12,Infura,LTE,Active
+Kenya,Ke,639,11,Jambo Telcoms,LTE,Active
+Kenya,Ke,639,10,Jamii Telecommunications,LTE,Active
+Tanzania,Ta,640,640,Tanzania all operators,LTE,Active
+Tanzania,Ta,640,8,Benson Informatics Ltd,LTE,Active
+Tanzania,Ta,640,6,Dovetel (T) Ltd,LTE,Active
+Tanzania,Ta,640,9,Halotel / Viettel,LTE,Active
+Tanzania,Ta,640,7,Tanzania Telecommunication Corporation,LTE,Active
+Tanzania,Ta,640,2,Tigo / MIC,LTE,Active
+Tanzania,Ta,640,1,Tri Telecomm. Ltd.,LTE,Active
+Tanzania,Ta,640,4,Vodacom,LTE,Active
+Tanzania,Ta,640,3,Zanzibar Telecom / Zantel,LTE,Active
+Tanzania,Ta,640,99,Mkulima African Telecommunication,LTE,Active
+Tanzania,Ta,640,14,MO Mobile,LTE,Active
+Tanzania,Ta,640,11,Smile Communications,LTE,Active
+Tanzania,Ta,640,13,WiAfrica,LTE,Active
+Tanzania,Ta,640,5,Airtel,LTE,Active

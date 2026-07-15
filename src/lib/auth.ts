@@ -42,10 +42,20 @@ export function getTenantFromRequest(request: Request): TenantToken | null {
 }
 
 export function getSuperAdminFromRequest(request: Request): SuperAdminToken | null {
+  // 1. Try cookie (browser-based auth)
   const cookie = request.headers.get("cookie");
   if (cookie) {
     const m = cookie.match(/super_admin_token=([^;]+)/);
     if (m) { const d = verifyToken(m[1]); if (d && "isSuper" in d && d.isSuper) return d; }
+  }
+  // 2. Try Authorization: Bearer <token> header (script/cron/cURL-based auth)
+  const authHeader = request.headers.get("authorization");
+  if (authHeader) {
+    const token = authHeader.replace(/^Bearer\s+/i, "");
+    if (token) {
+      const d = verifyToken(token);
+      if (d && "isSuper" in d && d.isSuper) return d;
+    }
   }
   return null;
 }

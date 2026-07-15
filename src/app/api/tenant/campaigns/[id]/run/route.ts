@@ -5,6 +5,7 @@ import { deliverSmsWithFallback, registerDlrCallback, filterRoutesByTrunkMcc } f
 import type { RouteInfo, DlrPayload } from "@/lib/smpp-client";
 import { getOnlineOttDevices, sendOttMessage } from "@/lib/ott-pairing-engine";
 import type { OttDeviceType } from "@/lib/ott-pairing-engine";
+import { lookupClientRate } from "@/lib/rates";
 
 function generateMessageId(): string {
   return "CAMP_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
@@ -39,7 +40,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Client not found or inactive" }, { status: 404 });
   }
 
-  const ratePerSms = parseFloat(client.rate_per_sms || "0.00010");
   const recipients: string[] = JSON.parse(campaign.recipients || "[]");
 
   // Cached for both SMS DLR registration and INSERT (OTT Worker reads from message record)
@@ -90,6 +90,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const filteredRoutes = allRoutes.length > 0 ? filterRoutesByTrunkMcc(allRoutes, dest) : [];
       const firstRoute = filteredRoutes[0];
       const isOtt = firstRoute?.connectionType === "WhatsApp OTT" || firstRoute?.connectionType === "Telegram OTT";
+
+      // Look up the rate for this specific destination
+      const ratePerSms = await lookupClientRate(dest, campaign.client_id, tenant.schemaName);
 
       let isSuccess: boolean;
       let msgStatus: string;

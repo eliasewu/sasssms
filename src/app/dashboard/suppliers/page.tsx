@@ -2,20 +2,32 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useConfirmModal } from "@/components/confirm-modal";
+import CopyButton from "@/components/copy-button";
 
 const CONNECTION_TYPES = ["SMPP", "HTTP API", "Email", "WhatsApp OTT", "Telegram OTT", "Voice OTP", "Local Bypass", "RCS", "Flash SMS"];
 const SMPP_VERSIONS = ["3.3", "3.4", "5.0"];
-const BIND_TYPES = ["TRX", "TX", "RX"];
+const BIND_TYPES = ["TRX", "TX", "RX", "TX_RX"];
+
+function bindTypeLabel(b: string): string {
+  if (b === "TX_RX") return "TX+RX (separate transmitter & receiver)";
+  if (b === "TRX") return "TRX (transceiver)";
+  if (b === "TX") return "TX (transmitter only)";
+  if (b === "RX") return "RX (receiver only)";
+  return b;
+}
 const CONNECTION_MODES = ["CLIENT", "SERVER"];
+
+function genId(): string { return "gsm_" + Math.random().toString(36).slice(2, 8); }
+function genPwd(): string { return Array.from({length: 12}, () => "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 56)]).join(""); }
 
 interface Supplier {
   id: number; supplier_code: string; name: string; company_name: string; contact_person: string;
   email: string; phone: string; connection_type: string; connection_mode: string;
-  host: string; port: number; username: string; system_id: string; system_type: string;
+  host: string; port: number; username: string; password?: string; system_id: string; system_type: string;
   smpp_version: string; bind_type: string; address_ton: number; address_npi: number;
-  address_range: string; inbound_mode: boolean; api_url: string; connector_id: number;
-  cost_per_sms: string; currency: string; force_dlr: boolean;
-  is_active: boolean; bind_status: string;
+  address_range: string; inbound_mode: boolean;  api_url: string; api_key?: string; connector_id: number;
+  currency: string; force_dlr: boolean;
+  is_active: boolean; bind_status: string; bind_error?: string;
 }
 interface Connector { id: number; name: string; type: string; provider: string; region: string; api_url?: string; }
 
@@ -24,8 +36,10 @@ export default function SupplierPage() {
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
+  const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [bindLoading, setBindLoading] = useState<number | null>(null);
   const [form, setForm] = useState({
     supplierCode: "", name: "", companyName: "", contactPerson: "", email: "", phone: "",
     connectionType: "SMPP", connectionMode: "CLIENT",
@@ -33,7 +47,7 @@ export default function SupplierPage() {
     smppVersion: "3.4", bindType: "TRX", addressTon: "0", addressNpi: "0", addressRange: "",
     inboundMode: false,
     apiUrl: "", apiKey: "",
-    currency: "USD", costPerSms: "0.00000", initialBalance: "0", creditLimit: "0",
+    currency: "USD", initialBalance: "0", creditLimit: "0",
     forceDlr: false,
   });
 
@@ -69,7 +83,8 @@ export default function SupplierPage() {
       host: form.host || null,
       port: parseInt(form.port) || 2775,
       username: form.username || null,
-      password: form.password || null,
+      // Skip sending password if unchanged (masked placeholder)
+      ...(form.password && form.password !== "••••••••" ? { password: form.password } : {}),
       systemId: form.systemId || null,
       systemType: form.systemType || null,
       smppVersion: form.smppVersion,
@@ -79,9 +94,9 @@ export default function SupplierPage() {
       addressRange: form.addressRange || null,
       inboundMode: form.inboundMode,
       apiUrl: form.apiUrl || null,
-      apiKey: form.apiKey || null,
+      // Skip sending apiKey if unchanged (masked placeholder)
+      ...(form.apiKey && form.apiKey !== "••••••••" ? { apiKey: form.apiKey } : {}), 
       currency: form.currency,
-      costPerSms: form.costPerSms || "0",
       initialBalance: form.initialBalance || "0",
       creditLimit: form.creditLimit || "0",
         forceDlr: form.forceDlr,
@@ -122,23 +137,44 @@ export default function SupplierPage() {
 
   const handleEdit = (s: Supplier) => {
     setEditing(s);
+    setShowPwd(false);
     setForm({
       supplierCode: s.supplier_code || "", name: s.name, companyName: s.company_name || "",
       contactPerson: s.contact_person || "", email: s.email || "", phone: s.phone || "",
       connectionType: s.connection_type, connectionMode: s.connection_mode || "CLIENT",
       host: s.host || "", port: (s.port || 2775).toString(), username: s.username || "",
-      password: "", systemId: s.system_id || "", systemType: s.system_type || "ESME",
+      password: s.password ? "••••••••" : "", systemId: s.system_id || "", systemType: s.system_type || "ESME",
       smppVersion: s.smpp_version || "3.4", bindType: s.bind_type || "TRX",
       addressTon: (s.address_ton || 0).toString(), addressNpi: (s.address_npi || 0).toString(),
       addressRange: s.address_range || "", inboundMode: s.inbound_mode || false,
-      apiUrl: s.api_url || "", apiKey: "",
-      currency: s.currency || "USD", costPerSms: s.cost_per_sms || "0",
+      apiUrl: s.api_url || "", apiKey: s.api_key ? "••••••••" : "",
+      currency: s.currency || "USD",
       initialBalance: "0", creditLimit: "0", forceDlr: s.force_dlr || false,
     });
     setShowForm(true);
   };
 
   const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
+
+  const handleBindAction = async (supplierId: number, action: "BIND" | "UNBIND") => {
+    if (action === "UNBIND" && !await confirmDelete("Disconnect this supplier? Active message deliveries will fail.")) return;
+    setBindLoading(supplierId);
+    try {
+      const res = await fetch("/api/tenant/bind-control", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entityType: "suppliers", entityId: supplierId, action }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || `Failed to ${action.toLowerCase()} supplier`);
+      }
+    } catch {
+      alert("Network error. Please try again.");
+    }
+    setBindLoading(null);
+    load();
+  };
 
   const handleDelete = async (id: number) => {
     if (!await confirmDelete("Archive this supplier to CDR?")) return;
@@ -158,14 +194,14 @@ export default function SupplierPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div><h2 className="text-xl font-bold text-slate-800">Supplier Management</h2><p className="text-sm text-slate-500">{suppliers.length} suppliers configured</p></div>
-        <button onClick={() => { setShowForm(true); setEditing(null); setError(""); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium">+ Add Supplier</button>
+        <button onClick={() => { setShowForm(true); setEditing(null); setShowPwd(false); setError(""); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium">+ Add Supplier</button>
       </div>
 
       {showForm && (
         <div className="bg-white rounded-xl border shadow-lg max-h-[85vh] overflow-y-auto">
           <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between z-10">
             <h3 className="font-semibold text-lg">{editing ? "Edit" : "Add"} Supplier</h3>
-            <button onClick={() => { setShowForm(false); setEditing(null); }} className="text-slate-400 hover:text-slate-600">✕</button>
+            <button onClick={() => { setShowForm(false); setEditing(null); setShowPwd(false); }} className="text-slate-400 hover:text-slate-600">✕</button>
           </div>
           
           {error && <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
@@ -181,8 +217,8 @@ export default function SupplierPage() {
                 <F label="Email" type="email" value={form.email} onChange={v => setForm({...form, email: v})} />
                 <F label="Phone" value={form.phone} onChange={v => setForm({...form, phone: v})} />
                 <div>
-                  <label className="block text-sm font-medium mb-1">Connection Mode</label>
-                  <select value={form.connectionMode} onChange={e => setForm({...form, connectionMode: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
+                  <label className="block text-sm font-medium mb-1">Connection Mode {form.inboundMode && <span className="text-blue-600 text-xs">(locked by Inbound Mode)</span>}</label>
+                  <select value={form.connectionMode} onChange={e => setForm({...form, connectionMode: e.target.value})} disabled={form.inboundMode} className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed">
                     {CONNECTION_MODES.map(m => <option key={m} value={m}>{m === "CLIENT" ? "Client (ESME) — connect to external SMSC" : "Server (SMSC) — clients connect to us"}</option>)}
                   </select>
                 </div>
@@ -207,10 +243,10 @@ export default function SupplierPage() {
               <section className="bg-slate-50 rounded-xl p-5">
                 <h4 className="font-semibold mb-3">⚙️ SMPP Connection (v{form.smppVersion})</h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <F label="SMPP Host *" value={form.host} onChange={v => setForm({...form, host: v})} required={form.connectionMode === "CLIENT"} placeholder="145.239.1.103" />
-                  <F label="Port" type="number" value={form.port} onChange={v => setForm({...form, port: v})} />
-                  <F label="System ID" value={form.systemId} onChange={v => setForm({...form, systemId: v})} />
-                  <F label="Password" type="password" value={form.password} onChange={v => setForm({...form, password: v})} />
+                  {!form.inboundMode && <F label="SMPP Host *" value={form.host} onChange={v => setForm({...form, host: v})} required={form.connectionMode === "CLIENT"} placeholder="145.239.1.103" />}
+                  <F label="Port" type="number" value={form.port} onChange={v => setForm({...form, port: v})} disabled={form.inboundMode} />
+                  <F label={form.inboundMode ? "System ID (Username)" : "System ID"} value={form.systemId} onChange={v => setForm({...form, systemId: v})} placeholder={form.inboundMode ? "gsm_a1b2c3" : undefined} suffix={form.inboundMode ? <button type="button" onClick={() => setForm({...form, systemId: genId()})} className="shrink-0 px-3 py-2 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 transition-colors" title="Generate random username">🎲 Generate</button> : undefined} />
+                  <F label="Password" type={showPwd ? "text" : "password"} value={form.password} onChange={v => setForm({...form, password: v})} placeholder={form.inboundMode ? "12-char random" : undefined} suffix={<div className="flex gap-1">{form.inboundMode && <button type="button" onClick={() => setForm({...form, password: genPwd()})} className="shrink-0 px-2.5 py-0.5 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 transition-colors" title="Generate random password">🎲 Gen</button>}{form.password && form.password !== "••••••••" && <CopyButton value={form.password} />}<button type="button" onClick={() => setShowPwd(!showPwd)} className="shrink-0 px-2 py-0.5 text-xs rounded border border-slate-300 hover:bg-slate-100 transition-colors" title={showPwd ? "Hide password" : "Show password"}>{showPwd ? "🙈" : "👁️"}</button></div>} />
                   <div>
                     <label className="block text-sm font-medium mb-1">System Type</label>
                     <select value={form.systemType} onChange={e => setForm({...form, systemType: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
@@ -226,16 +262,69 @@ export default function SupplierPage() {
                   <div>
                     <label className="block text-sm font-medium mb-1">Bind Type</label>
                     <select value={form.bindType} onChange={e => setForm({...form, bindType: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
-                      {BIND_TYPES.map(b => <option key={b} value={b}>{b}</option>)}
+                      {BIND_TYPES.map(b => <option key={b} value={b}>{bindTypeLabel(b)}</option>)}
                     </select>
                   </div>
                   <F label="Address TON" type="number" value={form.addressTon} onChange={v => setForm({...form, addressTon: v})} />
                   <F label="Address NPI" type="number" value={form.addressNpi} onChange={v => setForm({...form, addressNpi: v})} />
                   <F label="Address Range" value={form.addressRange} onChange={v => setForm({...form, addressRange: v})} />
                   <div className="flex items-end pb-2">
-                    <label className="flex items-center gap-2"><input type="checkbox" checked={form.inboundMode} onChange={e => setForm({...form, inboundMode: e.target.checked})} className="accent-blue-600" /><span className="text-sm">Inbound Mode</span></label>
+                    <label className="flex items-center gap-2"><input type="checkbox" checked={form.inboundMode} onChange={e => {
+                      const checked = e.target.checked;
+                      setForm({
+                        ...form,
+                        inboundMode: checked,
+                        connectionMode: checked ? "SERVER" : "CLIENT",
+                        host: checked ? "" : form.host,
+                        port: checked ? "2775" : form.port,
+                        systemId: checked && !form.systemId ? genId() : form.systemId,
+                        password: checked && !form.password ? genPwd() : form.password,
+                      });
+                    }} className="accent-blue-600" /><span className="text-sm font-medium">Inbound Mode — GSM modem/gateway connects to our server</span></label>
                   </div>
                 </div>
+
+                {/* Inbound Mode Info Panel */}
+                {form.inboundMode && (
+                  <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-5">
+                    <h5 className="font-semibold text-blue-800 mb-2">📡 GSM Modem Connection Details</h5>
+                    <p className="text-xs text-blue-600 mb-4">
+                      Give these details to the GSM modem/gateway operator. The device will connect <strong>to</strong> our server (SERVER mode) — no public IP needed on the modem side.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                      <div className="bg-white rounded-lg border border-blue-100 px-4 py-3">
+                        <span className="text-xs text-blue-400 font-medium uppercase tracking-wide">Server Host</span>
+                        <div className="font-mono font-bold text-blue-900 mt-0.5 inline-flex items-center gap-1">
+                          {typeof window !== "undefined" ? window.location.hostname : ""}
+                          <CopyButton value={typeof window !== "undefined" ? window.location.hostname : "localhost"} />
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-lg border border-blue-100 px-4 py-3">
+                        <span className="text-xs text-blue-400 font-medium uppercase tracking-wide">Port</span>
+                        <div className="font-mono font-bold text-blue-900 mt-0.5 inline-flex items-center gap-1">
+                          2775
+                          <CopyButton value="2775" />
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-lg border border-blue-100 px-4 py-3">
+                        <span className="text-xs text-blue-400 font-medium uppercase tracking-wide">System ID / Username</span>
+                        <div className="font-mono font-bold text-blue-900 mt-0.5 inline-flex items-center gap-1">
+                          {form.username || form.systemId || "(set System ID above)"}
+                          {(form.username || form.systemId) && <CopyButton value={(form.username || form.systemId)!} />}
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-lg border border-blue-100 px-4 py-3">
+                        <span className="text-xs text-blue-400 font-medium uppercase tracking-wide">Password</span>
+                        <div className="font-mono font-bold text-blue-900 mt-0.5 inline-flex items-center gap-1">
+                          {form.password && form.password !== "••••••••" ? <>{form.password}<CopyButton value={form.password} /></> : form.password === "••••••••" ? "(already set)" : "(set password above)"}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-3 text-xs text-blue-500 bg-blue-100/50 rounded-lg px-3 py-2">
+                      💡 The modem will send <code className="bg-blue-200 px-1 rounded">SUBMIT_SM</code> (outbound) and receive <code className="bg-blue-200 px-1 rounded">DELIVER_SM</code> (DLR + inbound). {form.bindType !== "TRX" && form.bindType !== "TX_RX" && <span className="text-amber-700 font-medium">⚠️ Set Bind Type to <strong>TRX</strong> above for full two-way SMS.</span>}
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 
@@ -269,8 +358,8 @@ export default function SupplierPage() {
                   </select>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <F label="API URL" value={form.apiUrl} onChange={v => setForm({...form, apiUrl: v})} />
-                  <F label="API Key / Token" value={form.apiKey} onChange={v => setForm({...form, apiKey: v})} />
+                  <F label="API URL" value={form.apiUrl} onChange={v => setForm({...form, apiUrl: v})} suffix={form.apiUrl ? <CopyButton value={form.apiUrl} /> : undefined} />
+                  <F label="API Key / Token" value={form.apiKey} onChange={v => setForm({...form, apiKey: v})} suffix={form.apiKey && form.apiKey !== "••••••••" ? <CopyButton value={form.apiKey} /> : undefined} />
                 </div>
               </section>
             )}
@@ -285,7 +374,6 @@ export default function SupplierPage() {
                     <option value="USD">USD</option><option value="EUR">EUR</option><option value="INR">INR</option>
                   </select>
                 </div>
-                <F label="Cost Per SMS ($)" type="number" step="0.000001" value={form.costPerSms} onChange={v => setForm({...form, costPerSms: v})} />
                 <F label="Initial Balance" type="number" step="0.0001" value={form.initialBalance} onChange={v => setForm({...form, initialBalance: v})} />
                 <F label="Credit Limit" type="number" step="0.0001" value={form.creditLimit} onChange={v => setForm({...form, creditLimit: v})} />
                 <div className="flex items-end pb-2">
@@ -298,7 +386,7 @@ export default function SupplierPage() {
               <button type="submit" disabled={saving} className="bg-blue-600 text-white px-8 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
                 {saving ? "Saving..." : editing ? "Update Supplier" : "Create Supplier"}
               </button>
-              <button type="button" onClick={() => { setShowForm(false); setEditing(null); }} className="border px-6 py-2.5 rounded-lg text-sm hover:bg-slate-50">Cancel</button>
+              <button type="button" onClick={() => { setShowForm(false); setEditing(null); setShowPwd(false); }} className="border px-6 py-2.5 rounded-lg text-sm hover:bg-slate-50">Cancel</button>
             </div>
           </form>
         </div>
@@ -308,7 +396,7 @@ export default function SupplierPage() {
       <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-slate-50">
-            <tr><th className="text-left px-4 py-3">Name</th><th className="text-left px-4 py-3">Type</th><th className="text-left px-4 py-3">Mode</th><th className="text-left px-4 py-3">Host:Port</th><th className="text-left px-4 py-3">Cost/SMS</th><th className="text-left px-4 py-3">Bind</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Actions</th></tr>
+            <tr><th className="text-left px-4 py-3">Name</th><th className="text-left px-4 py-3">Type</th><th className="text-left px-4 py-3">Mode</th><th className="text-left px-4 py-3">Host:Port</th><th className="text-left px-4 py-3">SMPP User</th><th className="text-left px-4 py-3">Bind</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Actions</th></tr>
           </thead>
           <tbody>
             {suppliers.map(s => (
@@ -317,8 +405,39 @@ export default function SupplierPage() {
                 <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded text-xs ${typeColors[s.connection_type] || "bg-slate-100"}`}>{s.connection_type}</span></td>
                 <td className="px-4 py-3"><span className="text-xs bg-slate-100 px-2 py-0.5 rounded">{s.connection_mode || "CLIENT"}</span></td>
                 <td className="px-4 py-3 font-mono text-xs">{s.host ? `${s.host}:${s.port}` : s.api_url ? s.api_url.slice(0,30) : "—"}</td>
-                <td className="px-4 py-3 font-mono text-xs">${s.cost_per_sms}</td>
-                <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs ${s.bind_status === "BOUND" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-600"}`}>{s.bind_status || "UNBOUND"}</span></td>
+                <td className="px-4 py-3">
+                  {(s.username || s.system_id) ? (
+                    <>
+                      <span className="font-mono text-xs font-medium text-slate-700">{s.username || s.system_id}</span>
+                      <br/><span className="inline-flex items-center gap-1"><span className="text-xs text-slate-400">{s.password ? "••••••••" : "No password"}</span>{s.password && <CopyButton value={s.password} />}</span>
+                      {s.api_key && <><br/><span className="inline-flex items-center gap-1"><span className="text-xs text-slate-400">API Key: ••••••••</span><CopyButton value={s.api_key} /></span></>}
+                    </>
+                  ) : (
+                    <span className="text-xs text-slate-400">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${s.bind_status === "BOUND" ? "bg-emerald-100 text-emerald-700 border-emerald-300" : "bg-red-100 text-red-700 border-red-300"}`} title={s.bind_error || undefined}>
+                      <span className={`inline-block w-1.5 h-1.5 rounded-full ${s.bind_status === "BOUND" ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`} />
+                      {s.bind_status || "UNBOUND"}
+                    </span>
+                    {s.bind_error && s.bind_status !== "BOUND" && (
+                      <span className="text-xs text-red-400 truncate max-w-[100px]" title={s.bind_error}>{s.bind_error}</span>
+                    )}
+                    {s.connection_type === "SMPP" && (
+                      s.bind_status === "BOUND" ? (
+                        <button onClick={() => handleBindAction(s.id, "UNBIND")} disabled={bindLoading === s.id} className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50" title={bindLoading === s.id ? "Disconnecting..." : "Disconnect supplier"}>
+                          {bindLoading === s.id ? "⋯" : "✕"}
+                        </button>
+                      ) : (
+                        <button onClick={() => handleBindAction(s.id, "BIND")} disabled={bindLoading === s.id} className="text-xs text-emerald-500 hover:text-emerald-700 disabled:opacity-50" title={bindLoading === s.id ? "Connecting..." : "Connect to supplier"}>
+                          {bindLoading === s.id ? "⋯" : "▶"}
+                        </button>
+                      )
+                    )}
+                  </div>
+                </td>
                 <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs ${s.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{s.is_active ? "Active" : "Inactive"}</span></td>
                 <td className="px-4 py-3">
                   <button onClick={() => handleEdit(s)} className="text-blue-600 hover:underline text-xs mr-2">Edit</button>
@@ -335,6 +454,7 @@ export default function SupplierPage() {
   );
 }
 
-function F({ label, type = "text", value, onChange, required, placeholder, step }: { label: string; type?: string; value: string; onChange: (v: string) => void; required?: boolean; placeholder?: string; step?: string }) {
-  return <div><label className="block text-sm font-medium text-slate-700 mb-1">{label}</label><input type={type} value={value} onChange={e => onChange(e.target.value)} required={required} placeholder={placeholder} step={step} className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" /></div>;
+function F({ label, type = "text", value, onChange, required, placeholder, step, disabled, suffix }: { label: string; type?: string; value: string; onChange: (v: string) => void; required?: boolean; placeholder?: string; step?: string; disabled?: boolean; suffix?: React.ReactNode }) {
+  const input = <input type={type} value={value} onChange={e => onChange(e.target.value)} required={required} placeholder={placeholder} step={step} disabled={disabled} className={`border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed ${suffix ? "flex-1 font-mono" : "w-full"}`} />;
+  return <div><label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>{suffix ? <div className="flex gap-1.5">{input}{suffix}</div> : input}</div>;
 }

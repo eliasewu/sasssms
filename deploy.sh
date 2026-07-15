@@ -271,13 +271,14 @@ HCSCRIPT
 
 chmod +x "$APP_DIR/health-check.sh"
 
-# Install cron jobs (every minute + @reboot triple-safety)
+# Install cron jobs (every minute + @reboot triple-safety + weekly MCC/MNC sync)
 set +e
 (crontab -l 2>/dev/null | grep -v health-check.sh; echo "* * * * * /opt/net2app/health-check.sh") | crontab - 2>/dev/null || true
 (crontab -l 2>/dev/null | grep -v 'pm2 resurrect'; echo "@reboot sleep 10 && /usr/bin/pm2 resurrect") | crontab - 2>/dev/null || true
+(crontab -l 2>/dev/null | grep -v sync-mccmnc.sh; echo "@weekly /opt/net2app/sync-mccmnc.sh >/dev/null 2>&1") | crontab - 2>/dev/null || true
 set -e
 
-ok "Monitoring cron installed (every 1 min + @reboot)"
+ok "Monitoring cron installed (every 1 min + @reboot + weekly MCC sync)"
 
 # ── Nginx config (HTTP + HTTPS with Cloudflare-compatible origin cert) ──
 # Use Cloudflare origin cert (self-signed, works with Cloudflare "Full" SSL mode)
@@ -342,6 +343,15 @@ server {
     ssl_ciphers HIGH:!aNULL:!MD5;
 
     client_max_body_size 100M;
+
+    # Serve uploaded files directly from disk (QR codes, payment proofs)
+    # Bypasses Next.js build cache — new uploads available immediately
+    location /uploads/ {
+        alias /opt/net2app/public/uploads/;
+        try_files $uri =404;
+        expires 1h;
+        add_header Cache-Control "public";
+    }
 
     location / {
         proxy_pass http://127.0.0.1:5555;

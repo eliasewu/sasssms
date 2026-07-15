@@ -19,6 +19,7 @@ import type { AudioFile, SipConfig, CallAttempt, AudioPlaylistItem } from "@/lib
 import type { RouteInfo, DlrPayload } from "@/lib/smpp-client";
 import { getOnlineOttDevices, sendOttMessage } from "@/lib/ott-pairing-engine";
 import type { OttDeviceType } from "@/lib/ott-pairing-engine";
+import { lookupClientRate } from "@/lib/rates";
 
 // Use real Asterisk AMI executor, fall back to simulation if AMI is unavailable
 const amiExecutor = new AsteriskAmiExecutor();
@@ -146,7 +147,7 @@ export async function POST(request: Request) {
   }
 
   const client = clientResult.rows[0];
-  const ratePerSms = parseFloat(client.rate_per_sms || "0.00010");
+  const ratePerSms = await lookupClientRate(destination, clientId as number, tenant.schemaName);
   const clientBalance = parseFloat(client.balance);
   const clientMaxTps = parseInt(client.max_tps || "0");
 

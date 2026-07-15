@@ -54,7 +54,9 @@ const navSections: { title: string; items: NavItem[] }[] = [
   {
     title: "Rates",
     items: [
-      { href: "/dashboard/rates", label: "Rate Management", icon: "💲" },
+      { href: "/dashboard/rates", label: "Bulk Rate Management", icon: "💲" },
+      { href: "/dashboard/clients/rates", label: "Client Rates", icon: "💵" },
+      { href: "/dashboard/suppliers/rates", label: "Supplier Rates", icon: "💰" },
       { href: "/dashboard/mcc-mnc", label: "MCC/MNC Database", icon: "🌍" },
     ],
   },

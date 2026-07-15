@@ -10,6 +10,7 @@
  */
 import smpp from "smpp";
 import { pool } from "@/db";
+import { lookupSupplierCost } from "@/lib/rates";
 
 const smppLib: any = smpp;
 type SmppSession = any;
@@ -74,15 +75,22 @@ interface PendingDelivery {
   createdAt: Date;
 }
 
+// Use globalThis to share state across Next.js instrumentation and API route entry points
+const _global = globalThis as typeof globalThis & {
+  __supplierConnections?: Map<string, SupplierConnection>;
+  __pendingDeliveries?: Map<string, PendingDelivery>;
+  __dlrCallbacks?: Map<string, DlrCallback>;
+};
+
 // ── Active outbound connections ──
-const supplierConnections: Map<string, SupplierConnection> = new Map();
+const supplierConnections: Map<string, SupplierConnection> = _global.__supplierConnections ??= new Map();
 
 // ── Pending deliveries: supplier_message_id → our tracking info ──
-const pendingDeliveries: Map<string, PendingDelivery> = new Map();
+const pendingDeliveries: Map<string, PendingDelivery> = _global.__pendingDeliveries ??= new Map();
 
 // ── DLR callbacks: our_message_id → callback to push DLR to client ──
 type DlrCallback = (dlr: DlrPayload) => void;
-const dlrCallbacks: Map<string, DlrCallback> = new Map();
+const dlrCallbacks: Map<string, DlrCallback> = _global.__dlrCallbacks ??= new Map();
 
 // ── Cleanup stale pending deliveries every 5 minutes ──
 setInterval(() => {
@@ -116,7 +124,7 @@ function smppVersionToHex(version: string): number {
  * Parse DLR from deliver_sm short_message
  * Format: "id:{msgId} sub:001 dlvrd:001 submit date:{date} done date:{date} stat:{status} err:{err} text:{text}"
  */
-function parseDlrMessage(text: string): {
+export function parseDlrMessage(text: string): {
   messageId: string;
   status: string;
   errorCode: string;
@@ -206,20 +214,22 @@ async function processSupplierDlr(
       [dlrStatus, dlrStatus, delivery.ourMessageId]
     );
 
-    // ── On DLR success: charge supplier cost, record profit (client_rate - supplier_rate) ──
+    // ── On DLR success: stamp supplier cost, record profit (client_rate - supplier_rate) ──
     if (dlrStatus === "DELIVERED") {
-      // Get client rate from the message (already stored) and supplier cost
       const { rows: msgRows } = await client.query(
-        `SELECT m.client_id, m.cost as client_rate, m.supplier_id,
-                COALESCE(s.cost_per_sms, '0') as supplier_cost
-         FROM messages m
-         LEFT JOIN suppliers s ON m.supplier_id = s.id
-         WHERE m.message_id = $1`,
+        `SELECT m.client_id, m.cost as client_rate, m.supplier_id, m.destination
+         FROM messages m WHERE m.message_id = $1`,
         [delivery.ourMessageId]
       );
       if (msgRows.length > 0) {
         const clientRate = parseFloat(msgRows[0].client_rate || "0");
-        const supplierCost = parseFloat(msgRows[0].supplier_cost || "0");
+        const dest = msgRows[0].destination || "";
+        const supplierId = msgRows[0].supplier_id;
+        // Look up supplier cost from supplier_rates (uses destination prefix matching)
+        let supplierCost = 0;
+        if (supplierId && dest) {
+          supplierCost = await lookupSupplierCost(dest, supplierId, delivery.schemaName);
+        }
         // Update message with actual supplier cost and profit
         await client.query(
           `UPDATE messages SET supplier_cost = $1, profit = $2 WHERE message_id = $3`,
@@ -296,7 +306,108 @@ async function pushHttpDlr(url: string, dlr: DlrPayload) {
 }
 
 /**
- * Connect to a supplier's SMPP server in client mode
+ * Low-level: attempt a single bind with a specific interface_version.
+ * Returns the bind response command_status (0 = success).
+ * On TCP/socket error, the promise is rejected.
+ */
+function attemptBind(
+  key: string,
+  host: string,
+  port: number,
+  systemId: string,
+  password: string,
+  bindType: string,
+  systemType: string,
+  interfaceVersion: number,
+  supplierId: number,
+  tenantId: number,
+  schemaName: string
+): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const sess = smppLib.connect(`esms://${host}:${port}`);
+
+    const bindEvent = bindType === "transmitter"
+      ? "bind_transmitter"
+      : bindType === "receiver"
+        ? "bind_receiver"
+        : "bind_transceiver";
+
+    let settled = false;
+
+    sess.on("connect", () => {
+      sess.send(new smppLib.PDU(bindEvent, {
+        system_id: systemId,
+        password: password,
+        system_type: systemType,
+        interface_version: interfaceVersion,
+      }), (resp: any) => {
+        if (settled) return;
+        if (resp.command_status === 0) {
+          settled = true;
+          const respVersion = resp.interface_version || interfaceVersion;
+          const vLabel = hexToVersionLabel(respVersion);
+          const conn: SupplierConnection = {
+            supplierId, tenantId, schemaName, session: sess,
+            host, port, systemId,
+            smppVersion: vLabel,
+            interfaceVersion: respVersion,
+            connectedAt: new Date(),
+            status: "BOUND",
+          };
+          supplierConnections.set(key, conn);
+
+          sess.on("deliver_sm", (pdu: any) => {
+            processSupplierDlr(tenantId, schemaName, supplierId, pdu).catch((err) => {
+              console.error(`[SMPP-CLIENT] DLR processing error:`, err);
+            });
+          });
+
+          console.log(`[SMPP-CLIENT] BOUND to supplier ${supplierId} @ ${host}:${port} (SMPP ${vLabel})`);
+          updateSupplierBindStatus(schemaName, supplierId, "BOUND");
+          resolve(0);
+        } else {
+          settled = true;
+          const status = resp.command_status;
+          sess.close();
+          resolve(status);
+        }
+      });
+    });
+
+    sess.on("error", () => {
+      if (settled) return;
+      settled = true;
+      sess.close();
+      reject(new Error(`TCP error connecting to ${host}:${port}`));
+    });
+
+    sess.on("close", () => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(`Connection closed during bind to ${host}:${port}`));
+    });
+
+    setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        sess.close();
+        reject(new Error(`Bind timeout to ${host}:${port}`));
+      }
+    }, BIND_TIMEOUT);
+  });
+}
+
+/** Convert interface_version hex back to version string for logging */
+function hexToVersionLabel(hex: number): string {
+  if (hex === 0x33) return "3.3";
+  if (hex === 0x34) return "3.4";
+  if (hex === 0x50) return "5.0";
+  return `0x${hex.toString(16)}`;
+}
+
+/**
+ * Connect to a supplier's SMPP server in client mode.
+ * Auto-detects the SMPP version: tries configured version → 3.4 → 3.3.
  */
 export async function connectToSupplier(
   tenantId: number,
@@ -312,91 +423,170 @@ export async function connectToSupplier(
 ): Promise<boolean> {
   const key = `${tenantId}:${supplierId}`;
 
+  // ── TX_RX mode: bind transmitter + receiver separately ──
+  if (bindType === "TX_RX") {
+    // Close any existing connections for this supplier (all suffix variants)
+    for (const suffix of ["", ":tx", ":rx"]) {
+      const existingKey = `${tenantId}:${supplierId}${suffix}`;
+      const existing = supplierConnections.get(existingKey);
+      if (existing) {
+        try { existing.session.close(); } catch {}
+        supplierConnections.delete(existingKey);
+      }
+    }
+
+    const txKey = `${tenantId}:${supplierId}:tx`;
+    const rxKey = `${tenantId}:${supplierId}:rx`;
+
+    // Bind transmitter first
+    console.log(`[SMPP-CLIENT] TX_RX mode: binding transmitter to supplier ${supplierId}`);
+    const txOk = await doVersionFallback(txKey, host, port, systemId, password, "transmitter", systemType, smppVersion, supplierId, tenantId, schemaName);
+    if (!txOk) {
+      updateSupplierBindStatus(schemaName, supplierId, "BIND_FAILED", "TX_RX: transmitter bind failed");
+      return false;
+    }
+
+    // Bind receiver second
+    console.log(`[SMPP-CLIENT] TX_RX mode: binding receiver to supplier ${supplierId}`);
+    const rxOk = await doVersionFallback(rxKey, host, port, systemId, password, "receiver", systemType, smppVersion, supplierId, tenantId, schemaName);
+    if (!rxOk) {
+      // Clean up the transmitter connection that succeeded
+      disconnectSupplier(tenantId, supplierId);
+      updateSupplierBindStatus(schemaName, supplierId, "BIND_FAILED", "TX_RX: receiver bind failed");
+      return false;
+    }
+
+    // Register session handlers on both connections
+    const txConn = supplierConnections.get(txKey);
+    const rxConn = supplierConnections.get(rxKey);
+    if (txConn) registerSessionHandlers(txConn.session, txKey);
+    if (rxConn) registerSessionHandlers(rxConn.session, rxKey);
+
+    updateSupplierBindStatus(schemaName, supplierId, "BOUND");
+    console.log(`[SMPP-CLIENT] TX_RX BOUND to supplier ${supplierId} @ ${host}:${port}`);
+    return true;
+  }
+
+  // Close any existing connection for this supplier
   const existing = supplierConnections.get(key);
   if (existing) {
     try { existing.session.close(); } catch {}
     supplierConnections.delete(key);
   }
 
-  return new Promise((resolve) => {
-    const interfaceVersion = smppVersionToHex(smppVersion);
-    const session = smppLib.connect(
-      `esms://${host}:${port}`,
-      () => {
-        const bindPdu: Record<string, unknown> = {
-          system_id: systemId,
-          password: password,
-          system_type: systemType,
-          interface_version: interfaceVersion,
-        };
+  // Single-bind: use the version fallback helper
+  const ok = await doVersionFallback(key, host, port, systemId, password, bindType, systemType, smppVersion, supplierId, tenantId, schemaName);
+  if (ok) {
+    const conn = supplierConnections.get(key);
+    if (conn) registerSessionHandlers(conn.session, key);
+    return true;
+  }
+  return false;
+}
 
-        const bindEvent = bindType === "transmitter"
-          ? "bind_transmitter"
-          : bindType === "receiver"
-            ? "bind_receiver"
-            : "bind_transceiver";
+/**
+ * Version fallback helper: tries configured version → 3.4 → 3.3.
+ * Returns true if any version binds successfully, false otherwise.
+ * On failure, updates bind_error with per-version status codes.
+ */
+async function doVersionFallback(
+  key: string,
+  host: string,
+  port: number,
+  systemId: string,
+  password: string,
+  bindType: string,
+  systemType: string,
+  smppVersion: string,
+  supplierId: number,
+  tenantId: number,
+  schemaName: string
+): Promise<boolean> {
+  const configuredHex = smppVersionToHex(smppVersion);
+  const candidateVersions: { hex: number; label: string }[] = [];
+  const seen = new Set<number>();
+  for (const h of [configuredHex, 0x34, 0x33]) {
+    if (!seen.has(h)) {
+      seen.add(h);
+      candidateVersions.push({ hex: h, label: hexToVersionLabel(h) });
+    }
+  }
 
-        session.send(new smppLib.PDU(bindEvent, bindPdu), (resp: any) => {
-          if (resp.command_status === 0) {
-            const respVersion = resp.interface_version || interfaceVersion;
-            const conn: SupplierConnection = {
-              supplierId, tenantId, schemaName, session,
-              host, port, systemId,
-              smppVersion,
-              interfaceVersion: respVersion,
-              connectedAt: new Date(),
-              status: "BOUND",
-            };
-            supplierConnections.set(key, conn);
+  const failedStatuses: { label: string; status: number }[] = [];
 
-            // ── Register DLR listener on this supplier connection ──
-            session.on("deliver_sm", (pdu: any) => {
-              processSupplierDlr(tenantId, schemaName, supplierId, pdu).catch((err) => {
-                console.error(`[SMPP-CLIENT] DLR processing error:`, err);
-              });
-            });
-
-            console.log(`[SMPP-CLIENT] BOUND to supplier ${supplierId} @ ${host}:${port} (SMPP v${smppVersion})`);
-            updateSupplierBindStatus(schemaName, supplierId, "BOUND");
-            resolve(true);
-          } else {
-            console.error(`[SMPP-CLIENT] BIND FAILED to ${host}:${port} status=${resp.command_status}`);
-            updateSupplierBindStatus(schemaName, supplierId, "BIND_FAILED");
-            session.close();
-            resolve(false);
-          }
-        });
+  for (const { hex, label } of candidateVersions) {
+    console.log(`[SMPP-CLIENT] Attempting SMPP ${label} (0x${hex.toString(16)}) for supplier ${supplierId}`);
+    try {
+      const status = await attemptBind(key, host, port, systemId, password, bindType, systemType, hex, supplierId, tenantId, schemaName);
+      if (status === 0) {
+        return true;
       }
-    );
+      failedStatuses.push({ label, status });
+      console.warn(`[SMPP-CLIENT] SMPP ${label} bind failed for supplier ${supplierId} with status=${status}`);
+    } catch (err) {
+      console.warn(`[SMPP-CLIENT] SMPP ${label} bind error for supplier ${supplierId}: ${(err as Error).message}`);
+      failedStatuses.push({ label, status: -1 });
+    }
+  }
 
-    session.on("error", (err: Error) => {
-      console.error(`[SMPP-CLIENT] Error on supplier ${supplierId}: ${err.message}`);
-      const conn = supplierConnections.get(key);
-      if (conn) {
-        conn.status = "UNBOUND";
-        updateSupplierBindStatus(schemaName, supplierId, "UNBOUND");
-      }
-      supplierConnections.delete(key);
-    });
+  const statusList = failedStatuses.length > 0
+    ? failedStatuses.map((f) => `v${f.label}=${f.status}`).join(", ")
+    : "unknown error";
+  console.error(`[SMPP-CLIENT] All SMPP versions failed for supplier ${supplierId} @ ${host}:${port} (${statusList})`);
+  updateSupplierBindStatus(schemaName, supplierId, "BIND_FAILED", `Rejected by SMSC [${statusList}]`);
+  return false;
+}
 
-    session.on("close", () => {
-      const conn = supplierConnections.get(key);
-      if (conn) {
-        conn.status = "UNBOUND";
-        updateSupplierBindStatus(schemaName, supplierId, "UNBOUND");
-      }
-      supplierConnections.delete(key);
+/**
+ * Register session-level error/close handlers for a supplier connection.
+ * For TX_RX mode (dual sessions), only marks the supplier UNBOUND and
+ * triggers reconnect when BOTH transmitter and receiver sessions are down.
+ */
+function registerSessionHandlers(sess: any, sessKey: string) {
+  const parts = sessKey.split(":");
+  const tenantId = parseInt(parts[0]);
+  const supplierId = parseInt(parts[1]);
+  const isDualMode = parts.length >= 3; // key like "123:45:tx" or "123:45:rx"
+
+  // Resolve schema name from connections map
+  const conn = supplierConnections.get(sessKey);
+  const schemaName = conn?.schemaName || "public";
+
+  /** Check if any sibling session is still alive in TX_RX mode */
+  function hasSiblingSession(): boolean {
+    if (!isDualMode) return false;
+    const baseKey = `${tenantId}:${supplierId}`;
+    const txKey = `${baseKey}:tx`;
+    const rxKey = `${baseKey}:rx`;
+    const otherKey = sessKey === txKey ? rxKey : txKey;
+    const other = supplierConnections.get(otherKey);
+    return other?.status === "BOUND";
+  }
+
+  sess.on("error", (err: Error) => {
+    console.error(`[SMPP-CLIENT] Error on supplier ${supplierId} (${sessKey}): ${err.message}`);
+    const c = supplierConnections.get(sessKey);
+    if (c) c.status = "UNBOUND";
+    supplierConnections.delete(sessKey);
+
+    if (!hasSiblingSession()) {
+      updateSupplierBindStatus(schemaName, supplierId, "UNBOUND", err.message);
+    }
+  });
+
+  sess.on("close", () => {
+    const c = supplierConnections.get(sessKey);
+    if (c) c.status = "UNBOUND";
+    supplierConnections.delete(sessKey);
+
+    if (!hasSiblingSession()) {
+      updateSupplierBindStatus(schemaName, supplierId, "UNBOUND", "Connection closed");
       setTimeout(() => {
         reconnectToSupplier(tenantId, schemaName, supplierId);
       }, RECONNECT_INTERVAL);
-    });
-
-    setTimeout(() => {
-      if (!supplierConnections.has(key)) {
-        session.close();
-        resolve(false);
-      }
-    }, BIND_TIMEOUT);
+    } else {
+      console.log(`[SMPP-CLIENT] TX_RX partial disconnect for supplier ${supplierId} (${sessKey}), sibling still active — holding`);
+    }
   });
 }
 
@@ -414,7 +604,7 @@ async function reconnectToSupplier(tenantId: number, schemaName: string, supplie
     console.log(`[SMPP-CLIENT] Reconnecting to supplier ${supplierId} @ ${s.host}:${s.port}`);
     await connectToSupplier(
       tenantId, schemaName, supplierId,
-      s.host, s.port, s.username, s.password,
+      s.host, s.port, s.username || s.system_id, s.password,
       s.bind_type || "transceiver", s.system_type || "SMSC",
       s.smpp_version || "3.4"
     );
@@ -438,8 +628,10 @@ export function sendViaSupplierConnection(
   content: string,
   messageId: string
 ): Promise<{ success: boolean; supplierMessageId: string; errorCode?: number }> {
-  const key = `${tenantId}:${supplierId}`;
-  const conn = supplierConnections.get(key);
+  // Try TX key first (TX_RX mode), then TRX key (transceiver mode)
+  const txKey = `${tenantId}:${supplierId}:tx`;
+  const trxKey = `${tenantId}:${supplierId}`;
+  const conn = supplierConnections.get(txKey) || supplierConnections.get(trxKey);
 
   if (!conn || conn.status !== "BOUND") {
     return Promise.resolve({ success: false, supplierMessageId: "", errorCode: 14 });
@@ -466,9 +658,102 @@ export function sendViaSupplierConnection(
 }
 
 /**
+ * Send MT through an active SERVER-mode supplier session.
+ * Tries SUBMIT_SM first (standard MT, triggers proper DLR tracking),
+ * falls back to DELIVER_SM if the modem rejects SUBMIT_SM.
+ */
+export function sendViaSupplierServerSession(
+  tenantId: number,
+  supplierId: number,
+  source: string,
+  destination: string,
+  content: string,
+  messageId: string,
+  /** Optional explicit map from the caller to bypass Next.js module-isolation issues */
+  serverSessions?: Map<string, any>
+): Promise<{ success: boolean; supplierMessageId: string; errorCode?: number }> {
+  // Prefer the explicitly-passed map (caller's closure); fall back to globalThis
+  const sessions: Map<string, any> | undefined = serverSessions
+    || (globalThis as any).__activeSupplierSessions;
+
+  if (!sessions) {
+    return Promise.resolve({ success: false, supplierMessageId: "", errorCode: 14 });
+  }
+
+  const key = `supplier:${tenantId}:${supplierId}`;
+  const sess = sessions.get(key);
+  if (!sess) {
+    return Promise.resolve({ success: false, supplierMessageId: "", errorCode: 14 });
+  }
+
+  // ── Try SUBMIT_SM first (standard MT — triggers proper DLR tracking) ──
+  return new Promise((resolve) => {
+    try {
+      sess.session.send(
+        new smppLib.PDU("submit_sm", {
+          source_addr: source,
+          destination_addr: destination,
+          short_message: { message: content },
+          registered_delivery: 1,  // request DLR
+          data_coding: 0,
+        }),
+        (submitResp: { command_status: number; message_id?: string }) => {
+          if (submitResp.command_status === 0) {
+            const modemMsgId = submitResp.message_id || messageId;
+            console.log(`[SMPP-SRV] MT SUBMIT_SM accepted by supplier #${supplierId}: our=${messageId}, modem=${modemMsgId}`);
+            resolve({
+              success: true,
+              supplierMessageId: modemMsgId, // modem's message_id for DLR matching
+              errorCode: undefined,
+            });
+          } else {
+            // SUBMIT_SM rejected — fall back to DELIVER_SM
+            console.log(`[SMPP-SRV] SUBMIT_SM rejected by supplier #${supplierId} (status=${submitResp.command_status}), falling back to DELIVER_SM...`);
+            try {
+              sess.session.send(
+                new smppLib.PDU("deliver_sm", {
+                  source_addr: source,
+                  destination_addr: destination,
+                  short_message: { message: content },
+                  esm_class: 0,
+                  registered_delivery: 0,
+                  data_coding: 0,
+                }),
+                (deliverResp: { command_status: number; message_id?: string }) => {
+                  if (deliverResp.command_status === 0) {
+                    console.log(`[SMPP-SRV] MT DELIVER_SM accepted by supplier #${supplierId}: ${messageId}`);
+                    resolve({
+                      success: true,
+                      supplierMessageId: messageId,
+                      errorCode: undefined,
+                    });
+                  } else {
+                    console.warn(`[SMPP-SRV] MT DELIVER_SM also rejected by supplier #${supplierId}: status=${deliverResp.command_status}`);
+                    resolve({ success: false, supplierMessageId: "", errorCode: deliverResp.command_status || 1 });
+                  }
+                }
+              );
+            } catch (err) {
+              console.error(`[SMPP-SRV] Error sending fallback DELIVER_SM via supplier #${supplierId}:`, err);
+              resolve({ success: false, supplierMessageId: "", errorCode: 1 });
+            }
+          }
+        }
+      );
+    } catch (err) {
+      console.error(`[SMPP-SRV] Error sending MT via supplier #${supplierId}:`, err);
+      resolve({ success: false, supplierMessageId: "", errorCode: 1 });
+    }
+  });
+}
+
+/**
  * Core delivery function: Resolves route plan, tries routes by priority with fallback.
  * On success, stores the supplier_message_id → our_message_id mapping for DLR tracking.
  * Callers should register a DLR callback via `registerDlrCallback` after calling this.
+ *
+ * @param serverSessions - Optional map of active SERVER-mode supplier sessions.
+ *   Passed explicitly to avoid Next.js module-isolation issues with globalThis.
  */
 export function deliverSmsWithFallback(
   tenantId: number,
@@ -479,7 +764,8 @@ export function deliverSmsWithFallback(
   content: string,
   messageId: string,
   routes: RouteInfo[],
-  dlrCallbackUrl?: string
+  dlrCallbackUrl?: string,
+  serverSessions?: Map<string, unknown>
 ): Promise<DeliveryResult> {
   // Sort routes by priority (ascending — lower number = higher priority)
   const sortedRoutes = [...routes].sort((a, b) => a.priority - b.priority);
@@ -501,15 +787,16 @@ export function deliverSmsWithFallback(
     const route = sortedRoutes[index];
     if (index > 0) fallbackUsed = true;
 
-    // Check if supplier is connected; if not, skip to next route
-    if (!isSupplierConnected(tenantId, route.supplierId)) {
+    // Check if supplier has ANY active connection (CLIENT or passed-in SERVER sessions)
+    const hasServerSession = serverSessions?.has(`supplier:${tenantId}:${route.supplierId}`);
+    if (!isSupplierConnected(tenantId, route.supplierId) && !hasServerSession) {
       console.log(`[SMPP-CLIENT] Route "${route.routeName}" supplier ${route.supplierId} not connected — falling back`);
       failedCount++;
       return tryNextRoute(index + 1);
     }
 
-    // Attempt delivery through this route's supplier
-    const result = await sendViaSupplierConnection(
+    // Attempt delivery: try CLIENT-mode connection first, then SERVER-mode
+    let result = await sendViaSupplierConnection(
       tenantId,
       route.supplierId,
       source,
@@ -517,6 +804,20 @@ export function deliverSmsWithFallback(
       content,
       messageId
     );
+
+    // If CLIENT-mode failed and we have a server session, try SERVER-mode
+    if (!result.success && hasServerSession) {
+      console.log(`[SMPP-CLIENT] CLIENT-mode delivery failed for supplier ${route.supplierId}, trying SERVER-mode...`);
+      result = await sendViaSupplierServerSession(
+        tenantId,
+        route.supplierId,
+        source,
+        destination,
+        content,
+        messageId,
+        serverSessions
+      );
+    }
 
     if (!result.success) {
       console.log(`[SMPP-CLIENT] Delivery failed via route "${route.routeName}" supplier ${route.supplierId} — falling back`);
@@ -602,21 +903,35 @@ export function filterRoutesByTrunkMcc(routes: RouteInfo[], destination: string)
 }
 
 /**
- * Check if a supplier has an active outbound connection
+ * Check if a supplier has an active outbound connection (CLIENT or SERVER mode)
  */
 export function isSupplierConnected(tenantId: number, supplierId: number): boolean {
-  const key = `${tenantId}:${supplierId}`;
-  const conn = supplierConnections.get(key);
-  return conn?.status === "BOUND";
+  // Check TX key first (TX_RX mode), then TRX key (transceiver mode) for CLIENT connections
+  const txKey = `${tenantId}:${supplierId}:tx`;
+  const trxKey = `${tenantId}:${supplierId}`;
+  if (supplierConnections.get(txKey)?.status === "BOUND" ||
+      supplierConnections.get(trxKey)?.status === "BOUND") {
+    return true;
+  }
+
+  // Also check SERVER-mode supplier sessions (modems/gateways that registered to us)
+  const _g = globalThis as typeof globalThis & { __activeSupplierSessions?: Map<string, { type: string; supplierId: number; tenantId: number }> };
+  const serverSessions = _g.__activeSupplierSessions;
+  if (serverSessions) {
+    const key = `supplier:${tenantId}:${supplierId}`;
+    if (serverSessions.has(key)) return true;
+  }
+
+  return false;
 }
 
-async function updateSupplierBindStatus(schemaName: string, supplierId: number, status: string) {
+async function updateSupplierBindStatus(schemaName: string, supplierId: number, status: string, errorMessage?: string) {
   const client = await pool.connect();
   try {
     await client.query(`SET search_path TO "${schemaName}"`);
     await client.query(
-      `UPDATE suppliers SET bind_status = $1, last_bind_time = NOW(), updated_at = NOW() WHERE id = $2`,
-      [status, supplierId]
+      `UPDATE suppliers SET bind_status = $1, bind_error = $2, last_bind_time = NOW(), updated_at = NOW() WHERE id = $3`,
+      [status, errorMessage || null, supplierId]
     );
   } catch (err) {
     console.error(`[SMPP-CLIENT] Failed to update bind status:`, err);
@@ -630,14 +945,17 @@ async function updateSupplierBindStatus(schemaName: string, supplierId: number, 
  * Close and remove an active supplier connection
  */
 export function disconnectSupplier(tenantId: number, supplierId: number): boolean {
-  const key = `${tenantId}:${supplierId}`;
-  const conn = supplierConnections.get(key);
-  if (conn) {
-    try { conn.session.close(); } catch {}
-    supplierConnections.delete(key);
-    return true;
+  let closed = false;
+  for (const suffix of ["", ":tx", ":rx"]) {
+    const key = `${tenantId}:${supplierId}${suffix}`;
+    const conn = supplierConnections.get(key);
+    if (conn) {
+      try { conn.session.close(); } catch {}
+      supplierConnections.delete(key);
+      closed = true;
+    }
   }
-  return false;
+  return closed;
 }
 
 /**
@@ -651,20 +969,24 @@ export async function initSupplierConnections() {
     );
 
     for (const t of tenants) {
-      await client.query(`SET search_path TO "${t.schema_name}"`);
-      const { rows: suppliers } = await client.query(
-        `SELECT id, host, port, username, password, bind_type, system_type, connection_mode, smpp_version
-         FROM suppliers WHERE is_active = true AND deleted_at IS NULL AND connection_mode = 'CLIENT'`
-      );
+      try {
+        await client.query(`SET search_path TO "${t.schema_name}"`);
+        const { rows: suppliers } = await client.query(
+          `SELECT id, host, port, username, system_id, password, bind_type, system_type, connection_mode, smpp_version
+           FROM suppliers WHERE is_active = true AND deleted_at IS NULL AND connection_mode = 'CLIENT'`
+        );
 
-      for (const s of suppliers) {
-        console.log(`[SMPP-CLIENT] Initializing connection to supplier ${s.id} (${s.host}:${s.port} v${s.smpp_version || "3.4"})`);
-        connectToSupplier(
-          t.id, t.schema_name, s.id,
-          s.host, s.port, s.username, s.password,
-          s.bind_type || "transceiver", s.system_type || "SMSC",
-          s.smpp_version || "3.4"
-        ).catch(() => {});
+        for (const s of suppliers) {
+          console.log(`[SMPP-CLIENT] Initializing connection to supplier ${s.id} (${s.host}:${s.port} v${s.smpp_version || "3.4"})`);
+          connectToSupplier(
+            t.id, t.schema_name, s.id,
+            s.host, s.port, s.username || s.system_id, s.password,
+            s.bind_type || "transceiver", s.system_type || "SMSC",
+            s.smpp_version || "3.4"
+          ).catch(() => {});
+        }
+      } catch (err) {
+        console.error(`[SMPP-CLIENT] Skipping tenant ${t.id} (${t.schema_name}):`, (err as Error).message);
       }
     }
   } catch (err) {

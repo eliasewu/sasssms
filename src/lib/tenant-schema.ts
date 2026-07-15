@@ -21,7 +21,7 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       smpp_allowed_ip VARCHAR(255), smpp_port INTEGER DEFAULT 2775, smpp_system_type VARCHAR(50),
       max_tps INTEGER, billing_mode VARCHAR(50) DEFAULT 'prepaid', currency VARCHAR(10) DEFAULT 'USD',
       balance DECIMAL(12,4) DEFAULT 0, credit_limit DECIMAL(12,4) DEFAULT 0,
-      rate_per_sms DECIMAL(10,6) DEFAULT 0.00010, route_plan_id INTEGER,
+      route_plan_id INTEGER,
       is_active BOOLEAN DEFAULT true, enable_http_api BOOLEAN DEFAULT false,
       http_api_key VARCHAR(255), force_dlr BOOLEAN DEFAULT false, dlr_timeout_mode VARCHAR(50),
       dlr_timeout INTEGER, dlr_callback_url TEXT, webhook_url TEXT,
@@ -31,7 +31,8 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
 
     await createTable(`CREATE TABLE IF NOT EXISTS client_rates (
       id SERIAL PRIMARY KEY, client_id INTEGER NOT NULL, country_code VARCHAR(10) NOT NULL,
-      mcc VARCHAR(10), mnc VARCHAR(10), rate DECIMAL(10,6) NOT NULL,
+      mcc VARCHAR(10), mnc VARCHAR(10), operator_name VARCHAR(255),
+      rate DECIMAL(10,6) NOT NULL,
       is_active BOOLEAN DEFAULT true)`);
 
     await createTable(`CREATE TABLE IF NOT EXISTS suppliers (
@@ -42,7 +43,7 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       system_id VARCHAR(100), system_type VARCHAR(50), smpp_version VARCHAR(20) DEFAULT '3.4',
       bind_type VARCHAR(20) DEFAULT 'TRX', address_ton INTEGER DEFAULT 0, address_npi INTEGER DEFAULT 0,
       address_range VARCHAR(100), inbound_mode BOOLEAN DEFAULT false, api_url TEXT, api_key TEXT,
-      currency VARCHAR(10) DEFAULT 'USD', cost_per_sms DECIMAL(10,6) DEFAULT 0,
+      currency VARCHAR(10) DEFAULT 'USD',
       initial_balance DECIMAL(12,4) DEFAULT 0, credit_limit DECIMAL(12,4) DEFAULT 0,
       force_dlr BOOLEAN DEFAULT false, is_active BOOLEAN DEFAULT true, config TEXT,
       bind_status VARCHAR(20) DEFAULT 'UNBOUND', last_bind_time TIMESTAMP,
@@ -51,7 +52,8 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
 
     await createTable(`CREATE TABLE IF NOT EXISTS supplier_rates (
       id SERIAL PRIMARY KEY, supplier_id INTEGER NOT NULL, country_code VARCHAR(10) NOT NULL,
-      mcc VARCHAR(10), mnc VARCHAR(10), cost DECIMAL(10,6) NOT NULL,
+      mcc VARCHAR(10), mnc VARCHAR(10), operator_name VARCHAR(255),
+      cost DECIMAL(10,6) NOT NULL,
       is_active BOOLEAN DEFAULT true)`);
 
     await createTable(`CREATE TABLE IF NOT EXISTS trunks (
@@ -200,6 +202,14 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       id SERIAL PRIMARY KEY, type VARCHAR(50) NOT NULL, title VARCHAR(255) NOT NULL,
       message TEXT NOT NULL, severity VARCHAR(20) DEFAULT 'info',
       is_read BOOLEAN DEFAULT false, created_at TIMESTAMP DEFAULT NOW())`);
+
+    await createTable(`CREATE TABLE IF NOT EXISTS pending_dlrs (
+      id SERIAL PRIMARY KEY, client_id INTEGER NOT NULL,
+      message_id VARCHAR(100) NOT NULL, supplier_message_id VARCHAR(100),
+      status VARCHAR(50) NOT NULL, submit_date VARCHAR(20),
+      done_date VARCHAR(20), error_code VARCHAR(10),
+      dest VARCHAR(20) NOT NULL, src VARCHAR(20) NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW())`);
 
     await createTable(`CREATE TABLE IF NOT EXISTS integrations (
       id SERIAL PRIMARY KEY, type VARCHAR(50) NOT NULL, name VARCHAR(255) NOT NULL,
@@ -408,5 +418,91 @@ export async function tenantQuery(schemaName: string, query: string, params?: un
     return result;
   } finally {
     client.release();
+  }
+}
+
+/**
+ * Global SMPP Username Index — O(1) cross-tenant uniqueness lookups.
+ * All writes to the per-tenant clients table MUST sync through these helpers
+ * to keep the global index consistent.
+ */
+
+/**
+ * Check if an SMPP username is already used by another client.
+ * O(1) lookup on the global smpp_usernames table instead of scanning all schemas.
+ */
+export async function isSmppUsernameTaken(smppUsername: string, excludeClientId?: number): Promise<boolean> {
+  if (!smppUsername) return false;
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT 1 FROM smpp_usernames WHERE smpp_username = $1` +
+      (excludeClientId ? ` AND client_id != $2` : ""),
+      excludeClientId ? [smppUsername, excludeClientId] : [smppUsername]
+    );
+    return rows.length > 0;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Register an SMPP username in the global index after creating a client.
+ * INSERT with ON CONFLICT as safety net (though uniqueness is checked beforehand).
+ */
+export async function registerSmppUsername(
+  smppUsername: string,
+  tenantId: number,
+  clientId: number,
+  schemaName: string
+): Promise<void> {
+  if (!smppUsername) return;
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `INSERT INTO smpp_usernames (smpp_username, tenant_id, client_id, schema_name)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (smpp_username) DO UPDATE SET tenant_id = $2, client_id = $3, schema_name = $4`,
+      [smppUsername, tenantId, clientId, schemaName]
+    );
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Unregister an SMPP username from the global index (on delete or username change).
+ */
+export async function unregisterSmppUsername(smppUsername: string): Promise<void> {
+  if (!smppUsername) return;
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `DELETE FROM smpp_usernames WHERE smpp_username = $1`,
+      [smppUsername]
+    );
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Handle SMPP username change during client update.
+ * Caller is responsible for checking that the username actually changed.
+ */
+export async function syncSmppUsernameChange(
+  oldUsername: string | null,
+  newUsername: string | null,
+  tenantId: number,
+  clientId: number,
+  schemaName: string
+): Promise<void> {
+  // Remove old username from index (if it existed)
+  if (oldUsername) {
+    await unregisterSmppUsername(oldUsername);
+  }
+  // Register new username in index (if provided)
+  if (newUsername) {
+    await registerSmppUsername(newUsername, tenantId, clientId, schemaName);
   }
 }

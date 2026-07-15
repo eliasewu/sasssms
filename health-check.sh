@@ -123,10 +123,19 @@ check_mail() {
     fi
 }
 
+# ── Check SOCKS5 Residential Proxy (Tailscale + 3proxy) ──
+check_proxy() {
+    log "[PROXY] Running proxy health check..."
+    if [ -x "$APP_DIR/proxy-health-check.sh" ]; then
+        "$APP_DIR/proxy-health-check.sh"
+    fi
+}
+
 # ── Run all checks ──
 check_postgresql
 check_redis
 check_nginx
 check_asterisk
 check_mail
-check_net2app    # Check app LAST (depends on DB + Redis)
+check_proxy      # Check proxy BEFORE app (OTT depends on it)
+check_net2app    # Check app LAST (depends on DB + Redis + Proxy)

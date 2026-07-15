@@ -60,14 +60,14 @@ export async function POST(request: Request) {
       let paramIdx = 1;
 
       for (const entry of batch) {
-        valuesClauses.push(`($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, $${paramIdx + 4}, true)`);
-        params.push(parseInt(entityId), entry.country_code, entry.mcc, entry.mnc || null, defaultRate);
-        paramIdx += 5;
+        valuesClauses.push(`($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, $${paramIdx + 4}, $${paramIdx + 5}, true)`);
+        params.push(parseInt(entityId), entry.country_code, entry.mcc, entry.mnc || null, entry.network_name || null, defaultRate);
+        paramIdx += 6;
       }
 
       await tenantQuery(
         tenant.schemaName,
-        `INSERT INTO ${targetTable} (${entityColumn}, country_code, mcc, mnc, ${valueColumn}, is_active) VALUES ${valuesClauses.join(", ")}`,
+        `INSERT INTO ${targetTable} (${entityColumn}, country_code, mcc, mnc, operator_name, ${valueColumn}, is_active) VALUES ${valuesClauses.join(", ")}`,
         params
       );
       inserted += batch.length;

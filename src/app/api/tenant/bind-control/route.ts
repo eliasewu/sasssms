@@ -5,13 +5,13 @@ import { auditLog } from "@/lib/db-helpers";
 import { isClientSessionActive, closeClientSession, isSupplierServerSessionActive, closeSupplierServerSession } from "@/lib/smpp-server";
 import { isSupplierConnected, disconnectSupplier, connectToSupplier } from "@/lib/smpp-client";
 
-// Bind or unbind a client or supplier
+// Bind, unbind, or force-rebind a client or supplier
 export async function POST(request: Request) {
   const tenant = getTenantFromRequest(request);
   if (!tenant) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  const { entityType, entityId, action } = body; // entityType: "clients" | "suppliers", action: "BIND" | "UNBIND"
+  const { entityType, entityId, action } = body; // entityType: "clients" | "suppliers", action: "BIND" | "UNBIND" | "REBIND"
 
   if (!entityType || !entityId || !action) {
     return NextResponse.json({ error: "entityType, entityId, action required" }, { status: 400 });
@@ -30,10 +30,8 @@ export async function POST(request: Request) {
   if (action === "BIND") {
     // ── BIND: Verify real SMPP connection exists before claiming BOUND ──
     if (entityType === "clients") {
-      // For clients: check if there's an active SMPP session (ESME connected to our SMSC)
       const hasSession = isClientSessionActive(entityId, tenant.schemaName);
       if (!hasSession) {
-        // Try to verify credentials: check if SMPP username/password are configured
         if (!entity.smpp_username) {
           return NextResponse.json({
             success: false,
@@ -48,14 +46,12 @@ export async function POST(request: Request) {
         }, { status: 400 });
       }
 
-      // Update DB to reflect real bound state
       await tenantQuery(
         tenant.schemaName,
         `UPDATE ${table} SET bind_status = $1, last_bind_time = NOW(), updated_at = NOW() WHERE id = $2`,
         ["BOUND", entityId]
       );
     } else if (entity.connection_mode === "SERVER") {
-      // ── SERVER-mode supplier: check if the GSM gateway has registered to us ──
       const hasSession = isSupplierServerSessionActive(tenant.tenantId, entityId);
       if (!hasSession) {
         return NextResponse.json({
@@ -67,7 +63,7 @@ export async function POST(request: Request) {
 
       await tenantQuery(
         tenant.schemaName,
-        "UPDATE suppliers SET bind_status = $1, last_bind_time = NOW(), updated_at = NOW() WHERE id = $2",
+        "UPDATE suppliers SET bind_status = $1, bind_error = NULL, last_bind_time = NOW(), updated_at = NOW() WHERE id = $2",
         ["BOUND", entityId]
       );
     } else {
@@ -85,28 +81,17 @@ export async function POST(request: Request) {
         }, { status: 400 });
       }
 
-      // Check if already connected
       const alreadyConnected = isSupplierConnected(tenant.tenantId, entityId);
       if (alreadyConnected) {
-        // Already has real connection - just sync DB
         await tenantQuery(
           tenant.schemaName,
-          `UPDATE suppliers SET bind_status = $1, last_bind_time = NOW(), updated_at = NOW() WHERE id = $2`,
+          `UPDATE suppliers SET bind_status = $1, bind_error = NULL, last_bind_time = NOW(), updated_at = NOW() WHERE id = $2`,
           ["BOUND", entityId]
         );
       } else {
-        // Attempt real SMPP connection
         const connected = await connectToSupplier(
-          tenant.tenantId,
-          tenant.schemaName,
-          entityId,
-          host,
-          port,
-          username,
-          password,
-          entity.bind_type || "transceiver",
-          entity.system_type || "SMSC",
-          entity.smpp_version || "3.4"
+          tenant.tenantId, tenant.schemaName, entityId, host, port, username, password,
+          entity.bind_type || "transceiver", entity.system_type || "SMSC", entity.smpp_version || "3.4"
         );
 
         if (!connected) {
@@ -117,6 +102,64 @@ export async function POST(request: Request) {
           }, { status: 400 });
         }
       }
+    }
+  } else if (action === "REBIND") {
+    // ── REBIND: Force-close old session + immediately reconnect (suppliers) or let client auto-reconnect ──
+    if (entityType === "clients") {
+      closeClientSession(entityId, tenant.schemaName);
+      await tenantQuery(tenant.schemaName, `UPDATE ${table} SET bind_status = $1, updated_at = NOW() WHERE id = $2`, ["UNBOUND", entityId]);
+      await auditLog(table, entityId, "REBIND", tenant.email, { bind_status: entity.bind_status }, { bind_status: "UNBOUND" }, tenant.tenantId);
+      return NextResponse.json({
+        success: true, realBindStatus: "UNBOUND",
+        entity: { id: entityId, name: entity.name, bindStatus: "UNBOUND" },
+        message: `Session closed for "${entity.name}". The ESME client should auto-reconnect within a few seconds. Refresh to check status.`,
+      });
+    } else if (entity.connection_mode === "SERVER") {
+      closeSupplierServerSession(tenant.tenantId, entityId);
+      await tenantQuery(tenant.schemaName, `UPDATE suppliers SET bind_status = $1, bind_error = NULL, updated_at = NOW() WHERE id = $2`, ["UNBOUND", entityId]);
+      await auditLog(table, entityId, "REBIND", tenant.email, { bind_status: entity.bind_status }, { bind_status: "UNBOUND" }, tenant.tenantId);
+      return NextResponse.json({
+        success: true, realBindStatus: "UNBOUND",
+        entity: { id: entityId, name: entity.name || entity.supplier_code, bindStatus: "UNBOUND" },
+        message: `Session closed for "${entity.name || entity.supplier_code}". The GSM gateway should auto-reconnect shortly. Refresh to check status.`,
+      });
+    } else {
+      // CLIENT-mode supplier: disconnect then immediately reconnect
+      const host = entity.host;
+      const port = entity.port || 2775;
+      const username = entity.username || entity.system_id || "";
+      const password = entity.password || "";
+
+      if (!host || !username) {
+        return NextResponse.json({
+          success: false, error: "Supplier missing SMPP host or username.",
+          entity: { id: entityId, name: entity.name || entity.supplier_code, bindStatus: "UNBOUND" },
+        }, { status: 400 });
+      }
+
+      disconnectSupplier(tenant.tenantId, entityId);
+      // Brief delay to let the old connection fully close before reconnecting
+      await new Promise(r => setTimeout(r, 300));
+      const connected = await connectToSupplier(
+        tenant.tenantId, tenant.schemaName, entityId, host, port, username, password,
+        entity.bind_type || "transceiver", entity.system_type || "SMSC", entity.smpp_version || "3.4"
+      );
+
+      if (!connected) {
+        await tenantQuery(tenant.schemaName, `UPDATE suppliers SET bind_status = $1, bind_error = NULL, updated_at = NOW() WHERE id = $2`, ["UNBOUND", entityId]);
+        await auditLog(table, entityId, "REBIND_FAILED", tenant.email, { bind_status: entity.bind_status }, { bind_status: "UNBOUND" }, tenant.tenantId);
+        return NextResponse.json({
+          success: false, error: `Force rebind failed: disconnected but could not reconnect to ${host}:${port}.`,
+          entity: { id: entityId, name: entity.name || entity.supplier_code, bindStatus: "UNBOUND" },
+        }, { status: 400 });
+      }
+
+      await auditLog(table, entityId, "REBIND", tenant.email, { bind_status: entity.bind_status }, { bind_status: "BOUND" }, tenant.tenantId);
+      return NextResponse.json({
+        success: true, realBindStatus: "BOUND",
+        entity: { id: entityId, name: entity.name || entity.supplier_code, bindStatus: "BOUND" },
+        message: `Force rebind successful — reconnected to ${host}:${port}.`,
+      });
     }
   } else {
     // ── UNBIND: Close real connection and update DB ──
@@ -130,7 +173,7 @@ export async function POST(request: Request) {
 
     await tenantQuery(
       tenant.schemaName,
-      `UPDATE ${table} SET bind_status = $1, updated_at = NOW() WHERE id = $2`,
+      `UPDATE ${table} SET bind_status = $1${table === "suppliers" ? ", bind_error = NULL" : ""}, updated_at = NOW() WHERE id = $2`,
       ["UNBOUND", entityId]
     );
   }
@@ -139,7 +182,7 @@ export async function POST(request: Request) {
   const updatedResult = await tenantQuery(tenant.schemaName, `SELECT bind_status FROM ${table} WHERE id = $1`, [entityId]);
   const realStatus = updatedResult.rows[0]?.bind_status || "UNBOUND";
 
-  // Audit log
+  // Audit log (for BIND and UNBIND only; REBIND branches log themselves with early returns)
   await auditLog(
     table, entityId, action === "BIND" ? "BIND" : "UNBIND",
     tenant.email, { bind_status: entity.bind_status }, { bind_status: realStatus }, tenant.tenantId
@@ -180,12 +223,13 @@ export async function GET(request: Request) {
 
     if (entityType === "clients") {
       const hasSession = isClientSessionActive(row.id as number, tenant.schemaName);
-      realStatus = hasSession ? "BOUND" : "UNBOUND";
+      const dbStatus = (row.bind_status as string) || "UNBOUND";
+      realStatus = hasSession ? "BOUND" : (dbStatus === "BOUND" ? "BOUND" : "UNBOUND");
     } else {
-      // Check both CLIENT-mode connections and SERVER-mode sessions
       const isClientConnected = isSupplierConnected(tenant.tenantId, row.id as number);
       const isServerBound = isSupplierServerSessionActive(tenant.tenantId, row.id as number);
-      realStatus = (isClientConnected || isServerBound) ? "BOUND" : "UNBOUND";
+      const dbStatus = (row.bind_status as string) || "UNBOUND";
+      realStatus = (isClientConnected || isServerBound) ? "BOUND" : (dbStatus === "BOUND" ? "BOUND" : "UNBOUND");
     }
 
     return {

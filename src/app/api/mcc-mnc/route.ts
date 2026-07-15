@@ -5,7 +5,7 @@ export async function GET() {
   const client = await pool.connect();
   try {
     const { rows } = await client.query(
-      "SELECT id, mcc, mnc, country_code as \"countryCode\", country_name as \"countryName\", network_name as \"networkName\", language FROM mcc_mnc_database ORDER BY country_name, network_name"
+      "SELECT id, mcc, mnc, country_code as \"countryCode\", country_name as \"countryName\", network_name as \"networkName\" FROM mcc_mnc_database ORDER BY country_name, network_name"
     );
     return NextResponse.json({ data: rows });
   } catch (error) {
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
   const client = await pool.connect();
   try {
     const body = await request.json();
-    const { mcc, mnc, countryCode, countryName, networkName, language } = body;
+    const { mcc, mnc, countryCode, countryName, networkName } = body;
     
     if (!mcc || !countryName) {
       return NextResponse.json({ error: "MCC and country required" }, { status: 400 });
@@ -37,9 +37,9 @@ export async function POST(request: Request) {
     }
 
     const { rows } = await client.query(
-      `INSERT INTO mcc_mnc_database (mcc, mnc, country_code, country_name, network_name, language)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [mcc, mnc || null, countryCode, countryName, networkName || null, language || "English"]
+      `INSERT INTO mcc_mnc_database (mcc, mnc, country_code, country_name, network_name)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [mcc, mnc || null, countryCode, countryName, networkName || null]
     );
 
     return NextResponse.json({ data: rows[0] }, { status: 201 });

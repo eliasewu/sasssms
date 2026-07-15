@@ -8,7 +8,11 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "ott-worker": "npx tsx src/workers/ott-worker.ts",
-    "ott-worker:dev": "NODE_ENV=development npx tsx --watch src/workers/ott-worker.ts"
+    "ott-worker:dev": "NODE_ENV=development npx tsx --watch src/workers/ott-worker.ts",
+    "test:dlr-queue": "npx tsx src/lib/__tests__/dlr-queue.test.ts",
+    "test:smpp-bind": "npx tsx src/lib/__tests__/smpp-bind-validator.test.ts",
+    "test:dlr-persist": "npx tsx src/lib/__tests__/dlr-queue-persist.test.ts",
+    "test:smpp-e2e": "npx tsx src/lib/__tests__/smpp-e2e.test.ts"
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.6",

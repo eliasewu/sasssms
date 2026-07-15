@@ -32,17 +32,15 @@ export async function POST(request: Request) {
     createdForName = r.rows[0]?.name || "Supplier #" + supplierId;
   }
 
-  // Calculate from messages with profit = client_rate - supplier_rate
+  // Calculate from messages — cost and supplier_cost are stamped at send-time
   let msgResult;
   if (clientId) {
-    // Client invoice: sum client rate (revenue), get supplier cost for profit calc
     msgResult = await tenantQuery(
       tenant.schemaName,
       `SELECT COUNT(*) as msg_count,
               COALESCE(SUM(CAST(m.cost AS DECIMAL)), 0) as total_revenue,
-              COALESCE(SUM(CAST(COALESCE(s.cost_per_sms, '0') AS DECIMAL)), 0) as total_cost
+              COALESCE(SUM(CAST(COALESCE(m.supplier_cost, '0') AS DECIMAL)), 0) as total_cost
        FROM messages m
-       LEFT JOIN suppliers s ON m.supplier_id = s.id
        WHERE m.client_id = $1 AND m.created_at >= $2 AND m.created_at <= $3`,
       [clientId, periodStart, periodEnd]
     );

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 import { softDelete, auditLog } from "@/lib/db-helpers";
+import { VALID_BIND_TYPES } from "@/lib/validation";
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const tenant = getTenantFromRequest(request);
@@ -9,24 +10,29 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const body = await request.json();
 
+  // Validate bind_type if provided
+  if (body.bindType && !VALID_BIND_TYPES.includes(body.bindType)) {
+    return NextResponse.json({ error: `Invalid bind_type: "${body.bindType}". Must be one of: ${VALID_BIND_TYPES.join(", ")}` }, { status: 400 });
+  }
+
   const oldResult = await tenantQuery(tenant.schemaName, "SELECT * FROM suppliers WHERE id = $1", [id]);
 
   const result = await tenantQuery(
     tenant.schemaName,
     `UPDATE suppliers SET 
       supplier_code=$1, name=$2, company_name=$3, contact_person=$4, email=$5, phone=$6,
-      connection_type=$7, host=$8, port=$9, username=$10, password=$11, system_id=$12,
+      connection_type=$7, host=$8, port=$9, username=$10, password=COALESCE(NULLIF($11, '••••••••'), password), system_id=$12,
       system_type=$13, smpp_version=$14, bind_type=$15, address_ton=$16, address_npi=$17,
-      address_range=$18, inbound_mode=$19, api_url=$20, api_key=$21,
-      currency=$22, cost_per_sms=$23, initial_balance=$24, credit_limit=$25,
-      force_dlr=$26, is_active=$27, config=$28, updated_at=NOW()
-    WHERE id=$29 AND deleted_at IS NULL RETURNING *`,
+      address_range=$18, inbound_mode=$19, api_url=$20, api_key=COALESCE(NULLIF($21, '••••••••'), api_key),
+      currency=$22, initial_balance=$23, credit_limit=$24,
+      force_dlr=$25, is_active=$26, config=$27, updated_at=NOW()
+    WHERE id=$28 AND deleted_at IS NULL RETURNING *`,
     [
       body.supplierCode, body.name, body.companyName, body.contactPerson, body.email, body.phone,
       body.connectionType, body.host, body.port, body.username, body.password, body.systemId,
       body.systemType, body.smppVersion, body.bindType, body.addressTon, body.addressNpi,
       body.addressRange, body.inboundMode, body.apiUrl, body.apiKey,
-      body.currency, body.costPerSms, body.initialBalance, body.creditLimit,
+      body.currency, body.initialBalance, body.creditLimit,
       body.forceDlr, body.isActive, body.config, id
     ]
   );
