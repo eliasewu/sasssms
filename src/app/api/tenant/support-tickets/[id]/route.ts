@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getTenantFromRequest } from "@/lib/auth";
 import { pool } from "@/db";
-import { saveUploadedFiles } from "@/lib/upload-helpers";
+import { saveUploadedFiles, validateUploadLimits } from "@/lib/upload-helpers";
 
 // GET /api/tenant/support-tickets/[id] — get ticket with all replies + attachments
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -79,6 +79,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   );
   if (ticket.rows.length === 0) {
     return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+  }
+
+  // Validate upload limits before saving
+  const limitError = validateUploadLimits(files);
+  if (limitError) {
+    return NextResponse.json({ error: limitError }, { status: 413 });
   }
 
   // Save files to disk in parallel (non-blocking before DB transaction)

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSuperAdminFromRequest } from "@/lib/auth";
 import { pool } from "@/db";
-import { saveUploadedFiles } from "@/lib/upload-helpers";
+import { saveUploadedFiles, validateUploadLimits } from "@/lib/upload-helpers";
 import { notifyTenantTicketReply } from "@/lib/email-service";
 
 async function getAdminName(adminId: number): Promise<string> {
@@ -94,6 +94,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const ticketRow = ticket.rows[0];
   const adminName = await getAdminName(admin.adminId);
+
+  // Validate upload limits before saving
+  const limitError = validateUploadLimits(files);
+  if (limitError) {
+    return NextResponse.json({ error: limitError }, { status: 413 });
+  }
 
   // Save files to disk in parallel (non-blocking before DB transaction)
   const uploadedFiles = await saveUploadedFiles(files);

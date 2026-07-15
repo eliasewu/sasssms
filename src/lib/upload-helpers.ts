@@ -8,6 +8,12 @@ export const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "tickets
 /** Maximum single-file upload size (10 MB) */
 export const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
+/** Maximum number of files per reply */
+export const MAX_FILES_PER_REPLY = 5;
+
+/** Maximum total upload size per reply (25 MB) */
+export const MAX_TOTAL_UPLOAD_SIZE = 25 * 1024 * 1024;
+
 /** Allowed MIME types for uploads */
 const ALLOWED_MIME_TYPES = [
   "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp", "image/bmp",
@@ -34,6 +40,18 @@ export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return bytes + " B";
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+/** Validate upload limits — returns error message or null if valid */
+export function validateUploadLimits(files: File[]): string | null {
+  if (files.length > MAX_FILES_PER_REPLY) {
+    return `Maximum ${MAX_FILES_PER_REPLY} files allowed per reply.`;
+  }
+  const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+  if (totalSize > MAX_TOTAL_UPLOAD_SIZE) {
+    return `Total upload size exceeds ${formatFileSize(MAX_TOTAL_UPLOAD_SIZE)}. Please reduce file sizes or remove some files.`;
+  }
+  return null;
 }
 
 export function isFileTypeAllowed(fileName: string, mimeType: string): boolean {

@@ -34,10 +34,22 @@ interface Reply {
   created_at: string;
 }
 
+function isImage(mimeType: string): boolean { return mimeType.startsWith("image/"); }
+
+const MAX_FILES = 5;
+const MAX_TOTAL_SIZE = 25 * 1024 * 1024;
+
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return bytes + " B";
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+function getUploadLimitError(files: File[]): string | null {
+  if (files.length > MAX_FILES) return `Maximum ${MAX_FILES} files allowed per reply.`;
+  const total = files.reduce((s, f) => s + f.size, 0);
+  if (total > MAX_TOTAL_SIZE) return `Total upload size exceeds ${formatFileSize(MAX_TOTAL_SIZE)}. Please reduce file sizes or remove some files.`;
+  return null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -60,6 +72,8 @@ export default function SuperSupportTicketsPage() {
   const [selectedTicket, setSelectedTicket] = useState<{ ticket: Ticket; replies: Reply[] } | null>(null);
   const [replyMsg, setReplyMsg] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
 
@@ -91,36 +105,60 @@ export default function SuperSupportTicketsPage() {
   const handleReply = async (ticketId: number) => {
     if (!replyMsg.trim() && selectedFiles.length === 0) return;
     setSubmitting(true);
-    try {
-      let res: Response;
-      if (selectedFiles.length > 0) {
-        const formData = new FormData();
-        formData.append("message", replyMsg.trim());
-        selectedFiles.forEach(f => formData.append("files", f));
-        res = await fetch(`/api/super/support-tickets/${ticketId}`, {
-          method: "POST",
-          credentials: "include",
-          body: formData,
-        });
-      } else {
-        res = await fetch(`/api/super/support-tickets/${ticketId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ message: replyMsg.trim() }),
+    setUploadProgress(0);
+
+    const onSuccess = (data: { reply: Reply }) => {
+      if (selectedTicket) {
+        setSelectedTicket({
+          ticket: { ...selectedTicket.ticket, replied_by: "super" },
+          replies: [...selectedTicket.replies, data.reply],
         });
       }
+      setReplyMsg("");
+      setSelectedFiles([]);
+      setUploadProgress(0);
+      fetchTickets();
+    };
+
+    if (selectedFiles.length > 0) {
+      // Use XMLHttpRequest for upload progress tracking
+      const formData = new FormData();
+      formData.append("message", replyMsg.trim());
+      selectedFiles.forEach(f => formData.append("files", f));
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `/api/super/support-tickets/${ticketId}`);
+      xhr.withCredentials = true;
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          setUploadProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try { onSuccess(JSON.parse(xhr.responseText)); } catch { /* ignore */ }
+        }
+        setSubmitting(false);
+      };
+
+      xhr.onerror = () => setSubmitting(false);
+      xhr.send(formData);
+      return;
+    }
+
+    // Text-only: use fetch (no progress bar needed)
+    try {
+      const res = await fetch(`/api/super/support-tickets/${ticketId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ message: replyMsg.trim() }),
+      });
       if (res.ok) {
         const data = await res.json();
-        if (selectedTicket) {
-          setSelectedTicket({
-            ticket: { ...selectedTicket.ticket, replied_by: "super" },
-            replies: [...selectedTicket.replies, data.reply],
-          });
-        }
-        setReplyMsg("");
-        setSelectedFiles([]);
-        fetchTickets();
+        onSuccess(data);
       }
     } catch { /* ignore */ }
     finally { setSubmitting(false); }
@@ -260,23 +298,43 @@ export default function SuperSupportTicketsPage() {
                       </p>
                       <p className="text-sm whitespace-pre-wrap">{reply.message}</p>
                       {reply.attachments && reply.attachments.length > 0 && (
-                        <div className="mt-2 space-y-1">
+                        <div className="mt-2 space-y-2">
                           {reply.attachments.map((att) => (
-                            <a
-                              key={att.id}
-                              href={att.filePath}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className={`flex items-center gap-2 text-xs rounded px-2 py-1 ${
-                                (reply.replied_by === "super" && !reply.message.startsWith("📌"))
-                                  ? "bg-white/20 hover:bg-white/30"
-                                  : "bg-slate-200 hover:bg-slate-300"
-                              }`}
-                            >
-                              <span>📎</span>
-                              <span className="truncate max-w-[180px]">{att.fileName}</span>
-                              <span className="opacity-60 shrink-0">({formatFileSize(att.fileSize)})</span>
-                            </a>
+                            isImage(att.mimeType) ? (
+                              <a
+                                key={att.id}
+                                href={att.filePath}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block"
+                              >
+                                <img
+                                  src={att.filePath}
+                                  alt={att.fileName}
+                                  className="w-full max-w-[280px] rounded-lg border border-white/20 shadow-sm hover:shadow-md transition-shadow"
+                                  loading="lazy"
+                                />
+                                <span className="text-[10px] opacity-70 mt-1 block truncate">
+                                  {att.fileName} ({formatFileSize(att.fileSize)})
+                                </span>
+                              </a>
+                            ) : (
+                              <a
+                                key={att.id}
+                                href={att.filePath}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`flex items-center gap-2 text-xs rounded px-2 py-1 ${
+                                  (reply.replied_by === "super" && !reply.message.startsWith("📌"))
+                                    ? "bg-white/20 hover:bg-white/30"
+                                    : "bg-slate-200 hover:bg-slate-300"
+                                }`}
+                              >
+                                <span>📎</span>
+                                <span className="truncate max-w-[180px]">{att.fileName}</span>
+                                <span className="opacity-60 shrink-0">({formatFileSize(att.fileSize)})</span>
+                              </a>
+                            )
                           ))}
                         </div>
                       )}
@@ -304,30 +362,78 @@ export default function SuperSupportTicketsPage() {
                 />
                 <button
                   onClick={() => handleReply(selectedTicket.ticket.id)}
-                  disabled={submitting || (!replyMsg.trim() && selectedFiles.length === 0)}
+                  disabled={submitting || (!replyMsg.trim() && selectedFiles.length === 0) || !!getUploadLimitError(selectedFiles)}
                   className="px-5 py-2.5 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700 disabled:opacity-50 transition"
                 >
                   {submitting ? "Sending..." : "Send"}
                 </button>
               </div>
-              <div className="flex items-center gap-2">
-                <label className="cursor-pointer text-xs text-slate-500 hover:text-orange-600 transition flex items-center gap-1">
-                  <span className="text-base">📎</span> Attach files
-                  <input
-                    type="file"
-                    multiple
-                    onChange={e => setSelectedFiles(Array.from(e.target.files || []))}
-                    className="hidden"
-                  />
-                </label>
-                {selectedFiles.length > 0 && (
-                  <div className="flex items-center gap-2 flex-1 overflow-x-auto">
+              {/* Upload progress bar */}
+              {submitting && uploadProgress > 0 && (
+                <div className="mb-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-slate-500">Uploading files...</span>
+                    <span className="text-xs text-orange-600 font-medium">{uploadProgress}%</span>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="bg-orange-500 h-full rounded-full transition-all duration-300"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              {/* Drag-and-drop zone */}
+              <div
+                onDragOver={e => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true); }}
+                onDragLeave={e => {
+                  e.preventDefault(); e.stopPropagation();
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragOver(false);
+                }}
+                onDrop={e => {
+                  e.preventDefault(); e.stopPropagation(); setIsDragOver(false);
+                  if (e.dataTransfer.files.length > 0) {
+                    setSelectedFiles(Array.from(e.dataTransfer.files));
+                  }
+                }}
+                className={`relative border-2 border-dashed rounded-lg p-3 text-center transition-colors ${
+                  isDragOver
+                    ? "border-orange-400 bg-orange-50"
+                    : "border-slate-200 hover:border-orange-300 bg-slate-50/50"
+                }`}
+              >
+                {isDragOver ? (
+                  <p className="text-sm text-orange-600 font-medium">📂 Drop files here to attach</p>
+                ) : selectedFiles.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-2">
                     {selectedFiles.map((f, i) => (
                       <span key={i} className="text-xs bg-orange-50 text-orange-700 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
                         📎 {f.name} ({formatFileSize(f.size)})
                         <button onClick={() => setSelectedFiles(prev => prev.filter((_, j) => j !== i))} className="ml-1 text-orange-400 hover:text-red-500">✕</button>
                       </span>
                     ))}
+                    <label className="cursor-pointer text-xs text-orange-500 hover:text-orange-700 font-medium ml-auto">
+                      + Add more
+                      <input type="file" multiple onChange={e => setSelectedFiles(prev => [...prev, ...Array.from(e.target.files || [])])} className="hidden" />
+                    </label>
+                  </div>
+                ) : (
+                  <label className="cursor-pointer block">
+                    <p className="text-sm text-slate-500">
+                      <span className="text-orange-500 font-medium">Click to upload</span> or drag and drop
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5">PNG, JPG, PDF, ZIP up to 10MB each (max 5 files / 25MB total)</p>
+                    <input
+                      type="file"
+                      multiple
+                      onChange={e => setSelectedFiles(Array.from(e.target.files || []))}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+                {getUploadLimitError(selectedFiles) && (
+                  <div className="mt-2">
+                    <span className="text-xs text-red-500 font-medium">⚠ {getUploadLimitError(selectedFiles)}</span>
                   </div>
                 )}
               </div>
