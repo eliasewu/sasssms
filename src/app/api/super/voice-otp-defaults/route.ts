@@ -83,12 +83,23 @@ export async function POST(request: Request) {
     await db.update(voiceOtpDefaultAudio)
       .set({ fileName, fileUrl, audioType })
       .where(eq(voiceOtpDefaultAudio.id, allRows[0].id));
+
+    // Auto-push updated audio to all active tenants (fire-and-forget)
+    const activeTenants = await db.select({ id: tenants.id, schemaName: tenants.schemaName, companyName: tenants.companyName })
+      .from(tenants).where(eq(tenants.isActive, true));
+    seedDefaultsToTenants(activeTenants).catch(e => console.error("Auto-seed after upload failed:", e));
+
     return NextResponse.json({ success: true, action: "updated", fileUrl, fileName, id: allRows[0].id });
   }
 
   const [result] = await db.insert(voiceOtpDefaultAudio).values({
     language, digit, fileName, fileUrl, audioType,
   }).returning();
+
+  // Auto-push new audio to all active tenants (fire-and-forget)
+  const activeTenants = await db.select({ id: tenants.id, schemaName: tenants.schemaName, companyName: tenants.companyName })
+    .from(tenants).where(eq(tenants.isActive, true));
+  seedDefaultsToTenants(activeTenants).catch(e => console.error("Auto-seed after upload failed:", e));
 
   return NextResponse.json({ success: true, action: "inserted", fileUrl, fileName, id: result.id }, { status: 201 });
 }
@@ -111,57 +122,117 @@ export async function DELETE(request: Request) {
   return NextResponse.json({ success: true });
 }
 
-// POST /api/super/voice-otp-defaults/seed — seed defaults to all existing tenants
+// ── Shared seed helper: pushes all default audio to all (or selected) tenants ──
+// Returns { seededCount, errorCount, totalTenants, errors: string[] }
+async function seedDefaultsToTenants(targetTenants: { id: number; schemaName: string; companyName: string }[]) {
+  const defaults = await db.select().from(voiceOtpDefaultAudio);
+  if (defaults.length === 0) return { seededCount: 0, errorCount: 0, totalTenants: targetTenants.length, errors: [] as string[] };
+
+  let seededCount = 0, errorCount = 0;
+  const errors: string[] = [];
+  const client = await pool.connect();
+  try {
+    for (const tenant of targetTenants) {
+      try {
+        let tenantGotNew = false;
+        for (const def of defaults) {
+          let configResult = await client.query(
+            `SELECT id FROM "${tenant.schemaName}".voice_otp_config WHERE primary_language = $1 OR secondary_language = $1 LIMIT 1`,
+            [def.language]
+          );
+          let configId: number;
+          if (configResult.rows.length > 0) {
+            configId = configResult.rows[0].id;
+          } else {
+            const newConfig = await client.query(
+              `INSERT INTO "${tenant.schemaName}".voice_otp_config (country_group, prefixes, primary_language, secondary_language, bilingual)
+               VALUES ($1, $2, $1, 'English', false) RETURNING id`,
+              [def.language, def.language]
+            );
+            configId = newConfig.rows[0].id;
+          }
+          const existingAudio = await client.query(
+            `SELECT id, file_url FROM "${tenant.schemaName}".voice_otp_audio WHERE config_id = $1 AND language = $2 AND digit = $3`,
+            [configId, def.language, def.digit]
+          );
+          if (existingAudio.rows.length > 0) {
+            if (existingAudio.rows[0].file_url !== def.fileUrl) {
+              await client.query(
+                `UPDATE "${tenant.schemaName}".voice_otp_audio SET file_name = $1, file_url = $2, audio_type = $3 WHERE id = $4`,
+                [def.fileName, def.fileUrl, def.audioType, existingAudio.rows[0].id]
+              );
+              tenantGotNew = true;
+            }
+          } else {
+            await client.query(
+              `INSERT INTO "${tenant.schemaName}".voice_otp_audio (config_id, language, digit, file_name, file_url, audio_type)
+               VALUES ($1, $2, $3, $4, $5, $6)`,
+              [configId, def.language, def.digit, def.fileName, def.fileUrl, def.audioType]
+            );
+            tenantGotNew = true;
+          }
+        }
+        if (tenantGotNew) {
+          await client.query(
+            `UPDATE "${tenant.schemaName}".voice_otp_config c SET
+              primary_audio_count = (SELECT COUNT(*) FROM "${tenant.schemaName}".voice_otp_audio a WHERE a.config_id = c.id AND a.language = c.primary_language),
+              secondary_audio_count = (SELECT COUNT(*) FROM "${tenant.schemaName}".voice_otp_audio a WHERE a.config_id = c.id AND a.language = c.secondary_language)`
+          );
+          seededCount++;
+        }
+      } catch (tenantErr) {
+        errorCount++;
+        errors.push(`${tenant.companyName}: ${(tenantErr as Error).message}`);
+        console.error(`Seed failed for ${tenant.schemaName}:`, tenantErr);
+      }
+    }
+  } finally {
+    client.release();
+  }
+  return { seededCount, errorCount, totalTenants: targetTenants.length, errors };
+}
+
+// PUT /api/super/voice-otp-defaults — seed defaults to tenants
+// Supports: { action: "seed-all" } or { action: "seed-selected", tenantIds: [1,2,3] }
 export async function PUT(request: Request) {
   const admin = getSuperAdminFromRequest(request);
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  if (body.action !== "seed-all") {
-    return NextResponse.json({ error: "Invalid action. Use 'seed-all'" }, { status: 400 });
+  const action = body.action;
+  const tenantIds: number[] = body.tenantIds || [];
+
+  if (action !== "seed-all" && action !== "seed-selected") {
+    return NextResponse.json({ error: "Invalid action. Use 'seed-all' or 'seed-selected'" }, { status: 400 });
   }
 
-  // Fetch all active tenants
-  const allTenants = await db.select({ id: tenants.id, schemaName: tenants.schemaName })
+  if (action === "seed-selected" && tenantIds.length === 0) {
+    return NextResponse.json({ error: "No tenants selected" }, { status: 400 });
+  }
+
+  // Fetch tenants (all active or selected)
+  let tenantQuery = db.select({ id: tenants.id, schemaName: tenants.schemaName, companyName: tenants.companyName })
     .from(tenants)
     .where(eq(tenants.isActive, true));
-
-  // Get all default audio
-  const defaults = await db.select().from(voiceOtpDefaultAudio);
-
-  let seededCount = 0;
-  const client = await pool.connect();
-  try {
-    for (const tenant of allTenants) {
-      // Upsert default audio into tenant schema
-      for (const def of defaults) {
-        // Get the config_id for this language in the tenant schema
-        const configResult = await client.query(
-          `SELECT id FROM "${tenant.schemaName}".voice_otp_config WHERE primary_language = $1 OR secondary_language = $1 LIMIT 1`,
-          [def.language]
-        );
-
-        if (configResult.rows.length > 0) {
-          const configId = configResult.rows[0].id;
-          // Upsert audio file
-          await client.query(
-            `INSERT INTO "${tenant.schemaName}".voice_otp_audio (config_id, language, digit, file_name, file_url, audio_type)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             ON CONFLICT DO NOTHING`,
-            [configId, def.language, def.digit, def.fileName, def.fileUrl, def.audioType]
-          );
-        }
-      }
-      seededCount++;
-    }
-  } finally {
-    client.release();
+  
+  if (action === "seed-selected") {
+    // Filter by selected IDs — drizzle doesn't support in-array easily, so fetch all then filter
   }
+  
+  const allTenants = await tenantQuery;
+  const targetTenants = action === "seed-selected"
+    ? allTenants.filter(t => tenantIds.includes(t.id))
+    : allTenants;
+
+  const result = await seedDefaultsToTenants(targetTenants);
+  const defaults = await db.select().from(voiceOtpDefaultAudio);
 
   return NextResponse.json({
     success: true,
-    message: `Seeded defaults into ${seededCount}/${allTenants.length} tenants`,
-    seededCount,
-    totalTenants: allTenants.length,
+    message: `Pushed ${defaults.length} audio file(s) to ${result.seededCount}/${result.totalTenants} tenant(s)${result.errorCount > 0 ? ` (${result.errorCount} errors)` : ""}`,
+    seededCount: result.seededCount,
+    errorCount: result.errorCount,
+    totalTenants: result.totalTenants,
+    errors: result.errors.length > 0 ? result.errors : undefined,
   });
 }

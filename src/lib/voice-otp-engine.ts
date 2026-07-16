@@ -355,7 +355,7 @@ export function resolveLanguage(destination: string): LanguageResolution {
  * Build an audio playlist for a single call attempt.
  * 
  * Playlist structure:
- * [greeting] → [digit_0] → [digit_1] → ... → [digit_N]
+ * [greeting] → [digit_0 × playCount] → [digit_1 × playCount] → ... → [digit_N × playCount]
  * 
  * If language is English, uses built-in audio (no DB lookup needed).
  * Otherwise, looks up each audio file from DB.
@@ -364,7 +364,8 @@ export async function buildAudioPlaylist(
   audioFiles: AudioFile[],
   configId: number,
   language: string,
-  otpCode: string
+  otpCode: string,
+  playCount: number = 3
 ): Promise<AudioPlaylistItem[]> {
   const playlist: AudioPlaylistItem[] = [];
   let order = 0;
@@ -382,47 +383,90 @@ export async function buildAudioPlaylist(
     type: "greeting",
   });
 
-  // Add each digit of the OTP
+  // Add each digit of the OTP, repeated playCount times
   const digits = otpCode.split("");
   for (const digit of digits) {
     const digitAudio = audioFiles.find(
       (a) => a.configId === configId && a.language === language && a.digit === digit
     );
-    playlist.push({
-      order: order++,
-      fileName: digitAudio?.fileName || `digit_${digit}_${language.toLowerCase()}.wav`,
-      fileUrl: digitAudio?.fileUrl || `/audio/builtin/${language.toLowerCase()}/${digit}.wav`,
-      language,
-      digit,
-      type: "digit",
-    });
+    for (let rep = 0; rep < playCount; rep++) {
+      playlist.push({
+        order: order++,
+        fileName: digitAudio?.fileName || `digit_${digit}_${language.toLowerCase()}.wav`,
+        fileUrl: digitAudio?.fileUrl || `/audio/builtin/${language.toLowerCase()}/${digit}.wav`,
+        language,
+        digit,
+        type: "digit",
+      });
+    }
   }
 
   return playlist;
 }
 
 /**
+ * Build a BILINGUAL audio playlist — concatenates first language + second language
+ * into a single call stream. Used when voice_otp_config.bilingual = true.
+ *
+ * Playlist:
+ *   [greeting_lang1] → [digit_lang1 × playCount] → [greeting_lang2] → [digit_lang2 × playCount]
+ */
+export async function buildBilingualPlaylist(
+  audioFiles: AudioFile[],
+  configId: number,
+  primaryLanguage: string,
+  secondaryLanguage: string,
+  otpCode: string,
+  playCount: number = 3
+): Promise<AudioPlaylistItem[]> {
+  const playlist1 = await buildAudioPlaylist(audioFiles, configId, primaryLanguage, otpCode, playCount);
+  const playlist2 = await buildAudioPlaylist(audioFiles, configId, secondaryLanguage, otpCode, playCount);
+
+  // Re-number order for sequential playback
+  const merged = [...playlist1, ...playlist2];
+  return merged.map((item, i) => ({ ...item, order: i }));
+}
+
+/**
  * Build playlists for all retry attempts.
  * 
- * Attempt 1: primary language (local)
- * Attempt 2: fallback/secondary language (if different from primary), otherwise repeat primary
- * Attempt 3: primary language again (final attempt)
+ * When bilingual=true: single call with concatenated 1st + 2nd language audio.
+ * When bilingual=false: multiple call attempts alternating languages.
+ * 
+ * @param voiceOtpConfig - voice_otp_config row with bilingual, play_count, retry_count, etc.
  */
 export async function buildAttemptPlaylists(
   audioFiles: AudioFile[],
   langResolution: LanguageResolution,
   otpCode: string,
-  maxAttempts: number = 3
+  voiceOtpConfig?: { primaryLanguage?: string; secondaryLanguage?: string; bilingual?: boolean; playCount?: number; retryCount?: number }
 ): Promise<AudioPlaylistItem[][]> {
   const configId = audioFiles[0]?.configId || 0;
+  const playCount = voiceOtpConfig?.playCount || 3;
+  const retryCount = voiceOtpConfig?.retryCount || 1;
+  const bilingual = voiceOtpConfig?.bilingual || false;
+  const secondaryLang = voiceOtpConfig?.secondaryLanguage || langResolution.fallbackLanguage;
+  const maxAttempts = bilingual ? 1 : Math.max(1, retryCount);
+
   const playlists: AudioPlaylistItem[][] = [];
 
-  const attemptLanguages = determineAttemptLanguages(langResolution, maxAttempts);
-
-  for (let i = 0; i < maxAttempts; i++) {
-    const language = attemptLanguages[i];
-    const playlist = await buildAudioPlaylist(audioFiles, configId, language, otpCode);
+  if (bilingual) {
+    // Single call with bilingual audio concatenation
+    const playlist = await buildBilingualPlaylist(
+      audioFiles, configId,
+      voiceOtpConfig?.primaryLanguage || langResolution.primaryLanguage,
+      secondaryLang,
+      otpCode, playCount
+    );
     playlists.push(playlist);
+  } else {
+    // Multi-attempt with alternating languages
+    const attemptLanguages = determineAttemptLanguages(langResolution, maxAttempts);
+    for (let i = 0; i < maxAttempts; i++) {
+      const language = attemptLanguages[i];
+      const playlist = await buildAudioPlaylist(audioFiles, configId, language, otpCode, playCount);
+      playlists.push(playlist);
+    }
   }
 
   return playlists;

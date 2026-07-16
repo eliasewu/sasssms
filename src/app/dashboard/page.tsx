@@ -10,6 +10,7 @@ interface DashboardData {
 interface TenantInfo {
   companyName: string; email: string; packageType: string;
   smsCounter: number; smsLimit: number; smsValidUntil: string | null;
+  packageExpiresAt: string | null;
   costPerSms: string; monthlyFee?: string;
   smppServerIp: string; smppServerPort: number; balance: string;
 }
@@ -35,6 +36,7 @@ export default function DashboardPage() {
           packageType: t.packageType || "starter",
           smsCounter: t.smsCounter || 0, smsLimit: t.smsLimit || 0,
           smsValidUntil: t.smsValidUntil || null,
+          packageExpiresAt: t.packageExpiresAt || null,
           costPerSms: t.costPerSms || platformRate,
           monthlyFee: t.monthlyFee || (t.packageType === "professional" ? "150" : t.packageType === "enterprise" ? "400" : "0"),
           smppServerIp: t.smppServerIp || "0.0.0.0",
@@ -60,6 +62,11 @@ export default function DashboardPage() {
   const usedPct = hasLimit ? Math.min(100, (tenant.smsCounter / tenant.smsLimit) * 100) : 0;
   // eslint-disable-next-line react-hooks/purity
   const daysLeft = tenant.smsValidUntil ? Math.max(0, Math.ceil((new Date(tenant.smsValidUntil).getTime() - Date.now()) / 86400000)) : 0;
+  const isProOrEnt = isPro || isEnt;
+  const pkgDaysLeft = tenant.packageExpiresAt ? Math.max(0, Math.ceil((new Date(tenant.packageExpiresAt).getTime() - Date.now()) / 86400000)) : 0;
+  const isPkgExpiringSoon = isProOrEnt && pkgDaysLeft <= 7 && pkgDaysLeft > 3;
+  const isPkgExpired = isProOrEnt && pkgDaysLeft <= 0 && tenant.packageExpiresAt !== null;
+  const isPkgCriticalExpiry = isProOrEnt && pkgDaysLeft <= 3 && pkgDaysLeft > 0;
   const tenantRate = parseFloat(tenant.costPerSms);
   const currentPlatformRate = parseFloat(platformRate);
 
@@ -96,6 +103,41 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Package Expiry Alert Banner (3-day warning) ── */}
+      {isPkgCriticalExpiry && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 flex items-start gap-3 animate-pulse">
+          <span className="text-2xl">⏰</span>
+          <div className="flex-1">
+            <p className="font-bold text-amber-800 text-sm">
+              Your {tenant.packageType === "professional" ? "Professional" : "Enterprise"} plan expires in <span className="text-red-600">{pkgDaysLeft} day{pkgDaysLeft > 1 ? "s" : ""}</span>!
+            </p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              Renew now to avoid service interruption on {tenant.packageExpiresAt ? new Date(tenant.packageExpiresAt).toLocaleDateString() : ""}.
+            </p>
+            <a href="/dashboard/billing" className="inline-block mt-2 bg-amber-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-amber-700 transition">
+              Renew Plan →
+            </a>
+          </div>
+        </div>
+      )}
+
+      {isPkgExpired && (
+        <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4 flex items-start gap-3">
+          <span className="text-2xl">🚫</span>
+          <div className="flex-1">
+            <p className="font-bold text-red-800 text-sm">
+              Your {tenant.packageType === "professional" ? "Professional" : "Enterprise"} plan has <span className="underline">expired</span>!
+            </p>
+            <p className="text-xs text-red-700 mt-0.5">
+              SMS sending is paused. Your data is preserved — renew to reactivate immediately.
+            </p>
+            <a href="/dashboard/billing" className="inline-block mt-2 bg-red-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-red-700 transition">
+              Renew Now →
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Rate Information */}
       {tenantRate !== currentPlatformRate && (
@@ -138,11 +180,25 @@ export default function DashboardPage() {
                 <div><p className="text-sm text-slate-500">Monthly Fee</p><p className="text-3xl font-bold text-blue-600">${tenant.monthlyFee}/mo</p></div>
               )}
               <div className="w-px h-12 bg-slate-200" />
-              <div>
-                <p className="text-sm text-slate-500">Validity</p>
-                <p className={`text-3xl font-bold ${daysLeft <= 30 ? "text-red-600" : "text-green-600"}`}>{tenant.smsValidUntil ? `${daysLeft}d` : "N/A"}</p>
-                {tenant.smsValidUntil && <p className="text-xs text-slate-400">Expires: {new Date(tenant.smsValidUntil).toLocaleDateString()}</p>}
-              </div>
+              {isProOrEnt ? (
+                <div>
+                  <p className="text-sm text-slate-500">Subscription</p>
+                  <p className={`text-3xl font-bold ${isPkgExpired ? "text-red-600" : isPkgExpiringSoon ? "text-amber-600" : "text-green-600"}`}>
+                    {tenant.packageExpiresAt ? `${pkgDaysLeft}d` : "Active"}
+                  </p>
+                  {tenant.packageExpiresAt && (
+                    <p className="text-xs text-slate-400">
+                      {isPkgExpired ? "Expired — Renew now" : `Renews: ${new Date(tenant.packageExpiresAt).toLocaleDateString()}`}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <p className="text-sm text-slate-500">Validity</p>
+                  <p className={`text-3xl font-bold ${daysLeft <= 30 ? "text-red-600" : "text-green-600"}`}>{tenant.smsValidUntil ? `${daysLeft}d` : "N/A"}</p>
+                  {tenant.smsValidUntil && <p className="text-xs text-slate-400">Expires: {new Date(tenant.smsValidUntil).toLocaleDateString()}</p>}
+                </div>
+              )}
             </div>
           </div>
 
@@ -161,11 +217,18 @@ export default function DashboardPage() {
 
           {(isPro || isEnt) && (
             <div className="lg:w-64">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
-                <p className="text-sm text-blue-700 font-medium">
+              <div className={`border rounded-lg p-3 text-center ${isPkgExpired ? "bg-red-50 border-red-200" : isPkgExpiringSoon ? "bg-amber-50 border-amber-200" : "bg-blue-50 border-blue-200"}`}>
+                <p className={`text-sm font-medium ${isPkgExpired ? "text-red-700" : isPkgExpiringSoon ? "text-amber-700" : "text-blue-700"}`}>
                   {isPro ? "10M SMS included/mo" : "Unlimited SMS"}
                 </p>
-                <p className="text-xs text-blue-600 mt-1">Monthly fee covers all SMS</p>
+                <p className={`text-xs mt-1 ${isPkgExpired ? "text-red-600" : isPkgExpiringSoon ? "text-amber-600" : "text-blue-600"}`}>
+                  {isPkgExpired ? "⚠️ Subscription expired — Renew" : isPkgExpiringSoon ? `⚠️ Renews in ${pkgDaysLeft} days` : "Monthly fee covers all SMS"}
+                </p>
+                {tenant.packageExpiresAt && (
+                  <p className={`text-xs mt-1 font-medium ${isPkgExpired ? "text-red-500" : "text-slate-500"}`}>
+                    Next billing: {new Date(tenant.packageExpiresAt).toLocaleDateString()}
+                  </p>
+                )}
               </div>
             </div>
           )}

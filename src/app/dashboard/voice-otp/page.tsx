@@ -29,7 +29,8 @@ const ALL_LANGUAGES = [...new Set([...DB_LANGUAGES, ...ADDITIONAL_LANGUAGES])].s
 
 interface VotpConfig {
   id: number; country_group: string; prefixes: string; primary_language: string;
-  secondary_language: string; primary_audio_count: number; secondary_audio_count: number; is_active: boolean;
+  secondary_language: string; primary_audio_count: number; secondary_audio_count: number;
+  play_count: number; retry_count: number; bilingual: boolean; is_active: boolean;
 }
 interface SipConfig {
   id: number; name: string; sip_host: string; sip_port: number; sip_username: string;
@@ -61,7 +62,7 @@ export default function VoiceOtpFullPage() {
   const [msgError, setMsgError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingUploadRef = useRef<{configId: number; lang: string; digit: string} | null>(null);
-  const [form, setForm] = useState({ countryGroup: "", prefixes: "", primaryLanguage: "", secondaryLanguage: "English" });
+  const [form, setForm] = useState({ countryGroup: "", prefixes: "", primaryLanguage: "", secondaryLanguage: "English", playCount: "3", retryCount: "1", bilingual: false });
   const [sipForm, setSipForm] = useState({ name: "", sipHost: "", sipPort: "5060", sipUsername: "", sipPassword: "", callerId: "Net2APP", maxRetries: "3", timeout: "30" });
   const [uploading, setUploading] = useState(false);
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
@@ -134,25 +135,25 @@ export default function VoiceOtpFullPage() {
         await fetch("/api/tenant/voice-otp-config", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...form, id: editingId, isActive: config?.is_active ?? true }),
+          body: JSON.stringify({ ...form, playCount: parseInt(form.playCount) || 3, retryCount: parseInt(form.retryCount) || 1, bilingual: form.bilingual, id: editingId, isActive: config?.is_active ?? true }),
         });
         flash("Language group updated.");
       } else {
         await fetch("/api/tenant/voice-otp-config", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(form),
+          body: JSON.stringify({ ...form, playCount: parseInt(form.playCount) || 3, retryCount: parseInt(form.retryCount) || 1, bilingual: form.bilingual }),
         });
         flash("Language group added.");
       }
       setShowForm(false); setEditingId(null);
-      setForm({ countryGroup: "", prefixes: "", primaryLanguage: "", secondaryLanguage: "English" });
+      setForm({ countryGroup: "", prefixes: "", primaryLanguage: "", secondaryLanguage: "English", playCount: "3", retryCount: "1", bilingual: false });
       load();
     } catch { flash("Error saving language group.", true); }
   };
 
   const handleEdit = (c: VotpConfig) => {
-    setForm({ countryGroup: c.country_group, prefixes: c.prefixes, primaryLanguage: c.primary_language, secondaryLanguage: c.secondary_language || "English" });
+    setForm({ countryGroup: c.country_group, prefixes: c.prefixes, primaryLanguage: c.primary_language, secondaryLanguage: c.secondary_language || "English", playCount: String(c.play_count || 3), retryCount: String(c.retry_count || 1), bilingual: c.bilingual || false });
     setEditingId(c.id);
     setShowForm(true);
   };
@@ -168,7 +169,7 @@ export default function VoiceOtpFullPage() {
     await fetch("/api/tenant/voice-otp-config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ countryGroup: config.country_group, prefixes: config.prefixes, primaryLanguage: config.primary_language, secondaryLanguage: config.secondary_language || null, isActive: !config.is_active, id: config.id }),
+      body: JSON.stringify({ countryGroup: config.country_group, prefixes: config.prefixes, primaryLanguage: config.primary_language, secondaryLanguage: config.secondary_language || null, playCount: config.play_count, retryCount: config.retry_count, bilingual: config.bilingual, isActive: !config.is_active, id: config.id }),
     });
     flash(`Language group ${config.is_active ? "deactivated" : "activated"}.`);
     load();
@@ -498,7 +499,7 @@ export default function VoiceOtpFullPage() {
               <p className="text-sm text-slate-500">Group by language name. Add all country prefixes for that language in one group.</p>
               <p className="text-xs text-slate-400 mt-0.5">Format: <strong>Language Group</strong> = language name e.g. "Arabic", <strong>Prefixes</strong> = comma-separated e.g. +966,+971,+962,+20,+213</p>
             </div>
-            <button onClick={() => { setShowForm(true); setEditingId(null); setForm({ countryGroup: "", prefixes: "", primaryLanguage: "", secondaryLanguage: "English" }); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">+ Add Language</button>
+            <button onClick={() => { setShowForm(true); setEditingId(null); setForm({ countryGroup: "", prefixes: "", primaryLanguage: "", secondaryLanguage: "English", playCount: "3", retryCount: "1", bilingual: false }); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">+ Add Language</button>
           </div>
           
           {showForm && (
@@ -509,6 +510,14 @@ export default function VoiceOtpFullPage() {
                 <Input label="Prefixes * (comma-separated)" value={form.prefixes} onChange={v => setForm({...form, prefixes: v})} placeholder="+966,+971,+962,+20" />
                 <LanguageSelect label="Primary Audio Language *" value={form.primaryLanguage} onChange={v => setForm({...form, primaryLanguage: v})} />
                 <LanguageSelect label="Fallback Language" value={form.secondaryLanguage} onChange={v => setForm({...form, secondaryLanguage: v})} />
+                <Input label="Play Count (digit repeats)" type="number" value={form.playCount} onChange={v => setForm({...form, playCount: v})} placeholder="3" />
+                <Input label="Retry Count (call attempts)" type="number" value={form.retryCount} onChange={v => setForm({...form, retryCount: v})} placeholder="1" />
+                <div className="flex items-end pb-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={form.bilingual} onChange={e => setForm({...form, bilingual: e.target.checked})} className="accent-blue-600" />
+                    <span className="text-sm font-medium">🌐 Bilingual — concatenate 1st + 2nd language audio in one call</span>
+                  </label>
+                </div>
                 <div className="col-span-2 text-xs text-slate-400">Group all country prefixes that speak the same language together. System detects destination country from prefix, maps to the language group, and plays audio in that language. Choose from <strong>200+ languages</strong> or pick "Custom…" for unlisted languages.</div>
                 <div className="col-span-2 flex gap-2">
                   <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm">{editingId ? "Update" : "Save"}</button>
@@ -521,16 +530,17 @@ export default function VoiceOtpFullPage() {
           <div className="bg-white rounded-xl border overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-slate-50">
-                <tr><th className="px-4 py-3 text-left">Language</th><th className="px-4 py-3 text-left">Prefixes</th><th className="px-4 py-3 text-left">Primary Audio</th><th className="px-4 py-3 text-left">Fallback</th><th className="px-4 py-3 text-left">Audio</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-right">Actions</th></tr>
+                <tr><th className="px-4 py-3 text-left">Language</th><th className="px-4 py-3 text-left">Prefixes</th><th className="px-4 py-3 text-left">1st/2nd Lang</th><th className="px-4 py-3 text-left">Play/Retry</th><th className="px-4 py-3 text-left">Audio</th><th className="px-4 py-3 text-left">Bilingual</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-right">Actions</th></tr>
               </thead>
               <tbody>
                 {configs.map(c => (
                   <tr key={c.id} className="border-b hover:bg-slate-50">
                     <td className="px-4 py-3 font-medium">{c.country_group}</td>
                     <td className="px-4 py-3 font-mono text-xs max-w-[120px] truncate" title={c.prefixes}>{c.prefixes}</td>
-                    <td className="px-4 py-3">{c.primary_language}</td>
-                    <td className="px-4 py-3">{c.secondary_language || "English"}</td>
+                    <td className="px-4 py-3 text-xs">{c.primary_language}{c.secondary_language ? ` / ${c.secondary_language}` : ""}</td>
+                    <td className="px-4 py-3 text-xs font-mono">{c.play_count || 3}×<span className="text-slate-400"> / </span>{c.retry_count || 1}↺</td>
                     <td className="px-4 py-3 text-xs">{c.primary_audio_count}/{c.secondary_audio_count} files</td>
+                    <td className="px-4 py-3">{c.bilingual ? <span className="text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">🌐 Bilingual</span> : <span className="text-xs text-slate-400">Single</span>}</td>
                     <td className="px-4 py-3">
                       <button onClick={() => handleToggle(c)} className={`px-2 py-0.5 rounded-full text-xs cursor-pointer ${c.is_active ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-red-100 text-red-700 hover:bg-red-200"}`}>
                         {c.is_active ? "Active" : "Inactive"}
@@ -545,7 +555,7 @@ export default function VoiceOtpFullPage() {
                   </tr>
                 ))}
                 {configs.length === 0 && (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">No language groups configured. Click "+ Add Language" to create one.</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">No language groups configured. Click "+ Add Language" to create one.</td></tr>
                 )}
               </tbody>
             </table>

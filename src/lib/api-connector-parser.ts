@@ -77,10 +77,28 @@ export function parseHeaders(raw: string): Record<string, string> {
 /**
  * Safely evaluate a success condition like "response.http_code == 200" or "response.info.status == \"Delivered\""
  * against a JSON response object. Supports ==, != operators.
+ *
+ * For non-JSON (text) responses, also supports:
+ *   - "body contains <text>" — checks if raw response body contains the substring
+ *   - "body starts_with <text>" — checks if raw response body starts with the substring
  */
 export function evaluateCondition(condition: string, response: Record<string, unknown>): boolean {
   if (!condition || !condition.trim()) return true;
 
+  // ── Text-based conditions (for non-JSON responses) ──
+  const containsMatch = condition.match(/^body\s+contains\s+"(.+)"$/i);
+  if (containsMatch) {
+    const rawText = (response.raw as string) || "";
+    return rawText.includes(containsMatch[1]);
+  }
+
+  const startsWithMatch = condition.match(/^body\s+starts_with\s+"(.+)"$/i);
+  if (startsWithMatch) {
+    const rawText = (response.raw as string) || "";
+    return rawText.startsWith(startsWithMatch[1]);
+  }
+
+  // ── JSON-path conditions ──
   // Match: response.path.to.field == value  OR  response.path.to.field != value
   const match = condition.match(/^response\.([\w.\[\]'\"]+)\s*(==|!=)\s*(.+)$/);
   if (!match) return false;
@@ -113,9 +131,20 @@ function parseExpectedValue(raw: string): unknown {
 /**
  * Extract a value from a JSON response using a path like "info.trans_id" or "response.info.trans_id".
  * Handles "response." prefix gracefully.
+ * Also supports regex extraction: prefix the path with "regex:" followed by a regex pattern
+ * containing one capture group. E.g. "regex:ID=(\\d+)" extracts digits after "ID=".
  */
 export function extractFromResponse(response: Record<string, unknown>, path: string): unknown {
   if (!path) return undefined;
+
+  // ── Regex extraction: "regex:pattern" ──
+  if (path.startsWith("regex:")) {
+    const pattern = path.slice(6);
+    const rawText = (response.raw as string) || JSON.stringify(response);
+    const match = rawText.match(new RegExp(pattern));
+    return match?.[1] || undefined;
+  }
+
   const cleanPath = path.replace(/^response\./, "");
   return safeGet(response, cleanPath);
 }
@@ -186,9 +215,16 @@ export function parseApiCodeSnippet(rawCode: string): ParseResult {
   const codeMatch = content.match(/\bcode\s*==\s*200\b/);
   if (codeMatch && !result.sendSuccessCondition) result.sendSuccessCondition = "response.code == 200";
 
+  // ── Text-based success: "if 'SUCCESS' in data" ──
+  const successInData = content.match(/['"](SUCCESS|OK|success)['"]\s+in\s+data/i);
+  if (successInData && !result.sendSuccessCondition) {
+    result.sendSuccessCondition = `body contains "${successInData[1]}"`;
+  }
+
   // ── Extract message_id field ──
   const transIdMatch = content.match(/trans_id|message_id|messageId/i);
   if (transIdMatch) {
+    // JSON path extraction
     const pathMatch = content.match(/info\s*\[\s*["'](trans_id|message_id)["']\s*\]/);
     if (pathMatch) {
       result.sendMessageIdPath = `info.${pathMatch[1]}`;
@@ -196,6 +232,11 @@ export function parseApiCodeSnippet(rawCode: string): ParseResult {
       result.sendMessageIdPath = "info.trans_id";
     } else if (content.includes("info.message_id")) {
       result.sendMessageIdPath = "info.message_id";
+    }
+    // Regex extraction: ID=xxxxx in CSV/plain text
+    const idSplitMatch = content.match(/ID\s*=\s*(\S+)/i);
+    if (idSplitMatch && !result.sendMessageIdPath) {
+      result.sendMessageIdPath = "regex:ID=(\\S+)";
     }
   }
 
@@ -209,6 +250,13 @@ export function parseApiCodeSnippet(rawCode: string): ParseResult {
   } else if (content.includes("Delivered")) {
     result.dlrStatusPath = "info.status";
     result.dlrDeliveredValue = "Delivered";
+  }
+
+  // ── Text-based DLR: "SENT" in space-delimited response ──
+  const sentInData = content.match(/['"](SENT|DELIVERED|DELIVRD)['"]\s+in\s+data/i);
+  if (sentInData && !result.dlrStatusPath) {
+    result.dlrStatusPath = "regex:^(\\S+)";
+    result.dlrDeliveredValue = sentInData[1];
   }
 
   // ── Extract headers ──

@@ -40,7 +40,7 @@ export default function SupplierRatesPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const { countryNameMap, networkNameMap, countries } = useMccMncLookups(mccMncList);
+  const { countryByMcc, countryNameMap, networkNameMap, countries } = useMccMncLookups(mccMncList);
 
   const handleCountryChange = (countryName: string) => {
     setSelectedCountry(countryName);
@@ -124,10 +124,8 @@ export default function SupplierRatesPage() {
     setShowForm(true);
   };
 
-  const handleDelete = async (rateId: number) => {
-    if (!confirm("Delete this supplier rate?")) return;
-    await fetch(`/api/tenant/supplier-rates/${rateId}`, { method: "DELETE" });
-    load();
+  const handleDelete = async () => {
+    alert("Rates cannot be deleted. Use Edit to modify or toggle Active/Inactive.");
   };
 
   const [flashFailId, setFlashFailId] = useState<number | null>(null);
@@ -308,7 +306,7 @@ export default function SupplierRatesPage() {
               <tr key={r.id} className="border-b hover:bg-slate-50">
                 <td className="px-5 py-3 font-medium">{suppliers.find((s) => s.id === r.supplier_id)?.name || r.supplier_id}</td>
                 <td className="px-5 py-3">
-                  <span className="font-medium">{countryNameMap.get(r.country_code) || r.country_code}</span>
+                  <span className="font-medium">{countryByMcc.get(r.mcc) || countryNameMap.get(r.country_code) || r.country_code}</span>
                   <span className="text-xs text-slate-400 ml-1">({r.country_code})</span>
                 </td>
                 <td className="px-5 py-3">
@@ -333,7 +331,6 @@ export default function SupplierRatesPage() {
                 <td className="px-5 py-3">
                   <div className="flex gap-2">
                     <button onClick={() => handleEdit(r)} className="text-blue-600 hover:underline text-xs">Edit</button>
-                    <button onClick={() => handleDelete(r.id)} className="text-red-600 hover:underline text-xs">Delete</button>
                   </div>
                 </td>
               </tr>

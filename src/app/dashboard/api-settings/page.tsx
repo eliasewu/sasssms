@@ -12,7 +12,6 @@ interface Client {
   enable_http_api: boolean;
   smpp_port: number;
   dlr_callback_url: string;
-  rate_per_sms: string;
   max_tps: number;
 }
 
@@ -233,8 +232,9 @@ export default function ApiSettingsPage() {
             <h3 className="font-semibold text-lg mb-4">Rate & Limits</h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-xs text-blue-600 font-medium">Rate per SMS</p>
-                <p className="text-2xl font-bold text-blue-800">${parseFloat(selectedClient.rate_per_sms || "0").toFixed(6)}</p>
+                <p className="text-xs text-blue-600 font-medium">Global SMS Rate</p>
+                <p className="text-2xl font-bold text-blue-800">$0.00010/SMS</p>
+                <p className="text-xs text-blue-500 mt-1">Set by super admin</p>
               </div>
               <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
                 <p className="text-xs text-purple-600 font-medium">Max TPS</p>
@@ -290,7 +290,7 @@ export default function ApiSettingsPage() {
     "status": "SENT",
     "dlr_status": "PENDING",
     "message_id": "MSG_1234567890_abc123",
-    "cost": "${selectedClient.rate_per_sms || "0.00010"}",
+    "cost": "0.00010",
     "created_at": "2025-01-15T10:30:00.000Z"
   },
   "messageId": "MSG_1234567890_abc123",
@@ -303,7 +303,7 @@ export default function ApiSettingsPage() {
     "fallbackUsed": false,
     "failedRoutes": 0
   },
-  "cost": ${selectedClient.rate_per_sms || "0.00010"},
+  "cost": 0.00010,
   "dlr": {
     "status": "PENDING",
     "pushed_to": "${selectedClient.dlr_callback_url || "https://your-server.com/dlr-webhook"}"
@@ -351,7 +351,7 @@ export default function ApiSettingsPage() {
   "done_date": "250115103005",
   "error_code": "000",
   "timestamp": "2025-01-15T10:30:05.000Z",
-  "cost": "${selectedClient.rate_per_sms || "0.00010"}",
+  "cost": "0.00010",
   "route_name": "Primary SMPP Route",
   "supplier_name": "Supplier Name"
 }`}
@@ -670,11 +670,9 @@ public class SmppClient {
               <div className="bg-white rounded-lg border p-4 mb-3">
                 <h5 className="text-xs font-bold uppercase text-slate-500 mb-2">💰 Billing Settings</h5>
                 <ul className="text-xs text-slate-600 space-y-1">
-                  <li><strong>Billing Mode</strong> — Prepaid (balance deducted per SMS) or Postpaid (invoice after usage)</li>
+                  <li><strong>Billing Mode</strong> — Prepaid or Postpaid</li>
                   <li><strong>Currency</strong> — USD, EUR, INR, USDT supported</li>
-                  <li><strong>Initial Balance</strong> — Starting credit for prepaid clients</li>
                   <li><strong>Credit Limit</strong> — Maximum postpaid credit allowed</li>
-                  <li><strong>Rate Per SMS</strong> — Default SMS price charged to this client</li>
                 </ul>
               </div>
 
@@ -802,7 +800,7 @@ public class SmppClient {
                 <h5 className="text-sm font-medium text-slate-700 mb-2">💰 Rate Calculation Logic</h5>
                 <ul className="text-xs text-slate-600 space-y-1">
                   <li><strong>Per-Operator Rate:</strong> If a client has a rate for the specific MCC/MNC, that rate is used</li>
-                  <li><strong>Default Rate:</strong> If no per-operator rate exists, the client's default <code className="bg-slate-100 px-1 rounded">rate_per_sms</code> is used</li>
+                  <li><strong>Default Rate:</strong> If no per-operator rate exists, the global platform rate from super admin settings is used</li>
                   <li><strong>Supplier Cost:</strong> Each message is routed through suppliers with their own cost rates</li>
                   <li><strong>Profit = Client Rate - Supplier Cost</strong></li>
                 </ul>

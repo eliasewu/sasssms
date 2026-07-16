@@ -6,18 +6,24 @@ interface Connector {
   id: number;
   name: string;
   type: string;
-  send_url_template: string;
-  send_method: string;
-  send_headers: string;
-  send_body_template: string;
-  send_success_condition: string;
-  send_message_id_path: string;
-  dlr_url_template: string;
-  dlr_method: string;
-  dlr_success_condition: string;
-  dlr_status_path: string;
-  dlr_delivered_value: string;
+  send_url_template?: string;
+  send_method?: string;
+  send_headers?: string;
+  send_body_template?: string;
+  send_success_condition?: string;
+  send_message_id_path?: string;
+  dlr_url_template?: string;
+  dlr_method?: string;
+  dlr_success_condition?: string;
+  dlr_status_path?: string;
+  dlr_delivered_value?: string;
   is_active: boolean;
+  provider?: string;
+  region?: string;
+  api_url?: string;
+  auth_method?: string;
+  source?: string;
+  realId?: number;
 }
 
 interface TestResult {
@@ -33,7 +39,9 @@ const TYPES = ["HTTP_API", "RCS_API", "WHATSAPP", "TELEGRAM"];
 
 export default function CustomApiConnectorsPage() {
   const [connectors, setConnectors] = useState<Connector[]>([]);
+  const [globalConnectors, setGlobalConnectors] = useState<Connector[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<"custom" | "global">("custom");
   const [aiRaw, setAiRaw] = useState("");
   const [aiResult, setAiResult] = useState<Record<string, string> | null>(null);
   const [aiParsing, setAiParsing] = useState(false);
@@ -53,10 +61,17 @@ export default function CustomApiConnectorsPage() {
 
   const fetchConnectors = useCallback(async () => {
     try {
+      // Fetch tenant custom connectors
       const res = await fetch("/api/tenant/custom-api-connectors", { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         setConnectors(data.connectors);
+      }
+      // Fetch global connectors
+      const gr = await fetch("/api/tenant/connectors", { credentials: "include" });
+      if (gr.ok) {
+        const gdata = await gr.json();
+        setGlobalConnectors(gdata.connectors.filter((c: Connector) => c.source === "global"));
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
@@ -141,7 +156,7 @@ export default function CustomApiConnectorsPage() {
     setEditingId(conn.id);
     setForm({
       name: conn.name, type: conn.type,
-      send_url_template: conn.send_url_template, send_method: conn.send_method,
+      send_url_template: conn.send_url_template || "", send_method: conn.send_method || "GET",
       send_headers: conn.send_headers || "", send_body_template: conn.send_body_template || "",
       send_success_condition: conn.send_success_condition || "",
       send_message_id_path: conn.send_message_id_path || "",
@@ -185,55 +200,90 @@ export default function CustomApiConnectorsPage() {
     finally { setTestingId(null); }
   };
 
+  // Clone a global connector into a custom one
+  const cloneGlobal = (g: Connector) => {
+    setEditingId(null);
+    setForm({
+      name: g.name,
+      type: g.type,
+      send_url_template: "",
+      send_method: "GET",
+      send_headers: "",
+      send_body_template: "",
+      send_success_condition: "",
+      send_message_id_path: "",
+      dlr_url_template: "",
+      dlr_method: "GET",
+      dlr_success_condition: "",
+      dlr_status_path: "",
+      dlr_delivered_value: "Delivered",
+    });
+    setShowForm(true);
+    setTab("custom");
+  };
+
   if (loading) return <div className="text-slate-400 text-sm py-12 text-center">Loading...</div>;
+
+  const typeColors: Record<string, string> = {
+    HTTP_API: "bg-green-100 text-green-700", RCS: "bg-purple-100 text-purple-700",
+    RCS_API: "bg-purple-100 text-purple-700", FLASH_SMS: "bg-amber-100 text-amber-700",
+    "Flash SMS": "bg-amber-100 text-amber-700", WHATSAPP: "bg-emerald-100 text-emerald-700",
+    TELEGRAM: "bg-cyan-100 text-cyan-700",
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">🔌 Custom API Connectors</h2>
-          <p className="text-sm text-slate-500 mt-1">Add HTTP/RCS/WhatsApp/Telegram APIs — AI parses your docs into connector config.</p>
+          <h2 className="text-2xl font-bold text-slate-800">🔌 API Connectors</h2>
+          <p className="text-sm text-slate-500 mt-1">153+ pre-loaded APIs + your custom connectors. AI parses your docs into connector config.</p>
         </div>
+        <button onClick={() => { setShowForm(true); setEditingId(null); }} className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 text-sm font-medium">+ Add Connector</button>
+      </div>
+
+      {/* Tab Switcher */}
+      <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+        <button onClick={() => setTab("custom")} className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${tab === "custom" ? "bg-white shadow text-slate-800" : "text-slate-500"}`}>
+          ⚡ My Custom ({connectors.length})
+        </button>
+        <button onClick={() => setTab("global")} className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${tab === "global" ? "bg-white shadow text-slate-800" : "text-slate-500"}`}>
+          🌍 Pre-Loaded APIs ({globalConnectors.length})
+        </button>
       </div>
 
       {/* AI Auto-Config */}
-      <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl p-6 text-white">
-        <h3 className="font-semibold text-lg mb-2">🤖 AI Auto-Config</h3>
-        <p className="text-sm text-purple-100 mb-4">Paste your API documentation, cURL command, or Python code snippet — AI extracts send URL, DLR URL, and response parsing rules.</p>
-        <textarea
-          value={aiRaw}
-          onChange={e => setAiRaw(e.target.value)}
-          className="w-full rounded-lg p-4 text-sm font-mono text-slate-800 bg-white/95 min-h-[140px] placeholder:text-slate-400"
-          placeholder={`Paste your API code here, e.g.:\n\nSend:\nhttps://api.provider.com/send?apiKey=xxx&to={{dst}}&text={{message}}\nif response.code == 200: message_id = response.info.trans_id\n\nDLR:\nhttps://api.provider.com/dlr?apiKey=xxx&trans_id={{message_id}}\nif response.info.status == "Delivered": return 2`}
-        />
-        <div className="flex gap-3 mt-3">
-          <button
-            onClick={handleAiParse}
-            disabled={aiParsing || !aiRaw.trim()}
-            className="px-4 py-2 bg-white text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-50 disabled:opacity-50 transition"
-          >
-            {aiParsing ? "🤖 Analyzing..." : "🤖 Parse with AI"}
-          </button>
-          {aiResult && (
-            <button
-              onClick={applyAiResult}
-              className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600 transition"
-            >
-              ✅ Apply to Form
+      {tab === "custom" && (
+        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl p-6 text-white">
+          <h3 className="font-semibold text-lg mb-2">🤖 AI Auto-Config</h3>
+          <p className="text-sm text-purple-100 mb-4">Paste your API documentation, cURL command, or Python code snippet — AI extracts send URL, DLR URL, and response parsing rules.</p>
+          <textarea
+            value={aiRaw}
+            onChange={e => setAiRaw(e.target.value)}
+            className="w-full rounded-lg p-4 text-sm font-mono text-slate-800 bg-white/95 min-h-[140px] placeholder:text-slate-400"
+            placeholder={`Paste your API code here, e.g.:\n\nSend:\nhttps://api.provider.com/send?apiKey=xxx&to={{dst}}&text={{message}}\nif response.code == 200: message_id = response.info.trans_id\n\nDLR:\nhttps://api.provider.com/dlr?apiKey=xxx&trans_id={{message_id}}\nif response.info.status == "Delivered": return 2`}
+          />
+          <div className="flex gap-3 mt-3">
+            <button onClick={handleAiParse} disabled={aiParsing || !aiRaw.trim()} className="px-4 py-2 bg-white text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-50 disabled:opacity-50 transition">
+              {aiParsing ? "🤖 Analyzing..." : "🤖 Parse with AI"}
             </button>
+            {aiResult && (
+              <button onClick={applyAiResult} className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600 transition">
+                ✅ Apply to Form
+              </button>
+            )}
+          </div>
+          {aiResult && (
+            <div className="mt-4 bg-white/10 rounded-lg p-4 text-xs font-mono space-y-1 max-h-[200px] overflow-y-auto">
+              {Object.entries(aiResult).filter(([_, v]) => v).map(([k, v]) => (
+                <p key={k}><span className="text-purple-200">{k}:</span> {String(v).slice(0, 120)}</p>
+              ))}
+            </div>
           )}
         </div>
-        {aiResult && (
-          <div className="mt-4 bg-white/10 rounded-lg p-4 text-xs font-mono space-y-1 max-h-[200px] overflow-y-auto">
-            {Object.entries(aiResult).filter(([_, v]) => v).map(([k, v]) => (
-              <p key={k}><span className="text-purple-200">{k}:</span> {String(v).slice(0, 120)}</p>
-            ))}
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Add/Edit Form */}
-      {showForm && (
+      {tab === "custom" && showForm && (
         <div className="bg-white rounded-xl border p-6 shadow-sm">
           <h3 className="font-semibold text-lg mb-4">{editingId ? "Edit" : "Add"} Connector</h3>
           <div className="grid grid-cols-2 gap-4">
@@ -253,75 +303,108 @@ export default function CustomApiConnectorsPage() {
             ].map(({ label, field, placeholder }) => (
               <div key={field} className={field === "send_url_template" || field === "dlr_url_template" ? "col-span-2" : ""}>
                 <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
-                <input
-                  type="text"
-                  value={form[field] || ""}
-                  onChange={e => setForm({ ...form, [field]: e.target.value })}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
-                  placeholder={placeholder}
-                />
+                <input type="text" value={form[field] || ""} onChange={e => setForm({ ...form, [field]: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500" placeholder={placeholder} />
               </div>
             ))}
             <div className="col-span-2 flex gap-3">
               <button onClick={handleSave} disabled={saving || !form.name || !form.send_url_template} className="px-5 py-2.5 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition">
                 {saving ? "Saving..." : (editingId ? "Update" : "Create")}
               </button>
-              <button onClick={() => { setShowForm(false); setEditingId(null); setForm({ type: "HTTP_API", send_method: "GET", dlr_method: "GET" }); }} className="px-5 py-2.5 bg-slate-100 text-slate-700 rounded-lg text-sm hover:bg-slate-200 transition">
-                Cancel
-              </button>
+              <button onClick={() => { setShowForm(false); setEditingId(null); setForm({ type: "HTTP_API", send_method: "GET", dlr_method: "GET" }); }} className="px-5 py-2.5 bg-slate-100 text-slate-700 rounded-lg text-sm hover:bg-slate-200 transition">Cancel</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Connectors Table */}
-      <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-        {connectors.length === 0 ? (
-          <div className="p-12 text-center text-slate-400">
-            <div className="text-4xl mb-3">🔌</div>
-            <p className="font-medium">No custom API connectors yet</p>
-            <p className="text-sm mt-1">Paste your API docs in the AI box above or click "Add Connector" to create one.</p>
-            <button onClick={() => setShowForm(true)} className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition">
-              + Add Connector
-            </button>
-          </div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Name</th>
-                <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Type</th>
-                <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Send URL</th>
-                <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Status</th>
-                <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {connectors.map((conn) => (
-                <tr key={conn.id} className="border-t hover:bg-purple-50 transition">
-                  <td className="px-5 py-3 font-medium text-slate-800">{conn.name}</td>
-                  <td className="px-5 py-3"><span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">{conn.type}</span></td>
-                  <td className="px-5 py-3 text-xs text-slate-500 max-w-[300px] truncate font-mono">{conn.send_url_template}</td>
-                  <td className="px-5 py-3">
-                    <button onClick={() => handleToggle(conn)} className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${conn.is_active ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
-                      {conn.is_active ? "Active" : "Inactive"}
-                    </button>
-                  </td>
-                  <td className="px-5 py-3">
-                    <div className="flex gap-2">
-                      <button onClick={() => handleTest(conn.id)} disabled={testingId === conn.id} className="text-xs px-3 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium">
-                        {testingId === conn.id ? "Testing..." : "🧪 Test"}
-                      </button>
-                      <button onClick={() => handleEdit(conn)} className="text-xs px-3 py-1 rounded-lg bg-slate-50 text-slate-600 hover:bg-slate-100 font-medium">✏️ Edit</button>
-                      <button onClick={() => handleDelete(conn.id)} className="text-xs px-3 py-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 font-medium">🗑 Delete</button>
-                    </div>
-                  </td>
+      {/* Custom Connectors Table */}
+      {tab === "custom" && (
+        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+          {connectors.length === 0 ? (
+            <div className="p-12 text-center text-slate-400">
+              <div className="text-4xl mb-3">🔌</div>
+              <p className="font-medium">No custom API connectors yet</p>
+              <p className="text-sm mt-1">Paste your API docs in the AI box above, clone from Pre-Loaded APIs, or click "Add Connector".</p>
+              <button onClick={() => setShowForm(true)} className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition">+ Add Connector</button>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Name</th>
+                  <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Type</th>
+                  <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Send URL</th>
+                  <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Status</th>
+                  <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+              </thead>
+              <tbody>
+                {connectors.map((conn) => (
+                  <tr key={conn.id} className="border-t hover:bg-purple-50 transition">
+                    <td className="px-5 py-3 font-medium text-slate-800">{conn.name}</td>
+                    <td className="px-5 py-3"><span className={`px-2 py-0.5 rounded text-xs font-medium ${typeColors[conn.type] || "bg-purple-100 text-purple-700"}`}>{conn.type}</span></td>
+                    <td className="px-5 py-3 text-xs text-slate-500 max-w-[300px] truncate font-mono">{conn.send_url_template}</td>
+                    <td className="px-5 py-3">
+                      <button onClick={() => handleToggle(conn)} className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${conn.is_active ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
+                        {conn.is_active ? "Active" : "Inactive"}
+                      </button>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex gap-2">
+                        <button onClick={() => handleTest(conn.id)} disabled={testingId === conn.id} className="text-xs px-3 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium">
+                          {testingId === conn.id ? "Testing..." : "🧪 Test"}
+                        </button>
+                        <button onClick={() => handleEdit(conn)} className="text-xs px-3 py-1 rounded-lg bg-slate-50 text-slate-600 hover:bg-slate-100 font-medium">✏️ Edit</button>
+                        <button onClick={() => handleDelete(conn.id)} className="text-xs px-3 py-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 font-medium">🗑 Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* Global Connectors Table */}
+      {tab === "global" && (
+        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+          <div className="px-5 py-3 border-b bg-slate-50 flex items-center justify-between">
+            <span className="text-sm text-slate-500">{globalConnectors.length} pre-loaded API connectors from global catalog</span>
+            <span className="text-xs text-slate-400">Click "Clone" to create a custom connector from a template</span>
+          </div>
+          <div className="overflow-auto max-h-[600px]">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 sticky top-0">
+                <tr>
+                  <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Name</th>
+                  <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Type</th>
+                  <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Provider</th>
+                  <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Region</th>
+                  <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Auth</th>
+                  <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {globalConnectors.map((g) => (
+                  <tr key={g.id} className="border-t hover:bg-blue-50 transition">
+                    <td className="px-5 py-2.5 font-medium text-slate-800">{g.name}</td>
+                    <td className="px-5 py-2.5"><span className={`px-2 py-0.5 rounded text-xs font-medium ${typeColors[g.type] || "bg-slate-100 text-slate-600"}`}>{g.type}</span></td>
+                    <td className="px-5 py-2.5 text-xs text-slate-600">{g.provider || "—"}</td>
+                    <td className="px-5 py-2.5 text-xs text-slate-500">{g.region || "—"}</td>
+                    <td className="px-5 py-2.5"><span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-600">{g.auth_method || "API_KEY"}</span></td>
+                    <td className="px-5 py-2.5">
+                      <button onClick={() => cloneGlobal(g)} className="text-xs px-3 py-1 rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100 font-medium transition">📋 Clone</button>
+                    </td>
+                  </tr>
+                ))}
+                {globalConnectors.length === 0 && (
+                  <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-400">No pre-loaded connectors available. Run the connector seed script.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Test Result Modal */}
       {testResult && (
@@ -336,9 +419,7 @@ export default function CustomApiConnectorsPage() {
             </div>
             {testResult.error && <p className="text-red-600 text-xs">{testResult.error}</p>}
             {testResult.extractedMessageId && (
-              <p className="text-xs text-slate-600">
-                <strong>Message ID:</strong> <code className="bg-slate-100 px-1 rounded">{testResult.extractedMessageId}</code>
-              </p>
+              <p className="text-xs text-slate-600"><strong>Message ID:</strong> <code className="bg-slate-100 px-1 rounded">{testResult.extractedMessageId}</code></p>
             )}
             <details className="mt-2">
               <summary className="text-xs text-slate-500 cursor-pointer">Raw Response</summary>

@@ -53,7 +53,7 @@ export default function BulkRatesPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const { countryNameMap, networkNameMap } = useMccMncLookups(destinations);
+  const { countryByMcc, countryNameMap, networkNameMap } = useMccMncLookups(destinations);
 
   // Build country list grouped by unique country name (not country code)
   const countryList = useMemo(() => {
@@ -187,15 +187,9 @@ export default function BulkRatesPage() {
     }
   };
 
-  const handleDelete = async (rateId: number) => {
-    if (!confirm("Delete this rate?")) return;
-    const endpoint = tab === "client"
-      ? `/api/tenant/client-rates/${rateId}`
-      : `/api/tenant/supplier-rates/${rateId}`;
-    await fetch(endpoint, { method: "DELETE" });
-    setMsg("Rate deleted");
-    setTimeout(() => setMsg(""), 2000);
-    load();
+  const handleDelete = async () => {
+    setMsg("Rates cannot be deleted. Use Edit to modify or toggle Active/Inactive.");
+    setTimeout(() => setMsg(""), 3000);
   };
 
   // Reset editing state when switching tabs
@@ -371,7 +365,7 @@ export default function BulkRatesPage() {
                   const isEditing = editingId === r.id;
                   return (
                     <tr key={i} className={`border-b hover:bg-slate-50 ${isEditing ? "bg-blue-50" : ""}`}>
-                      <td className="px-4 py-2 font-medium">{countryNameMap.get(r.country_code) || r.country_code}</td>
+                      <td className="px-4 py-2 font-medium">{countryByMcc.get(r.mcc) || countryNameMap.get(r.country_code) || r.country_code}</td>
                       <td className="px-4 py-2 text-xs">{r.operator_name}</td>
                       <td className="px-4 py-2 font-mono text-xs">{r.mcc}</td>
                       <td className="px-4 py-2 font-mono text-xs">{r.mnc || "—"}</td>
@@ -413,7 +407,7 @@ export default function BulkRatesPage() {
                         ) : (
                           <div className="flex gap-2">
                             <button onClick={() => startEdit(r.id, rateVal || "0")} className="text-blue-600 hover:underline text-xs">Edit</button>
-                            <button onClick={() => handleDelete(r.id)} className="text-red-600 hover:underline text-xs">Delete</button>
+
                           </div>
                         )}
                       </td>

@@ -45,26 +45,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   return NextResponse.json({ rate: result.rows[0] });
 }
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const tenant = getTenantFromRequest(request);
-  if (!tenant) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { id } = await params;
-
-  // Fetch old data before deleting (for audit log)
-  const oldResult = await tenantQuery(tenant.schemaName, "SELECT * FROM client_rates WHERE id = $1", [id]);
-  const oldData = oldResult.rows[0] || null;
-
-  const result = await tenantQuery(
-    tenant.schemaName,
-    "DELETE FROM client_rates WHERE id = $1 RETURNING id",
-    [id]
-  );
-
-  if (result.rows.length === 0) {
-    return NextResponse.json({ error: "Client rate not found" }, { status: 404 });
-  }
-
-  await auditLog("client_rates", parseInt(id), "DELETE", tenant.email, oldData as Record<string, unknown> || undefined, undefined, tenant.tenantId);
-
-  return NextResponse.json({ success: true, message: "Client rate deleted" });
+export async function DELETE() {
+  return NextResponse.json({ error: "Rates cannot be deleted. Use Edit to modify or toggle Active/Inactive instead." }, { status: 405 });
 }

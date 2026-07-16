@@ -153,6 +153,8 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       id SERIAL PRIMARY KEY, country_group VARCHAR(255) NOT NULL, prefixes VARCHAR(500),
       primary_language VARCHAR(50) NOT NULL, secondary_language VARCHAR(50),
       primary_audio_count INTEGER DEFAULT 0, secondary_audio_count INTEGER DEFAULT 0,
+      play_count INTEGER DEFAULT 3, retry_count INTEGER DEFAULT 1,
+      bilingual BOOLEAN DEFAULT false,
       is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`);
 
     await createTable(`CREATE TABLE IF NOT EXISTS voice_otp_audio (

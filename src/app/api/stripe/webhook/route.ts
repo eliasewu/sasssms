@@ -42,28 +42,75 @@ export async function POST(request: Request) {
 
       const txn = result.rows[0];
 
-      // Add SMS credits to tenant
+      // Add SMS credits and handle package upgrades
       const [tenantData] = await db
         .select({
           smsCounter: tenants.smsCounter,
           smsLimit: tenants.smsLimit,
           smsValidUntil: tenants.smsValidUntil,
+          packageType: tenants.packageType,
         })
         .from(tenants)
         .where(eq(tenants.id, txn.tenant_id));
 
-      if (tenantData && txn.sms_amount > 0) {
-        const newLimit = safeInt((tenantData.smsLimit || 0) + txn.sms_amount);
-        const validUntil = new Date();
-        validUntil.setMonth(validUntil.getMonth() + 3);
+      if (tenantData) {
+        const pkgType = (txn.package_type || "").toLowerCase();
+        const isPackagePurchase = pkgType === "professional" || pkgType === "enterprise";
+        const isStarterRecharge = pkgType === "starter" || (!pkgType && tenantData.packageType === "starter");
 
-        await db.update(tenants).set({
-          smsLimit: newLimit,
-          smsValidUntil: validUntil,
-          lastRechargeAt: new Date(),
-          lastRechargeAmount: txn.amount,
-          updatedAt: new Date(),
-        }).where(eq(tenants.id, txn.tenant_id));
+        // Package pricing (synced with packages table & landing page)
+        const PRO_MONTHLY_FEE = "150";
+        const ENT_MONTHLY_FEE = "399";
+        const PRO_SMS_CREDITS = 10_000_000;
+
+        // ── Package upgrade: Professional or Enterprise ──
+        if (isPackagePurchase) {
+          const monthlyFee = pkgType === "professional" ? PRO_MONTHLY_FEE : ENT_MONTHLY_FEE;
+          const smsCredits = pkgType === "professional" ? PRO_SMS_CREDITS : 0;
+          const currentLimit = safeInt(tenantData.smsLimit || 0);
+          const newLimit = smsCredits > 0 ? currentLimit + smsCredits : 0;
+
+          const packageExpiry = new Date();
+          packageExpiry.setMonth(packageExpiry.getMonth() + 1);
+
+          await db.update(tenants).set({
+            packageType: pkgType,
+            monthlyFee: monthlyFee,
+            smsLimit: newLimit,
+            packageExpiresAt: packageExpiry,
+            lastRechargeAt: new Date(),
+            lastRechargeAmount: txn.amount,
+            updatedAt: new Date(),
+          }).where(eq(tenants.id, txn.tenant_id));
+        }
+        // ── Starter recharge: 6-month validity with carry-forward ──
+        else if (isStarterRecharge && txn.sms_amount > 0) {
+          const newLimit = safeInt((tenantData.smsLimit || 0) + txn.sms_amount);
+          const validUntil = new Date();
+          validUntil.setMonth(validUntil.getMonth() + 6);
+
+          await db.update(tenants).set({
+            smsLimit: newLimit,
+            smsValidUntil: validUntil,
+            lastRechargeAt: new Date(),
+            lastRechargeAmount: txn.amount,
+            updatedAt: new Date(),
+          }).where(eq(tenants.id, txn.tenant_id));
+        }
+        // ── Fallback: generic SMS top-up ──
+        else if (txn.sms_amount > 0) {
+          const newLimit = safeInt((tenantData.smsLimit || 0) + txn.sms_amount);
+          const validUntil = new Date();
+          validUntil.setMonth(validUntil.getMonth() + 6);
+
+          await db.update(tenants).set({
+            smsLimit: newLimit,
+            smsValidUntil: validUntil,
+            lastRechargeAt: new Date(),
+            lastRechargeAmount: txn.amount,
+            updatedAt: new Date(),
+          }).where(eq(tenants.id, txn.tenant_id));
+        }
       }
 
       // Send confirmation email

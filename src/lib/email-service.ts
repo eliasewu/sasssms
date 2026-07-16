@@ -1,4 +1,7 @@
 import nodemailer from "nodemailer";
+import { db } from "@/db";
+import { tenants, alerts } from "@/db/schema";
+import { and, eq, sql } from "drizzle-orm";
 
 const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || "elias.ewu@gmail.com";
 const SMTP_HOST = process.env.SMTP_HOST || "mail.net2app.com";
@@ -167,6 +170,49 @@ export async function notifyTenantTicketReply(payload: {
 }
 
 /**
+ * Send package expiry warning to tenant (Professional/Enterprise)
+ * Called 3 days before packageExpiresAt
+ */
+export async function notifyTenantPackageExpiring(payload: {
+  tenantEmail: string;
+  tenantName: string;
+  packageType: string;
+  expiresAt: string;
+  daysLeft: number;
+}): Promise<boolean> {
+  try {
+    const actionUrl = "https://net2app.com/dashboard/billing";
+    await transporter.sendMail({
+      from: `"Net2APP Billing" <${SMTP_USER}>`,
+      to: payload.tenantEmail,
+      subject: `⏰ ${payload.packageType} Plan Renews in ${payload.daysLeft} Days — Net2APP`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #e69500;">Your ${payload.packageType} Plan is Expiring Soon</h2>
+          <p>Dear ${payload.tenantName},</p>
+          <p>Your <strong>${payload.packageType}</strong> subscription will expire in <strong>${payload.daysLeft} day${payload.daysLeft > 1 ? "s" : ""}</strong> on <strong>${new Date(payload.expiresAt).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</strong>.</p>
+          <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px 16px; margin: 15px 0; border-radius: 4px;">
+            <p style="margin: 0; color: #856404;"><strong>⚠️ What happens if your plan expires?</strong></p>
+            <ul style="margin: 8px 0 0 0; color: #856404;">
+              <li>SMS sending will be paused</li>
+              <li>Your data and settings will be preserved</li>
+              <li>Reactivate anytime by renewing your plan</li>
+            </ul>
+          </div>
+          <p style="color: #666;">To avoid service interruption, please renew your plan before the expiry date.</p>
+          <a href="${actionUrl}" style="display: inline-block; background: #1a73e8; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 10px;">Renew Now →</a>
+          <p style="color: #999; font-size: 12px; margin-top: 20px;">Thank you for choosing Net2APP!</p>
+        </div>
+      `,
+    });
+    return true;
+  } catch (e) {
+    console.error("Failed to send package expiry notification:", e);
+    return false;
+  }
+}
+
+/**
  * Send welcome email to newly created email account
  */
 export async function sendWelcomeEmail(payload: {
@@ -198,4 +244,99 @@ export async function sendWelcomeEmail(payload: {
     console.error("Failed to send welcome email:", e);
     return false;
   }
+}
+
+/**
+ * Scheduled check: find Professional/Enterprise tenants whose package expires
+ * within 3 days and send email notifications + create dashboard alerts.
+ * Designed to be called daily via instrumentation setInterval.
+ */
+export async function checkPackageExpiry(): Promise<{ notified: number; errors: number }> {
+  const now = new Date();
+  const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+
+  let notified = 0;
+  let errors = 0;
+
+  try {
+    // Find all Pro/Enterprise tenants with packageExpiresAt within the next 3 days
+    // and not already expired (packageExpiresAt > now)
+    const expiringTenants = await db
+      .select({
+        id: tenants.id,
+        companyName: tenants.companyName,
+        email: tenants.email,
+        packageType: tenants.packageType,
+        packageExpiresAt: tenants.packageExpiresAt,
+        schemaName: tenants.schemaName,
+      })
+      .from(tenants)
+      .where(
+        and(
+          sql`${tenants.packageType} IN ('professional', 'enterprise')`,
+          sql`${tenants.packageExpiresAt} IS NOT NULL`,
+          sql`${tenants.packageExpiresAt} > NOW()`,
+          sql`${tenants.packageExpiresAt} <= NOW() + INTERVAL '3 days'`,
+          eq(tenants.isActive, true),
+        )
+      );
+
+    for (const t of expiringTenants) {
+      if (!t.email || !t.packageExpiresAt) continue;
+
+      const daysLeft = Math.max(1, Math.ceil((new Date(t.packageExpiresAt).getTime() - now.getTime()) / 86400000));
+
+      // Send email notification
+      try {
+        const emailOk = await notifyTenantPackageExpiring({
+          tenantEmail: t.email,
+          tenantName: t.companyName,
+          packageType: t.packageType || "Professional",
+          expiresAt: String(t.packageExpiresAt),
+          daysLeft,
+        });
+        if (!emailOk) errors++;
+      } catch { errors++; }
+
+      // Create dashboard alert for the tenant
+      try {
+        const alertMessage = `Your ${t.packageType || "Professional"} plan expires in ${daysLeft} day${daysLeft > 1 ? "s" : ""} (${new Date(t.packageExpiresAt).toLocaleDateString()}). Renew to avoid service interruption.`;
+
+        // Deduplicate: check for existing unread alert of same type in last 24 hours
+        const existing = await db
+          .select({ id: alerts.id })
+          .from(alerts)
+          .where(
+            and(
+              eq(alerts.type, "package_expiry"),
+              eq(alerts.isRead, false),
+              sql`${alerts.createdAt} > NOW() - INTERVAL '24 hours'`,
+              sql`${alerts.message} LIKE ${'%' + t.companyName + '%'}`,
+            )
+          )
+          .limit(1);
+
+        if (existing.length === 0) {
+          await db.insert(alerts).values({
+            type: "package_expiry",
+            title: `${t.packageType || "Professional"} plan expiring for ${t.companyName}`,
+            message: alertMessage,
+            severity: "warning",
+            isRead: false,
+          });
+        }
+      } catch { /* non-critical */ }
+
+      notified++;
+    }
+  } catch (err) {
+    console.error("checkPackageExpiry failed:", err);
+    errors++;
+  }
+
+  if (notified > 0 || errors > 0) {
+    console.log(`[PackageExpiry] Notified: ${notified}, Errors: ${errors}`);
+  }
+
+  return { notified, errors };
 }

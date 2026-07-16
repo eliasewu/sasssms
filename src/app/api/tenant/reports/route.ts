@@ -26,25 +26,32 @@ export async function GET(request: Request) {
   const [volumeRes, clientRes, supplierRes, connectionRes, dlrRes] = await Promise.all([
     tenantQuery(
       tenant.schemaName,
-      `SELECT ${dateGroup} as period, COUNT(*) as count, COALESCE(SUM(CAST(cost AS DECIMAL)), 0) as revenue
+      `SELECT ${dateGroup} as period, COUNT(*) as count,
+              COALESCE(SUM(CAST(cost AS DECIMAL)), 0) as revenue,
+              COALESCE(SUM(CAST(COALESCE(supplier_cost, '0') AS DECIMAL)), 0) as cost,
+              COALESCE(SUM(CAST(COALESCE(profit, '0') AS DECIMAL)), 0) as profit
        FROM messages WHERE created_at >= $1 AND created_at <= $2
        GROUP BY period ORDER BY period`,
       [startDate, endDate]
     ),
     tenantQuery(
       tenant.schemaName,
-      `SELECT c.name as client_name, COUNT(*) as count, COALESCE(SUM(CAST(m.cost AS DECIMAL)), 0) as revenue
+      `SELECT c.name as client_name, c.id as client_id, COUNT(*) as count,
+              COALESCE(SUM(CAST(m.cost AS DECIMAL)), 0) as revenue,
+              COALESCE(SUM(CAST(COALESCE(m.supplier_cost, '0') AS DECIMAL)), 0) as cost,
+              COALESCE(SUM(CAST(COALESCE(m.profit, '0') AS DECIMAL)), 0) as profit
        FROM messages m JOIN clients c ON m.client_id = c.id
        WHERE m.created_at >= $1 AND m.created_at <= $2
-       GROUP BY c.name ORDER BY count DESC LIMIT 20`,
+       GROUP BY c.name, c.id ORDER BY count DESC LIMIT 20`,
       [startDate, endDate]
     ),
     tenantQuery(
       tenant.schemaName,
-      `SELECT s.name as supplier_name, COUNT(*) as count
+      `SELECT s.name as supplier_name, s.id as supplier_id, COUNT(*) as count,
+              COALESCE(SUM(CAST(COALESCE(m.supplier_cost, '0') AS DECIMAL)), 0) as cost
        FROM messages m JOIN suppliers s ON m.supplier_id = s.id
        WHERE m.created_at >= $1 AND m.created_at <= $2
-       GROUP BY s.name ORDER BY count DESC`,
+       GROUP BY s.name, s.id ORDER BY count DESC`,
       [startDate, endDate]
     ),
     tenantQuery(

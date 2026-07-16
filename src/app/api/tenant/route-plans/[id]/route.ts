@@ -31,12 +31,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   return NextResponse.json({ routePlan: result.rows[0] });
 }
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const tenant = getTenantFromRequest(request);
-  if (!tenant) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const { id } = await params;
-  await tenantQuery(tenant.schemaName, "DELETE FROM route_plan_routes WHERE route_plan_id = $1", [id]);
-  await tenantQuery(tenant.schemaName, "DELETE FROM route_plans WHERE id = $1", [id]);
-  return NextResponse.json({ success: true });
+export async function DELETE() {
+  return NextResponse.json({ error: "Route plans cannot be deleted. They can be deactivated by setting is_active=false." }, { status: 405 });
 }

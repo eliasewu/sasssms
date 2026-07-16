@@ -6,6 +6,8 @@
 import { startSmppServer } from "@/lib/smpp-server";
 import { initSupplierConnections } from "@/lib/smpp-client";
 import { syncAllBindStatus } from "../sync-bind-status";
+import { startDlrPolling } from "@/lib/dlr-poller";
+import { checkPackageExpiry } from "@/lib/email-service";
 
 let smppServer: ReturnType<typeof startSmppServer> | null = null;
 
@@ -44,9 +46,24 @@ export async function register() {
       });
     }, 10000); // 10s delay gives modem time to reconnect after server restart
 
+    // Start CUSTOM_API DLR polling worker (every 30s)
+    startDlrPolling();
+    console.log("  DLR Polling: Auto-polling CUSTOM_API DLR URLs every 30s");
+
     // DLR push is now real-time via supplier DLR callbacks
     console.log("  DLR Push: Real-time (SMPP + HTTP callbacks)");
     console.log("  DLR Flow: Mobile → Supplier → SMSC → Route → Client (SMPP/HTTP)");
+
+    // ── Package expiry checker: runs daily to notify Pro/Enterprise tenants 3 days before expiry ──
+    console.log("  Package Expiry Checker: Daily notification for expiring subscriptions");
+    // Run once at startup after a delay, then every 24 hours
+    setTimeout(() => {
+      checkPackageExpiry().catch((err: Error) => console.error("Package expiry check failed:", err.message));
+      setInterval(() => {
+        checkPackageExpiry().catch((err: Error) => console.error("Package expiry check failed:", err.message));
+      }, 24 * 60 * 60 * 1000); // every 24 hours
+    }, 30000); // 30s delay for DB connectivity
+
     console.log("=".repeat(50));
   }
 }

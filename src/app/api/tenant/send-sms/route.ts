@@ -19,7 +19,7 @@ import type { AudioFile, SipConfig, CallAttempt, AudioPlaylistItem } from "@/lib
 import type { RouteInfo, DlrPayload } from "@/lib/smpp-client";
 import { getOnlineOttDevices, sendOttMessage } from "@/lib/ott-pairing-engine";
 import type { OttDeviceType } from "@/lib/ott-pairing-engine";
-import { lookupClientRate } from "@/lib/rates";
+import { lookupClientRate, lookupSupplierCost } from "@/lib/rates";
 import { buildUrl, evaluateCondition, extractFromResponse, parseHeaders } from "@/lib/api-connector-parser";
 
 // Use real Asterisk AMI executor, fall back to simulation if AMI is unavailable
@@ -149,16 +149,26 @@ export async function POST(request: Request) {
 
   const client = clientResult.rows[0];
   const ratePerSms = await lookupClientRate(destination, clientId as number, tenant.schemaName);
-  const clientBalance = parseFloat(client.balance);
   const clientMaxTps = parseInt(client.max_tps || "0");
+  
+  // Supplier cost and profit will be calculated after route resolution
+  let supplierCost = 0;
+  let profit = 0;
+
+  // ── SMS Credit Counter Check (tenant-level) ──
+  const smsRemaining = (tenantData?.smsLimit || 0) - (tenantData?.smsCounter || 0);
+  if (tenantData?.smsLimit && tenantData.smsLimit > 0 && smsRemaining <= 0) {
+    return NextResponse.json({
+      error: "SMS credit exhausted. Please top-up to continue sending.",
+      smsBalance: 0,
+      smsTotal: tenantData.smsLimit,
+      smsSent: tenantData.smsCounter,
+    }, { status: 402 });
+  }
 
   // ── Per-Client TPS Rate Limit Check ──
   if (!checkTpsLimit(`client:${tenant.tenantId}:${clientId}`, clientMaxTps)) {
     return NextResponse.json({ error: `Client TPS limit exceeded (max ${clientMaxTps}/s)` }, { status: 429 });
-  }
-
-  if (clientBalance < ratePerSms) {
-    return NextResponse.json({ error: "Insufficient balance" }, { status: 402 });
   }
 
   // ── Apply Client-Level Translations ──
@@ -576,27 +586,34 @@ export async function POST(request: Request) {
     }
   }
 
-  // DLR callback URL captured above — used for OTT Worker
+  // Look up supplier cost and calculate profit
+  const resolvedSupplierId = deliveryResult?.routeUsed?.supplierId || supplierId;
+  if (resolvedSupplierId && status === "SENT") {
+    try {
+      supplierCost = await lookupSupplierCost(destination, resolvedSupplierId as number, tenant.schemaName);
+      profit = ratePerSms - supplierCost;
+    } catch { /* use defaults */ }
+  }
 
   // Insert message (store original + translated values)
   const msgResult = await tenantQuery(
     tenant.schemaName,
     `INSERT INTO messages (client_id, sender, destination, content, status,
       route_plan_id, route_id, trunk_id, supplier_id, connection_type,
-      cost, dlr_status, dlr_timestamp, otp_code, language, message_id,
+      cost, supplier_cost, profit, dlr_status, dlr_timestamp, otp_code, language, message_id,
       original_sender, original_destination, original_content, translation_notes,
       dlr_callback_url, supplier_message_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`,
     [
       clientId, sender, destination, content, status,
       routePlanId,
       deliveryResult?.routeUsed?.routeId || (selectedRoute.route_id as number) || (selectedRoute.id as number),
       deliveryResult?.routeUsed?.trunkId || (selectedRoute.trunk_id as number) || null,
-      deliveryResult?.routeUsed?.supplierId || supplierId,
+      resolvedSupplierId,
       deliveryResult?.routeUsed?.connectionType || (selectedRoute.connection_type as string),
-      ratePerSms,
+      ratePerSms, supplierCost, profit,
       dlrStatus,
-      !isVoiceOtp && dlrStatus !== "PENDING" ? new Date() : null, // dlr_timestamp only for non-pending
+      !isVoiceOtp && dlrStatus !== "PENDING" ? new Date() : null,
       otpCode, language, messageId,
       origSender, origDestination, origContent,
       appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null,
@@ -605,21 +622,14 @@ export async function POST(request: Request) {
     ]
   );
 
-  // Deduct balance (only on success)
+  // Increment tenant SMS counter on success (tenant-level billing)
   if (deliveryResult?.success || isVoiceOtp || (isOttRoute && status === "SENT") || customApiSuccess) {
-    await tenantQuery(
-      tenant.schemaName,
-      "UPDATE clients SET balance = balance - $1, updated_at = NOW() WHERE id = $2",
-      [ratePerSms, clientId]
-    );
-  }
-
-  // Update tenant SMS counter
-  if (tenantData) {
-    await db
-      .update(tenants)
-      .set({ smsCounter: (tenantData.smsCounter || 0) + 1 })
-      .where(eq(tenants.id, tenant.tenantId));
+    if (tenantData) {
+      await db
+        .update(tenants)
+        .set({ smsCounter: (tenantData.smsCounter || 0) + 1 })
+        .where(eq(tenants.id, tenant.tenantId));
+    }
   }
 
   return NextResponse.json({
@@ -636,6 +646,8 @@ export async function POST(request: Request) {
       failedRoutes: deliveryResult?.failedRoutes || 0,
     },
     cost: ratePerSms,
+    supplierCost,
+    profit,
     supplierMessageId: deliveryResult?.supplierMessageId || customApiMessageId || null,
     dlr: { status: dlrStatus, pushed_to: client.dlr_callback_url || client.webhook_url || null },
     ott: ottDeviceId ? {

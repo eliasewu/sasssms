@@ -16,8 +16,8 @@ export async function POST(request: Request) {
 
   const result = await tenantQuery(
     tenant.schemaName,
-    `INSERT INTO voice_otp_config (country_group, prefixes, primary_language, secondary_language) VALUES ($1,$2,$3,$4) RETURNING *`,
-    [body.countryGroup, body.prefixes, body.primaryLanguage, body.secondaryLanguage || null]
+    `INSERT INTO voice_otp_config (country_group, prefixes, primary_language, secondary_language, play_count, retry_count, bilingual) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [body.countryGroup, body.prefixes, body.primaryLanguage, body.secondaryLanguage || null, body.playCount || 3, body.retryCount || 1, body.bilingual || false]
   );
 
   return NextResponse.json({ config: result.rows[0] }, { status: 201 });
@@ -30,8 +30,8 @@ export async function PUT(request: Request) {
 
   const result = await tenantQuery(
     tenant.schemaName,
-    `UPDATE voice_otp_config SET country_group=$1, prefixes=$2, primary_language=$3, secondary_language=$4, is_active=$5 WHERE id=$6 RETURNING *`,
-    [body.countryGroup, body.prefixes, body.primaryLanguage, body.secondaryLanguage || null, body.isActive ?? true, body.id]
+    `UPDATE voice_otp_config SET country_group=$1, prefixes=$2, primary_language=$3, secondary_language=$4, play_count=$5, retry_count=$6, bilingual=$7, is_active=$8 WHERE id=$9 RETURNING *`,
+    [body.countryGroup, body.prefixes, body.primaryLanguage, body.secondaryLanguage || null, body.playCount ?? 3, body.retryCount ?? 1, body.bilingual ?? false, body.isActive ?? true, body.id]
   );
 
   if (result.rows.length === 0) {
