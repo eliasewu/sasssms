@@ -11,6 +11,11 @@ import { checkPackageExpiry } from "@/lib/email-service";
 
 let smppServer: ReturnType<typeof startSmppServer> | null = null;
 
+// Record server start time so syncAllBindStatus can give SERVER-mode modems
+// (which connect TO us) a grace period to reconnect after restart.
+const _global = globalThis as typeof globalThis & { __serverStartTime?: number };
+_global.__serverStartTime = Date.now();
+
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const port = parseInt(process.env.SMPP_PORT || "2775");
@@ -33,18 +38,16 @@ export async function register() {
       console.error("  Failed to initialize outbound connections:", err.message);
     });
 
-    // Sync bind_status across ALL tenants (existing + new) on startup
-    // Runs after a short delay so SMPP server has time to accept initial connections.
-    // NOTE: The syncAllBindStatus script checks in-memory session maps (isSupplierServerSessionActive,
-    // isClientSessionActive) which use globalThis-backed Maps populated by this same process.
-    // The sync ONLY runs once at startup — it does NOT run periodically — to avoid the
-    // module-isolation issue where API route entry points see empty Maps and incorrectly
-    // mark sessions as UNBOUND.
+    // Sync bind_status across ALL tenants (existing + new) on startup.
+    // Runs after a 30s delay so CLIENT-mode suppliers have time to auto-connect
+    // and SERVER-mode modems have time to notice the dropped connection and re-bind.
+    // NOTE: syncAllBindStatus skips SERVER-mode suppliers during the first 2 minutes
+    // after startup to preserve their existing BOUND status in the DB.
     setTimeout(() => {
       syncAllBindStatus().catch((err: Error) => {
         console.error("  Bind status sync failed:", err.message);
       });
-    }, 10000); // 10s delay gives modem time to reconnect after server restart
+    }, 30000); // 30s delay (was 10s) gives modems time to reconnect after restart
 
     // Start CUSTOM_API DLR polling worker (every 30s)
     startDlrPolling();

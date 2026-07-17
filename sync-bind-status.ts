@@ -5,14 +5,28 @@
  * with actual SMPP session state. Sets UNBOUND for any client/supplier that
  * has no active session but the DB says BOUND.
  *
+ * IMPORTANT: During the first 2 minutes after server start (grace period),
+ * SERVER-mode suppliers are SKIPPED. These are modems/gateways that connect
+ * TO us — they need time to detect the dropped TCP connection and re-bind.
+ * Preserving their DB BOUND status through the restart window prevents
+ * false UNBOUND on the dashboard while the modem is still reconnecting.
+ *
  * Run: npx tsx sync-bind-status.ts
  */
+
+const SERVER_MODE_GRACE_PERIOD_MS = 120_000; // 2 minutes after server start
 import { pool } from "@/db";
 import { isClientSessionActive, isSupplierServerSessionActive } from "@/lib/smpp-server";
 import { isSupplierConnected } from "@/lib/smpp-client";
 
 export async function syncAllBindStatus() {
-  console.log("Syncing bind_status across all active tenants...\n");
+  // Read __serverStartTime at call time (NOT at module load time) because
+  // ESM module body of sync-bind-status.ts executes BEFORE instrumentation.ts
+  // sets __serverStartTime on globalThis.
+  const serverStartTime = (globalThis as typeof globalThis & { __serverStartTime?: number }).__serverStartTime;
+  const startupAge = serverStartTime ? Date.now() - serverStartTime : Infinity;
+  const inGracePeriod = startupAge < SERVER_MODE_GRACE_PERIOD_MS;
+  console.log(`Syncing bind_status across all active tenants...${inGracePeriod ? ` (grace period: ${Math.round(startupAge / 1000)}s since startup, skipping SERVER-mode suppliers)` : ""}\n`);
 
   const client = await pool.connect();
   try {
@@ -56,6 +70,13 @@ export async function syncAllBindStatus() {
         );
 
         for (const s of suppliers) {
+          // ── SERVER-mode suppliers (modems): skip during grace period after restart ──
+          // These connect TO us — they need time to detect dropped TCP and re-bind.
+          // Preserve their DB BOUND status so the dashboard doesn't show false UNBOUND.
+          if (s.connection_mode === "SERVER" && inGracePeriod) {
+            continue;
+          }
+
           let hasSession: boolean;
           if (s.connection_mode === "SERVER") {
             hasSession = isSupplierServerSessionActive(t.id, s.id);
