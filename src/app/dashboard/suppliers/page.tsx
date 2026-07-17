@@ -328,6 +328,39 @@ export default function SupplierPage() {
               </section>
             )}
 
+            {/* Voice OTP Configuration */}
+            {form.connectionType === "Voice OTP" && (
+              <section className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-5 border border-indigo-200">
+                <h4 className="font-semibold mb-3">📞 Voice OTP Configuration</h4>
+                <p className="text-sm text-slate-600 mb-4">
+                  Voice OTP delivers one-time passwords via phone call through Asterisk AMI. 
+                  Audio greetings and digit packs are configured on the Voice OTP page.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                  <div className="bg-white rounded-lg border p-4">
+                    <p className="text-xs text-slate-500 font-medium">Language & Audio Setup</p>
+                    <p className="text-sm text-slate-700 mt-1">Upload greeting + digit audio files per language, configure prefixes and play counts.</p>
+                  </div>
+                  <div className="bg-white rounded-lg border p-4">
+                    <p className="text-xs text-slate-500 font-medium">Call Flow</p>
+                    <p className="text-sm text-slate-700 mt-1">Prefix match → Language detect → Concatenate greeting+digits → Asterisk SIP call → DLR.</p>
+                  </div>
+                  <div className="bg-white rounded-lg border p-4">
+                    <p className="text-xs text-slate-500 font-medium">Retry Logic</p>
+                    <p className="text-sm text-slate-700 mt-1">Retry schedule: 0min, 1min, 2min between attempts. Configurable play count per digit.</p>
+                  </div>
+                  <div className="bg-white rounded-lg border p-4">
+                    <p className="text-xs text-slate-500 font-medium">Status Mapping</p>
+                    <p className="text-sm text-slate-700 mt-1">ANSWERED → DELIVERED | NO_ANSWER/BUSY/FAILED → Retry | Max retries → FAILED</p>
+                  </div>
+                </div>
+                <a href="/dashboard/voice-otp" target="_blank" className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition">
+                  🎵 Configure Voice OTP Audio & Settings →
+                </a>
+                <p className="text-xs text-slate-500 mt-2">Opens in new tab — upload greetings, digit packs, and configure SIP settings.</p>
+              </section>
+            )}
+
             {/* API Settings + Connector Dropdown */}
             {["HTTP API", "RCS", "Flash SMS", "WhatsApp OTT", "Telegram OTT", "Email"].includes(form.connectionType) && (
               <section className="bg-slate-50 rounded-xl p-5">

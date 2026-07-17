@@ -323,30 +323,58 @@ export async function POST(request: Request) {
       }, { status: 429 });
     }
 
-    // ── 3. Fetch audio files & SIP configs ──
-    const audioResult = await tenantQuery(
-      tenant.schemaName, "SELECT * FROM voice_otp_audio ORDER BY id"
-    ).catch(() => ({ rows: [] as AudioFile[] }));
+    // ── 3. Fetch audio files, SIP configs & voice OTP language config ──
+    const [audioResult, sipResult, votpConfigResult] = await Promise.all([
+      tenantQuery(tenant.schemaName, "SELECT * FROM voice_otp_audio ORDER BY id").catch(() => ({ rows: [] as AudioFile[] })),
+      tenantQuery(tenant.schemaName, "SELECT * FROM voice_otp_sip_config WHERE is_active = true ORDER BY id").catch(() => ({ rows: [] as SipConfig[] })),
+      // Match language config by MCC prefix: each config's prefixes is a comma-separated list.
+      // Use string_to_array to split, then check if the destination MCC starts with any prefix.
+      tenantQuery(tenant.schemaName,
+        `SELECT * FROM voice_otp_config
+         WHERE is_active = true AND EXISTS (
+           SELECT 1 FROM unnest(string_to_array(COALESCE(prefixes,''), ',')) AS pfx
+           WHERE $1 LIKE pfx || '%'
+         ) ORDER BY id LIMIT 1`,
+        [langResolution.mcc]
+      ).catch(() => ({ rows: [] as Record<string,unknown>[] })),
+    ]);
     const audioFiles: AudioFile[] = audioResult.rows;
-
-    const sipResult = await tenantQuery(
-      tenant.schemaName, "SELECT * FROM voice_otp_sip_config WHERE is_active = true ORDER BY id"
-    ).catch(() => ({ rows: [] as SipConfig[] }));
     const sipConfigs: SipConfig[] = sipResult.rows;
     const activeSip = sipConfigs[0] || null;
-    const maxRetries = activeSip?.maxRetries || 3;
+
+    // ── Get retry/play config from voice_otp_config (language tab settings) ──
+    const votpConfig = votpConfigResult.rows[0] as Record<string,unknown> | undefined;
+    const retryCount = (votpConfig?.retry_count as number) || (activeSip?.maxRetries as number) || 3;
+    const playCount = (votpConfig?.play_count as number) || 3;
+    const bilingual = (votpConfig?.bilingual as boolean) || false;
+    const primaryLang = (votpConfig?.primary_language as string) || langResolution.primaryLanguage;
+    const secondaryLang = (votpConfig?.secondary_language as string) || langResolution.fallbackLanguage;
+
+    // ── Reconnect schedule: delay between retry attempts (minutes → seconds) ──
+    // schedule 0 = immediate, 1 = 60s delay, 2 = 120s delay
+    const reconnectSchedule = [0, 60, 120];
 
     // ── 4. Build audio playlists for all attempts ──
-    const attemptLanguages = determineAttemptLanguages(langResolution, maxRetries);
+    const attemptLanguages = determineAttemptLanguages(langResolution, retryCount);
     let attemptPlaylists: Array<Array<AudioPlaylistItem>> = [];
     try {
-      attemptPlaylists = await buildAttemptPlaylists(audioFiles, langResolution, otpCode, maxRetries);
+      attemptPlaylists = await buildAttemptPlaylists(audioFiles, langResolution, otpCode, {
+        primaryLanguage: primaryLang,
+        secondaryLanguage: secondaryLang,
+        bilingual,
+        playCount,
+        retryCount,
+      });
     } catch {
       // Build empty playlists on error (will use built-in audio)
       attemptPlaylists = attemptLanguages.map(() => []);
     }
 
     // ── 5. Call execution with retry loop ──
+    // NOTE: reconnect_schedule [0, 60, 120] means retry 1 is immediate,
+    // retry 2 after 1 minute, retry 3 after 2 minutes. Total window ~3 min.
+    // The initial IN_PROGRESS response is returned immediately; the full
+    // result can be checked via the voice_otp_call_logs table or call logs API.
     callAttempts = [];
     let totalDuration = 0;
     callSid = generateCallSid();
@@ -361,10 +389,19 @@ export async function POST(request: Request) {
        activeSip?.name || null, callSid, langResolution.country, mcc]
     );
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    for (let attempt = 1; attempt <= retryCount; attempt++) {
       const attLanguage = attemptLanguages[attempt - 1];
       const attPlaylist = attemptPlaylists[attempt - 1] || [];
       const startTime = new Date().toISOString();
+
+      // ── Apply reconnect delay between attempts (skip first attempt) ──
+      if (attempt > 1) {
+        const delaySec = reconnectSchedule[Math.min(attempt - 1, reconnectSchedule.length - 1)];
+        if (delaySec > 0) {
+          console.log(`[VOICE-OTP] Retry attempt ${attempt}/${retryCount} — waiting ${delaySec}s before next call...`);
+          await new Promise(resolve => setTimeout(resolve, delaySec * 1000));
+        }
+      }
 
       // Execute SIP call via Asterisk AMI (with simulation fallback)
       let sipResult: { success: boolean; callSid: string; duration: number; status: "ANSWERED"|"NO_ANSWER"|"BUSY"|"FAILED"; errorMessage?: string };
