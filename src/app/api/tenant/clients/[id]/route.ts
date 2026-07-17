@@ -36,8 +36,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
   // Auto-derive REST API key from SMPP credentials when HTTP API is enabled
   const enableHttpApi = body.enableHttpApi || false;
+  // Use local variable (not body.smppPassword) — frontend omits unchanged passwords, so body.smppPassword may be undefined
   const smppPassword = (body.smppPassword && body.smppPassword !== "••••••••") ? body.smppPassword : null;
-  let httpApiKey: string | null = body.httpApiKey || null;
+  // Preserve existing API key unless explicitly being changed
+  let httpApiKey: string | null = body.httpApiKey ?? (oldData.http_api_key as string) ?? null;
   if (enableHttpApi && smppUsername && smppPassword) {
     httpApiKey = deriveApiKey(smppUsername, smppPassword);
   }
@@ -55,7 +57,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     WHERE id=$28 AND deleted_at IS NULL RETURNING *`,
     [
       body.clientCode, body.name, body.companyName, body.contactPerson, body.email, body.phone,
-      body.country, body.address, body.connectionType, body.smppUsername, body.smppPassword,
+      body.country, body.address, body.connectionType, body.smppUsername, smppPassword,
       body.smppAllowedIp, body.smppPort, body.smppSystemType, body.maxTps,
       body.billingMode, body.currency, body.balance, body.creditLimit,
       body.routePlanId, body.isActive, body.enableHttpApi, httpApiKey, body.forceDlr,
