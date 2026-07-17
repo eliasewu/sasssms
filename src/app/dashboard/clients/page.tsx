@@ -61,15 +61,25 @@ export default function ClientPage() {
       ...(smppPassword && smppPassword !== "••••••••" ? { smppPassword } : {}),
     };
     if (editing) {
-      await fetch(`/api/tenant/clients/${editing.id}`, {
+      const res = await fetch(`/api/tenant/clients/${editing.id}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...payload, isActive: editing.is_active }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Update failed" }));
+        alert(err.error || `Update failed (${res.status})`);
+        return;
+      }
     } else {
-      await fetch("/api/tenant/clients", {
+      const res = await fetch("/api/tenant/clients", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Create failed" }));
+        alert(err.error || `Create failed (${res.status})`);
+        return;
+      }
     }
     setShowForm(false); setEditing(null); load();
   };

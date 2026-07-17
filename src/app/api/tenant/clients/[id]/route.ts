@@ -56,14 +56,20 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       dlr_timeout_mode=$25, dlr_timeout=$26, webhook_url=$27, updated_at=NOW()
     WHERE id=$28 AND deleted_at IS NULL RETURNING *`,
     [
-      body.clientCode, body.name, body.companyName, body.contactPerson, body.email, body.phone,
-      body.country, body.address, body.connectionType, body.smppUsername, smppPassword,
-      body.smppAllowedIp, body.smppPort, body.smppSystemType, body.maxTps,
-      body.billingMode, body.currency, body.balance, body.creditLimit,
-      body.routePlanId, body.isActive, body.enableHttpApi, httpApiKey, body.forceDlr,
-      body.dlrTimeoutMode, body.dlrTimeout, body.webhookUrl, id
+      body.clientCode ?? null, body.name ?? '', body.companyName ?? null, body.contactPerson ?? null, body.email ?? '', body.phone ?? '',
+      body.country ?? null, body.address ?? null, body.connectionType ?? null, body.smppUsername ?? null, smppPassword,
+      body.smppAllowedIp ?? null, body.smppPort ?? 2775, body.smppSystemType ?? null, body.maxTps ?? null,
+      body.billingMode ?? 'prepaid', body.currency ?? 'USD', body.balance ?? '0', body.creditLimit ?? '0',
+      body.routePlanId ?? null, body.isActive ?? true, body.enableHttpApi ?? false, httpApiKey, body.forceDlr ?? false,
+      body.dlrTimeoutMode ?? null, body.dlrTimeout ?? null, body.webhookUrl ?? null, id
     ]
   );
+
+  if (result.rows.length === 0) {
+    return NextResponse.json({ error: "Client not found or already deleted" }, { status: 404 });
+  }
+
+  console.log(`[Client PUT] id=${id} route_plan_id=${body.routePlanId ?? 'null'} tenant=${tenant.schemaName}`);
 
   await auditLog("clients", parseInt(id), "UPDATE", tenant.email, oldData, body, tenant.tenantId);
 
