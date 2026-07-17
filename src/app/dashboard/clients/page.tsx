@@ -37,13 +37,13 @@ export default function ClientPage() {
 
   const load = useCallback(async () => {
     const [cr, rr] = await Promise.all([
-      fetch("/api/tenant/clients").then(r => r.json()),
-      fetch("/api/tenant/route-plans").then(r => r.json()),
+      fetch("/api/tenant/clients", { cache: "no-store" }).then(r => r.json()),
+      fetch("/api/tenant/route-plans", { cache: "no-store" }).then(r => r.json()),
     ]);
     setClients(cr.clients || []);
     setRoutePlans(rr.routePlans || []);
     // Fetch SMPP server config
-    fetch("/api/tenant/smpp-servers").then(r => r.json()).then(d => setSmppServers(d.servers || [])).catch(() => {});
+    fetch("/api/tenant/smpp-servers", { cache: "no-store" }).then(r => r.json()).then(d => setSmppServers(d.servers || [])).catch(() => {});
   }, []);
 
   useEffect(() => { load(); }, [load]);
