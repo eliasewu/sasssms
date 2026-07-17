@@ -33,8 +33,8 @@ export async function POST(request: Request) {
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29) RETURNING *`,
       [
         body.supplierCode || null, body.name, body.companyName || null, body.contactPerson || null,
-        body.email || null, body.phone || null, body.connectionType,
-        body.host || null, parseInt(body.port) || 2775, body.username || null, body.password || null,
+        body.email || null, body.phone || null, body.connectionType ?? null,
+        body.host ?? null, parseInt(body.port ?? '0') || 2775, body.username ?? null, body.password ?? null,
         body.systemId || null, body.systemType || null, body.smppVersion || "3.4",
         body.bindType || "TRX", parseInt(body.addressTon) || 0, parseInt(body.addressNpi) || 0,
         body.addressRange || null, body.inboundMode || false,

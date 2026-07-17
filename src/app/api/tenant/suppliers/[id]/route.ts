@@ -28,12 +28,12 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       force_dlr=$25, is_active=$26, config=$27, updated_at=NOW()
     WHERE id=$28 AND deleted_at IS NULL RETURNING *`,
     [
-      body.supplierCode, body.name, body.companyName, body.contactPerson, body.email, body.phone,
-      body.connectionType, body.host, body.port, body.username, body.password, body.systemId,
-      body.systemType, body.smppVersion, body.bindType, body.addressTon, body.addressNpi,
-      body.addressRange, body.inboundMode, body.apiUrl, body.apiKey,
-      body.currency, body.initialBalance, body.creditLimit,
-      body.forceDlr, body.isActive, body.config, id
+      body.supplierCode ?? null, body.name ?? '', body.companyName ?? null, body.contactPerson ?? null, body.email ?? null, body.phone ?? null,
+      body.connectionType ?? null, body.host ?? null, body.port ?? null, body.username ?? null, body.password ?? null, body.systemId ?? null,
+      body.systemType ?? null, body.smppVersion ?? '3.4', body.bindType ?? 'TRX', body.addressTon ?? 0, body.addressNpi ?? 0,
+      body.addressRange ?? null, body.inboundMode ?? false, body.apiUrl ?? null, body.apiKey ?? null,
+      body.currency ?? 'USD', body.initialBalance ?? '0', body.creditLimit ?? '0',
+      body.forceDlr ?? false, body.isActive ?? true, body.config ?? null, id
     ]
   );
 

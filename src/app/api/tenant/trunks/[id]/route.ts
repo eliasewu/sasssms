@@ -13,7 +13,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   const result = await tenantQuery(
     tenant.schemaName,
     `UPDATE trunks SET name=$1, supplier_id=$2, capacity=$3, is_active=$4, mcc_allow_list=$5, mcc_deny_list=$6 WHERE id=$7 RETURNING *`,
-    [name, supplierId, capacity, isActive, mccAllowList || null, mccDenyList || null, id]
+    [name ?? '', supplierId ?? null, capacity ?? 100, isActive ?? true, mccAllowList ?? null, mccDenyList ?? null, id]
   );
 
   return NextResponse.json({ trunk: result.rows[0] });

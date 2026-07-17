@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   const planResult = await tenantQuery(
     tenant.schemaName,
     `INSERT INTO route_plans (name, description) VALUES ($1, $2) RETURNING *`,
-    [name, description || null]
+    [name ?? '', description || null]
   );
   const plan = planResult.rows[0];
 

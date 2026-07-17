@@ -15,7 +15,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     tenant.schemaName,
     `UPDATE routes SET name=$1, trunk_id=$2, country_code=$3, prefix=$4, priority=$5, is_active=$6, updated_at=NOW()
      WHERE id=$7 AND deleted_at IS NULL RETURNING *`,
-    [body.name, body.trunkId, body.countryCode, body.prefix, body.priority, body.isActive, id]
+    [body.name ?? '', body.trunkId ?? null, body.countryCode ?? null, body.prefix ?? null, body.priority ?? 1, body.isActive ?? true, id]
   );
 
   await auditLog("routes", parseInt(id), "UPDATE", tenant.email, oldResult.rows[0] || {}, body, tenant.tenantId);
