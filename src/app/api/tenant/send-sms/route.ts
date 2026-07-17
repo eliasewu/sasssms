@@ -447,7 +447,7 @@ export async function POST(request: Request) {
             play_sleep_ms: 0,
             reconnect_schedule: "0,1,2",
             dlr_send: true,
-            dlr_url: `http://${process.env.DLR_CALLBACK_HOST || "15.235.35.125"}/api/tenant/voice-otp-dlr-callback?message_id=${messageId || callSid}&supplier_id=${supplierId}&tenant_id=${tenant.tenantId}&schema=${encodeURIComponent(tenant.schemaName)}&status={{status}}`,
+            dlr_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://net2app.com"}/api/tenant/voice-otp-dlr-callback?message_id=${messageId || callSid}&supplier_id=${supplierId}&tenant_id=${tenant.tenantId}&schema=${encodeURIComponent(tenant.schemaName)}&status={{status}}`,
             audio_files_dir: audioDir,
             greeting_file: greetingFile?.fileName || "codeismen.mp3",
             audio_codec: "G729",
