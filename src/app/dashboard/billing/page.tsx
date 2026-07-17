@@ -239,10 +239,10 @@ export default function BillingTopupPage() {
                       {monthlyFee > 0 ? (
                         <div>
                           <p className="text-2xl font-bold text-slate-800">${monthlyFee}<span className="text-sm font-normal text-slate-500">/mo</span></p>
-                          {pkg.smsCredits > 0 && (
+                          {pkg.smsCredits > 0 && pkg.name !== "Enterprise" && (
                             <p className="text-xs text-green-600 font-medium mt-0.5">✓ {(pkg.smsCredits / 1000000).toFixed(0)}M SMS included/month</p>
                           )}
-                          {pkg.freeSmsPerMonth && pkg.smsCredits === 0 && (
+                          {pkg.freeSmsPerMonth && pkg.name === "Enterprise" && (
                             <p className="text-xs text-green-600 font-medium mt-0.5">✓ Unlimited SMS included</p>
                           )}
                         </div>

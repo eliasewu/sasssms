@@ -13,7 +13,7 @@ import { pool } from "@/db";
 import type { PoolClient } from "pg";
 
 const DEFAULT_CLIENT_RATE = 0.00010;
-const DEFAULT_SUPPLIER_COST = 0.00020;
+const DEFAULT_SUPPLIER_COST = 0.00004;
 
 /**
  * Look up the per-SMS rate for a client based on the destination phone number.
