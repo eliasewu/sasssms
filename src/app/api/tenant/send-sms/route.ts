@@ -253,7 +253,10 @@ export async function POST(request: Request) {
       [routePlanId]
     );
     if (routeResult.rows.length === 0) {
-      return NextResponse.json({ error: "No active routes in plan" }, { status: 400 });
+      return NextResponse.json({
+        error: "No active routes in plan. Add routes via Dashboard → Routes, link them to the plan via Dashboard → Route Plans.",
+        hint: "route_plan_id=" + routePlanId,
+      }, { status: 400 });
     }
     selectedRoute = routeResult.rows[0];
     allRoutes = routeResult.rows.map((r: Record<string,unknown>) => ({
