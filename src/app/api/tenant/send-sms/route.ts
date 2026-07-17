@@ -205,6 +205,9 @@ export async function POST(request: Request) {
   // Capture DLR callback URL from client early (used by SMS delivery + OTT Worker)
   const dlrCallbackUrl = (client.dlr_callback_url || client.webhook_url || null) as string | null;
 
+  // Generate message ID early (used by voice OTP handler for external API)
+  const messageId = "MSG_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
+
   // Resolve routes (all of them for fallback capability)
   if (testRouteId) {
     const routeResult = await tenantQuery(
@@ -370,7 +373,24 @@ export async function POST(request: Request) {
       attemptPlaylists = attemptLanguages.map(() => []);
     }
 
-    // ── 5. Call execution with retry loop ──
+    // ── Fetch supplier's API config (for external HTTP API mode) ──
+    let supplierApiUrl: string | null = null;
+    let supplierApiKey: string | null = null;
+    if (supplierId) {
+      try {
+        const suppResult = await tenantQuery(
+          tenant.schemaName,
+          "SELECT api_url, api_key, config FROM suppliers WHERE id = $1",
+          [supplierId]
+        );
+        if (suppResult.rows.length > 0) {
+          supplierApiUrl = (suppResult.rows[0].api_url as string) || null;
+          supplierApiKey = (suppResult.rows[0].api_key as string) || null;
+        }
+      } catch { /* proceed without */ }
+    }
+
+    // ── 5. Call execution: external HTTP API mode (preferred) or built-in Asterisk AMI ──
     // NOTE: reconnect_schedule [0, 60, 120] means retry 1 is immediate,
     // retry 2 after 1 minute, retry 3 after 2 minutes. Total window ~3 min.
     // The initial IN_PROGRESS response is returned immediately; the full
@@ -403,9 +423,65 @@ export async function POST(request: Request) {
         }
       }
 
-      // Execute SIP call via Asterisk AMI (with simulation fallback)
+      // Execute SIP call: try external HTTP API first, fall back to Asterisk AMI
       let sipResult: { success: boolean; callSid: string; duration: number; status: "ANSWERED"|"NO_ANSWER"|"BUSY"|"FAILED"; errorMessage?: string };
-      if (activeSip) {
+
+      // ── Mode A: External Voice OTP HTTP API ──
+      if (supplierApiUrl) {
+        try {
+          const audioDir = attPlaylist.length > 0 && attPlaylist[0].fileUrl
+            ? attPlaylist[0].fileUrl.replace(/\/[^/]+$/, "") : "/audio/builtin";
+          const greetingFile = attPlaylist.find(p => p.type === "greeting");
+
+          const apiPayload: Record<string, unknown> = {
+            src_num: sender,
+            dst_num: destination,
+            message: otpCode,
+            internal_message_id: messageId || callSid,
+            src_sip_address: activeSip ? `${activeSip.sipHost || "127.0.0.1"}:${activeSip.sipPort || 5060}` : "127.0.0.1:5060",
+            dst_sip_address: activeSip ? `${activeSip.sipHost || "127.0.0.1"}:${activeSip.sipPort || 5060}` : "127.0.0.1:5060",
+            play_count: playCount,
+            play_sleep_ms: 0,
+            reconnect_schedule: "0,1,2",
+            dlr_send: true,
+            dlr_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://net2app.com"}/api/tenant/voice-otp-dlr-callback?message_id=${messageId || callSid}&supplier_id=${supplierId}&tenant_id=${tenant.tenantId}&schema=${encodeURIComponent(tenant.schemaName)}&status={{status}}`,
+            audio_files_dir: audioDir,
+            greeting_file: greetingFile?.fileName || "codeismen.mp3",
+            audio_codec: "G729",
+          };
+
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 30000);
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          if (supplierApiKey) headers["Authorization"] = `Bearer ${supplierApiKey}`;
+
+          const apiRes = await fetch(supplierApiUrl, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(apiPayload),
+            signal: controller.signal,
+          });
+          clearTimeout(timeout);
+
+          sipResult = {
+            success: apiRes.ok,
+            callSid: callSid || generateCallSid(),
+            duration: 0,
+            status: apiRes.ok ? "ANSWERED" : "FAILED",
+            errorMessage: apiRes.ok ? undefined : `API returned ${apiRes.status}`,
+          };
+        } catch (err) {
+          sipResult = {
+            success: false,
+            callSid: callSid || generateCallSid(),
+            duration: 0,
+            status: "FAILED",
+            errorMessage: `External API error: ${(err as Error).message}`,
+          };
+        }
+      }
+      // ── Mode B: Built-in Asterisk AMI or simulation fallback ──
+      else if (activeSip) {
         try {
           // Try real Asterisk AMI first
           sipResult = await amiExecutor.originateCall({
@@ -480,8 +556,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // Generate message ID
-  const messageId = "MSG_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
   let deliveryResult: { success: boolean; supplierMessageId?: string; routeUsed?: RouteInfo; fallbackUsed: boolean; failedRoutes: number; errorMessage?: string } | null = null;
 
   // ── Real outbound SMS delivery for non-Voice OTP routes ──

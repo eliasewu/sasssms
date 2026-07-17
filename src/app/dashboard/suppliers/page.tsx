@@ -333,9 +333,22 @@ export default function SupplierPage() {
               <section className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-5 border border-indigo-200">
                 <h4 className="font-semibold mb-3">📞 Voice OTP Configuration</h4>
                 <p className="text-sm text-slate-600 mb-4">
-                  Voice OTP delivers one-time passwords via phone call through Asterisk AMI. 
-                  Audio greetings and digit packs are configured on the Voice OTP page.
+                  Voice OTP delivers OTPs via phone call. If you have an external voice OTP HTTP API,
+                  enter the endpoint below. Otherwise, our built-in Asterisk AMI will be used.
                 </p>
+                
+                {/* External HTTP API */}
+                <div className="bg-white rounded-lg border p-4 mb-4">
+                  <p className="text-xs font-medium text-slate-500 mb-3">External Voice OTP API (optional)</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <F label="API URL" value={form.apiUrl} onChange={v => setForm({...form, apiUrl: v})} placeholder="https://provider.com/api/voice-otp" suffix={form.apiUrl ? <CopyButton value={form.apiUrl} /> : undefined} />
+                    <F label="API Key / Token" value={form.apiKey} onChange={v => setForm({...form, apiKey: v})} placeholder="sk-..." />
+                  </div>
+                  <p className="text-xs text-slate-400 mt-2">
+                    When set, calls are forwarded to this API in JSON format — the provider handles SIP, retries, and DLR.
+                  </p>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                   <div className="bg-white rounded-lg border p-4">
                     <p className="text-xs text-slate-500 font-medium">Language & Audio Setup</p>
@@ -343,7 +356,7 @@ export default function SupplierPage() {
                   </div>
                   <div className="bg-white rounded-lg border p-4">
                     <p className="text-xs text-slate-500 font-medium">Call Flow</p>
-                    <p className="text-sm text-slate-700 mt-1">Prefix match → Language detect → Concatenate greeting+digits → Asterisk SIP call → DLR.</p>
+                    <p className="text-sm text-slate-700 mt-1">Prefix match → Language detect → Concatenate greeting+digits → Asterisk SIP call / HTTP API → DLR.</p>
                   </div>
                   <div className="bg-white rounded-lg border p-4">
                     <p className="text-xs text-slate-500 font-medium">Retry Logic</p>
