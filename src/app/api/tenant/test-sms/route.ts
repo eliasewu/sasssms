@@ -9,6 +9,8 @@ import type { RouteInfo } from "@/lib/smpp-client";
 import { getOnlineOttDevices, sendOttMessage } from "@/lib/ott-pairing-engine";
 import type { OttDeviceType } from "@/lib/ott-pairing-engine";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   const tenant = getTenantFromRequest(request);
   if (!tenant) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

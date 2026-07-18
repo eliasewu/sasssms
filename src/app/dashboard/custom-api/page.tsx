@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useColumnFilters, FilterRow, FilterToggle, type ColumnFilterDef } from "@/components/column-filters";
 
 interface Connector {
   id: number;
@@ -173,6 +174,16 @@ export default function CustomApiConnectorsPage() {
     fetchConnectors();
   };
 
+  const customFilters: ColumnFilterDef[] = useMemo(() => [
+    { key: "name", placeholder: "Name..." },
+    { key: "type", placeholder: "HTTP API / RCS..." },
+    { key: "send_url_template", placeholder: "Send URL..." },
+    { key: "is_active", placeholder: "Active / Inactive..." },
+  ], []);
+  const { values, set, toggle, showFilters, hasActive, filterData } = useColumnFilters(customFilters);
+  const activeFilterCount = useMemo(() => Object.values(values).filter(v => v.trim()).length, [values]);
+  const filteredConnectors = useMemo(() => filterData(connectors), [connectors, filterData]);
+
   const handleToggle = async (conn: Connector) => {
     await fetch(`/api/tenant/custom-api-connectors/${conn.id}`, {
       method: "PUT",
@@ -242,10 +253,11 @@ export default function CustomApiConnectorsPage() {
       </div>
 
       {/* Tab Switcher */}
-      <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+      <div className="flex gap-1 bg-slate-100 rounded-xl p-1 items-center">
         <button onClick={() => setTab("custom")} className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${tab === "custom" ? "bg-white shadow text-slate-800" : "text-slate-500"}`}>
           ⚡ My Custom ({connectors.length})
         </button>
+        <FilterToggle showFilters={showFilters && tab === "custom"} hasActive={hasActive} activeCount={activeFilterCount} onClick={toggle} />
         <button onClick={() => setTab("global")} className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${tab === "global" ? "bg-white shadow text-slate-800" : "text-slate-500"}`}>
           🌍 Pre-Loaded APIs ({globalConnectors.length})
         </button>
@@ -336,9 +348,10 @@ export default function CustomApiConnectorsPage() {
                   <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Status</th>
                   <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Actions</th>
                 </tr>
+                {showFilters && <FilterRow filters={customFilters} values={values} onChange={set} colSpan={1} />}
               </thead>
               <tbody>
-                {connectors.map((conn) => (
+                {filteredConnectors.map((conn) => (
                   <tr key={conn.id} className="border-t hover:bg-purple-50 transition">
                     <td className="px-5 py-3 font-medium text-slate-800">{conn.name}</td>
                     <td className="px-5 py-3"><span className={`px-2 py-0.5 rounded text-xs font-medium ${typeColors[conn.type] || "bg-purple-100 text-purple-700"}`}>{conn.type}</span></td>

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getTenantFromRequest, hashPassword } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 
@@ -19,5 +20,6 @@ export async function POST(request: Request) {
     `INSERT INTO users (name, email, password_hash, role_id) VALUES ($1,$2,$3,$4) RETURNING id, name, email, role_id`,
     [body.name, body.email, passwordHash, body.roleId || null]
   );
+  revalidatePath('/dashboard/users');
   return NextResponse.json({ user: result.rows[0] }, { status: 201 });
 }

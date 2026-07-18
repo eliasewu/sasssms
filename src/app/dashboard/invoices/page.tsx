@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useColumnFilters, FilterRow, FilterToggle, type ColumnFilterDef } from "@/components/column-filters";
 
 interface Invoice {
   id: number; client_id: number; client_name: string; invoice_number: string;
@@ -84,6 +85,19 @@ export default function InvoicesPage() {
     load();
   };
 
+  const invoiceFilters: ColumnFilterDef[] = useMemo(() => [
+    { key: "invoice_number", placeholder: "Invoice #..." },
+    { key: "created_for_name", placeholder: "Client/Supplier..." },
+    { key: "period_start", placeholder: "Period..." },
+    { key: "amount", placeholder: "Amount..." },
+    { key: "tax", placeholder: "Tax..." },
+    { key: "total_amount", placeholder: "Total..." },
+    { key: "status", placeholder: "Draft / Paid..." },
+  ], []);
+  const { values, set, toggle, showFilters, hasActive, filterData } = useColumnFilters(invoiceFilters);
+  const activeFilterCount = useMemo(() => Object.values(values).filter(v => v.trim()).length, [values]);
+  const filteredInvoices = useMemo(() => filterData(invoices), [invoices, filterData]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -91,7 +105,10 @@ export default function InvoicesPage() {
           <h2 className="text-xl font-bold text-slate-800">Invoices</h2>
           <p className="text-sm text-slate-500">Generate invoices with MCC-based summary. Download PDF/Excel.</p>
         </div>
-        <button onClick={() => setShowForm(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">+ Generate Invoice</button>
+        <div className="flex items-center gap-3">
+          <FilterToggle showFilters={showFilters} hasActive={hasActive} activeCount={activeFilterCount} onClick={toggle} />
+          <button onClick={() => setShowForm(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">+ Generate Invoice</button>
+        </div>
       </div>
 
       {msg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">{msg}</div>}
@@ -120,9 +137,11 @@ export default function InvoicesPage() {
 
       <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50"><tr><th className="px-5 py-3 text-left">Invoice #</th><th className="px-5 py-3 text-left">For</th><th className="px-5 py-3 text-left">Period</th><th className="px-5 py-3 text-left">Amount</th><th className="px-5 py-3 text-left">Tax</th><th className="px-5 py-3 text-left">Total</th><th className="px-5 py-3 text-left">Status</th><th className="px-5 py-3 text-left">Download</th></tr></thead>
+          <thead className="bg-slate-50"><tr><th className="px-5 py-3 text-left">Invoice #</th><th className="px-5 py-3 text-left">For</th><th className="px-5 py-3 text-left">Period</th><th className="px-5 py-3 text-left">Amount</th><th className="px-5 py-3 text-left">Tax</th><th className="px-5 py-3 text-left">Total</th><th className="px-5 py-3 text-left">Status</th><th className="px-5 py-3 text-left">Download</th></tr>
+          {showFilters && <FilterRow filters={invoiceFilters} values={values} onChange={set} colSpan={1} />}
+          </thead>
           <tbody>
-            {invoices.map(inv => (
+            {filteredInvoices.map(inv => (
               <tr key={inv.id} className="border-b hover:bg-slate-50">
                 <td className="px-5 py-3 font-mono text-xs">{inv.invoice_number}</td>
                 <td className="px-5 py-3 text-xs"><span className="font-medium">{inv.created_for_name || inv.client_name}</span><br/><span className="text-slate-400">{inv.created_for_type}</span></td>
@@ -141,9 +160,10 @@ export default function InvoicesPage() {
                 </td>
               </tr>
             ))}
-            {invoices.length === 0 && <tr><td colSpan={8} className="px-5 py-8 text-center text-slate-400">No invoices yet.</td></tr>}
+            {filteredInvoices.length === 0 && <tr><td colSpan={8} className="px-5 py-8 text-center text-slate-400">{hasActive ? "No invoices match your filters." : "No invoices yet."}</td></tr>}
           </tbody>
         </table>
+        {hasActive && <div className="px-4 py-2 border-t bg-slate-50 text-xs text-slate-500">Showing {filteredInvoices.length} of {invoices.length} invoices</div>}
       </div>
     </div>
   );

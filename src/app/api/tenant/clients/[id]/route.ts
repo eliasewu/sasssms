@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getTenantFromRequest, deriveApiKey } from "@/lib/auth";
 import { tenantQuery, isSmppUsernameTaken, syncSmppUsernameChange, unregisterSmppUsername } from "@/lib/tenant-schema";
 import { softDelete, auditLog } from "@/lib/db-helpers";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const tenant = getTenantFromRequest(request);
@@ -79,6 +82,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     await syncSmppUsernameChange(oldUsername, smppUsername, tenant.tenantId, parseInt(id), tenant.schemaName);
   }
 
+  // Bust Next.js router cache so the dashboard clients table shows fresh data
+  revalidatePath('/dashboard/clients');
+
   return NextResponse.json({ client: result.rows[0] });
 }
 
@@ -99,6 +105,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   if (oldSmppUsername) {
     await unregisterSmppUsername(oldSmppUsername);
   }
+
+  // Bust Next.js router cache so the dashboard clients table reflects the deletion
+  revalidatePath('/dashboard/clients');
 
   return NextResponse.json({ success: true, message: "Client archived to CDR" });
 }

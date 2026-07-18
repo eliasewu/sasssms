@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useConfirmModal } from "@/components/confirm-modal";
+import { useColumnFilters, FilterRow, FilterToggle, type ColumnFilterDef } from "@/components/column-filters";
 
 interface Trunk { id: number; name: string; supplier_id: number; supplier_name: string; connection_type: string; connector_id: number; capacity: number; is_active: boolean; }
 interface Supplier { id: number; name: string; connection_type: string; is_active?: boolean; }
@@ -38,13 +39,27 @@ export default function TrunksPage() {
 
   const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
 
+  const trunkFilters: ColumnFilterDef[] = useMemo(() => [
+    { key: "name", placeholder: "Trunk name..." },
+    { key: "supplier_name", placeholder: "Supplier..." },
+    { key: "connector_id", placeholder: "Connector..." },
+    { key: "capacity", placeholder: "Capacity..." },
+    { key: "is_active", placeholder: "Active / Inactive..." },
+  ], []);
+  const { values, set, toggle, showFilters, hasActive, filterData } = useColumnFilters(trunkFilters);
+  const activeFilterCount = useMemo(() => Object.values(values).filter(v => v.trim()).length, [values]);
+  const filteredTrunks = useMemo(() => filterData(trunks), [trunks, filterData]);
+
   const handleDelete = async (id: number) => { if (!await confirmDelete("Delete this trunk?")) return; await fetch(`/api/tenant/trunks/${id}`, { method: "DELETE" }); load(); };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div><h2 className="text-xl font-bold text-slate-800">Trunks</h2><p className="text-sm text-slate-500">Trunks connect to suppliers. {suppliers.length} suppliers available.</p></div>
-        <button onClick={() => { setShowForm(true); setEditing(null); setForm({ name: "", supplierId: "", connectorId: "", capacity: "100" }); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">+ Add Trunk</button>
+        <div className="flex items-center gap-3">
+          <FilterToggle showFilters={showFilters} hasActive={hasActive} activeCount={activeFilterCount} onClick={toggle} />
+          <button onClick={() => { setShowForm(true); setEditing(null); setForm({ name: "", supplierId: "", connectorId: "", capacity: "100" }); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">+ Add Trunk</button>
+        </div>
       </div>
 
       {/* Available Suppliers Reference */}
@@ -85,9 +100,11 @@ export default function TrunksPage() {
 
       <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50"><tr><th className="text-left px-5 py-3">Trunk</th><th className="text-left px-5 py-3">Supplier</th><th className="text-left px-5 py-3">Connector</th><th className="text-left px-5 py-3">Capacity</th><th className="text-left px-5 py-3">Status</th><th className="text-left px-5 py-3">Actions</th></tr></thead>
+          <thead className="bg-slate-50"><tr><th className="text-left px-5 py-3">Trunk</th><th className="text-left px-5 py-3">Supplier</th><th className="text-left px-5 py-3">Connector</th><th className="text-left px-5 py-3">Capacity</th><th className="text-left px-5 py-3">Status</th><th className="text-left px-5 py-3">Actions</th></tr>
+          {showFilters && <FilterRow filters={trunkFilters} values={values} onChange={set} colSpan={1} />}
+          </thead>
           <tbody>
-            {trunks.map(t => (
+            {filteredTrunks.map(t => (
               <tr key={t.id} className="border-b hover:bg-slate-50">
                 <td className="px-5 py-3 font-medium">{t.name}</td>
                 <td className="px-5 py-3">{t.supplier_name} <span className="text-xs text-slate-400">{t.connection_type}</span></td>
@@ -97,9 +114,10 @@ export default function TrunksPage() {
                 <td className="px-5 py-3"><button onClick={() => { setEditing(t); setForm({ name: t.name, supplierId: t.supplier_id.toString(), connectorId: (t.connector_id||"").toString(), capacity: t.capacity.toString() }); setShowForm(true); }} className="text-blue-600 hover:underline text-xs mr-2">Edit</button><button onClick={() => handleDelete(t.id)} className="text-red-600 hover:underline text-xs">Delete</button></td>
               </tr>
             ))}
-            {trunks.length === 0 && <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-400">No trunks configured.</td></tr>}
+            {filteredTrunks.length === 0 && <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-400">{hasActive ? "No trunks match your filters." : "No trunks configured."}</td></tr>}
           </tbody>
         </table>
+        {hasActive && <div className="px-4 py-2 border-t bg-slate-50 text-xs text-slate-500">Showing {filteredTrunks.length} of {trunks.length} trunks</div>}
       </div>
       {confirmModal}
     </div>

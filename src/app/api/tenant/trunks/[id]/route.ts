@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 
@@ -16,6 +17,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     [name ?? '', supplierId ?? null, capacity ?? 100, isActive ?? true, mccAllowList ?? null, mccDenyList ?? null, id]
   );
 
+  revalidatePath('/dashboard/trunks');
   return NextResponse.json({ trunk: result.rows[0] });
 }
 
@@ -25,5 +27,6 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
   const { id } = await params;
   await tenantQuery(tenant.schemaName, "DELETE FROM trunks WHERE id = $1", [id]);
+  revalidatePath('/dashboard/trunks');
   return NextResponse.json({ success: true });
 }

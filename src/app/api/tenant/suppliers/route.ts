@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 import { auditLog } from "@/lib/db-helpers";
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
     );
 
     await auditLog("suppliers", result.rows[0].id, "CREATE", tenant.email, undefined, { name: body.name }, tenant.tenantId);
+    revalidatePath('/dashboard/suppliers');
     return NextResponse.json({ supplier: result.rows[0] }, { status: 201 });
   } catch (error) {
     console.error("Supplier insert error:", error);

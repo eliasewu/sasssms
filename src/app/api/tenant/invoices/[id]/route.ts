@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 
@@ -16,5 +17,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     [status, id]
   );
 
+  revalidatePath('/dashboard/invoices');
   return NextResponse.json({ invoice: result.rows[0] });
 }

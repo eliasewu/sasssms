@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useColumnFilters, FilterRow, FilterToggle, type ColumnFilterDef } from "@/components/column-filters";
 
 interface Message {
   id: number;
@@ -135,6 +136,26 @@ export default function DetailedSmsLogsPage() {
     DELIVERED: "bg-green-100 text-green-700", FAILED: "bg-red-100 text-red-700",
   };
 
+  // ── Column filters (client-side, within the current server-loaded page) ──
+  const msgFilters: ColumnFilterDef[] = useMemo(() => [
+    { key: "id", placeholder: "ID..." },
+    { key: "consumer_user", placeholder: "Consumer..." },
+    { key: "alias", placeholder: "Alias..." },
+    { key: "sender", placeholder: "Sender..." },
+    { key: "recipients", placeholder: "Recipient..." },
+    { key: "content", placeholder: "Content..." },
+    { key: "cost", placeholder: "Cost..." },
+    { key: "pay", placeholder: "Pay..." },
+    { key: "route_name", placeholder: "Route..." },
+    { key: "channel", placeholder: "Channel..." },
+    { key: "send_result", placeholder: "Success / Fail..." },
+    { key: "deliver_result", placeholder: "DLR..." },
+    { key: "ip", placeholder: "IP..." },
+  ], []);
+  const { values, set, toggle, showFilters, hasActive, filterData } = useColumnFilters(msgFilters);
+  const activeFilterCount = useMemo(() => Object.values(values).filter(v => v.trim()).length, [values]);
+  const filteredMessages = useMemo(() => filterData(messages), [messages, filterData]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -143,6 +164,7 @@ export default function DetailedSmsLogsPage() {
           <p className="text-sm text-slate-500">Detailed message delivery logs with routing information</p>
         </div>
         <div className="flex gap-3">
+          <FilterToggle showFilters={showFilters} hasActive={hasActive} activeCount={activeFilterCount} onClick={toggle} />
           <input value={filter.search} onChange={e => setFilter({...filter, search: e.target.value})} placeholder="Search msg ID, content..." className="border rounded-lg px-3 py-2 text-sm w-48" />
           <select value={filter.status} onChange={e => { setFilter({...filter, status: e.target.value}); setPage(0); }} className="border rounded-lg px-3 py-2 text-sm">
             <option value="">All Statuses</option>
@@ -187,9 +209,10 @@ export default function DetailedSmsLogsPage() {
                 <th className="text-left px-2 py-2 font-medium text-slate-500">IP</th>
                 <th className="text-left px-2 py-2 font-medium text-slate-500">Time</th>
               </tr>
+              {showFilters && <FilterRow filters={msgFilters} values={values} onChange={set} colSpan={1} />}
             </thead>
             <tbody>
-              {messages.map(m => (
+              {filteredMessages.map(m => (
                 <tr key={m.id} className="border-b hover:bg-blue-50/30 cursor-pointer" onClick={() => setSelectedMsg(selectedMsg?.id === m.id ? null : m)}>
                   <td className="px-2 py-2 font-mono text-[11px] font-bold text-blue-600">{m.id}</td>
                   <td className="px-2 py-2 font-mono text-[10px] max-w-[100px] truncate" title={m.consumer_user}>{m.consumer_user}</td>

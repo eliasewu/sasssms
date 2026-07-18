@@ -3,6 +3,8 @@ import { getTenantFromRequest, deriveApiKey } from "@/lib/auth";
 import { tenantQuery, isSmppUsernameTaken, registerSmppUsername } from "@/lib/tenant-schema";
 import { auditLog } from "@/lib/db-helpers";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   const tenant = getTenantFromRequest(request);
   if (!tenant) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

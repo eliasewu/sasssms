@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 
@@ -56,5 +57,6 @@ export async function POST(request: Request) {
     ]
   );
 
+  revalidatePath('/dashboard/custom-api');
   return NextResponse.json({ connector: result.rows[0] }, { status: 201 });
 }

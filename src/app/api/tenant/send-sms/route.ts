@@ -22,6 +22,8 @@ import type { OttDeviceType } from "@/lib/ott-pairing-engine";
 import { lookupClientRate, lookupSupplierCost } from "@/lib/rates";
 import { buildUrl, evaluateCondition, extractFromResponse, parseHeaders } from "@/lib/api-connector-parser";
 
+export const dynamic = "force-dynamic";
+
 // Use real Asterisk AMI executor, fall back to simulation if AMI is unavailable
 const amiExecutor = new AsteriskAmiExecutor();
 

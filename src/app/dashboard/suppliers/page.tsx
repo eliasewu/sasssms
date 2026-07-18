@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useConfirmModal } from "@/components/confirm-modal";
 import CopyButton from "@/components/copy-button";
+import { useColumnFilters, FilterRow, FilterToggle, type ColumnFilterDef } from "@/components/column-filters";
 
 const CONNECTION_TYPES = ["SMPP", "HTTP API", "Email", "WhatsApp OTT", "Telegram OTT", "Voice OTP", "Local Bypass", "RCS", "Flash SMS"];
 const SMPP_VERSIONS = ["3.3", "3.4", "5.0"];
@@ -156,6 +157,20 @@ export default function SupplierPage() {
 
   const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
 
+  // ── Column filters ──
+  const supplierFilters: ColumnFilterDef[] = useMemo(() => [
+    { key: "name", placeholder: "Name..." },
+    { key: "connection_type", placeholder: "SMPP / HTTP..." },
+    { key: "connection_mode", placeholder: "CLIENT / SERVER..." },
+    { key: "host", placeholder: "Host:Port..." },
+    { key: "username", placeholder: "SMPP User..." },
+    { key: "bind_status", placeholder: "BIND / UNBOUND..." },
+    { key: "is_active", placeholder: "Active / Inactive..." },
+  ], []);
+  const { values, set, toggle, showFilters, hasActive, filterData } = useColumnFilters(supplierFilters);
+  const activeFilterCount = useMemo(() => Object.values(values).filter(v => v.trim()).length, [values]);
+  const filteredSuppliers = useMemo(() => filterData(suppliers), [suppliers, filterData]);
+
   const handleBindAction = async (supplierId: number, action: "BIND" | "UNBIND") => {
     if (action === "UNBIND" && !await confirmDelete("Disconnect this supplier? Active message deliveries will fail.")) return;
     setBindLoading(supplierId);
@@ -194,7 +209,10 @@ export default function SupplierPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div><h2 className="text-xl font-bold text-slate-800">Supplier Management</h2><p className="text-sm text-slate-500">{suppliers.length} suppliers configured</p></div>
-        <button onClick={() => { setShowForm(true); setEditing(null); setShowPwd(false); setError(""); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium">+ Add Supplier</button>
+        <div className="flex items-center gap-3">
+          <FilterToggle showFilters={showFilters} hasActive={hasActive} activeCount={activeFilterCount} onClick={toggle} />
+          <button onClick={() => { setShowForm(true); setEditing(null); setShowPwd(false); setError(""); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium">+ Add Supplier</button>
+        </div>
       </div>
 
       {showForm && (
@@ -443,9 +461,10 @@ export default function SupplierPage() {
         <table className="w-full text-sm">
           <thead className="bg-slate-50">
             <tr><th className="text-left px-4 py-3">Name</th><th className="text-left px-4 py-3">Type</th><th className="text-left px-4 py-3">Mode</th><th className="text-left px-4 py-3">Host:Port</th><th className="text-left px-4 py-3">SMPP User</th><th className="text-left px-4 py-3">Bind</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Actions</th></tr>
+          {showFilters && <FilterRow filters={supplierFilters} values={values} onChange={set} colSpan={1} />}
           </thead>
           <tbody>
-            {suppliers.map(s => (
+            {filteredSuppliers.map(s => (
               <tr key={s.id} className="border-b hover:bg-slate-50">
                 <td className="px-4 py-3 font-medium">{s.name}</td>
                 <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded text-xs ${typeColors[s.connection_type] || "bg-slate-100"}`}>{s.connection_type}</span></td>
@@ -491,9 +510,10 @@ export default function SupplierPage() {
                 </td>
               </tr>
             ))}
-            {suppliers.length === 0 && <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400">No suppliers yet. Click &quot;Add Supplier&quot; to create one.</td></tr>}
+            {filteredSuppliers.length === 0 && <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400">{hasActive ? "No suppliers match your filters." : "No suppliers yet. Click &quot;Add Supplier&quot; to create one."}</td></tr>}
           </tbody>
         </table>
+        {hasActive && <div className="px-4 py-2 border-t bg-slate-50 text-xs text-slate-500">Showing {filteredSuppliers.length} of {suppliers.length} suppliers</div>}
       </div>
       {confirmModal}
     </div>

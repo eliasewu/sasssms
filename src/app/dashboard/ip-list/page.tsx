@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useColumnFilters, FilterRow, FilterToggle, type ColumnFilterDef } from "@/components/column-filters";
 
 interface IpEntry { id: number; ip_address: string; description: string; is_active: boolean; }
 
@@ -29,6 +30,15 @@ export default function IpListPage() {
     load();
   };
 
+  const ipFilters: ColumnFilterDef[] = useMemo(() => [
+    { key: "ip_address", placeholder: "IP Address..." },
+    { key: "description", placeholder: "Description..." },
+    { key: "is_active", placeholder: "Active / Inactive..." },
+  ], []);
+  const { values, set, toggle, showFilters, hasActive, filterData } = useColumnFilters(ipFilters);
+  const activeFilterCount = useMemo(() => Object.values(values).filter(v => v.trim()).length, [values]);
+  const filteredIps = useMemo(() => filterData(ips), [ips, filterData]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -36,7 +46,10 @@ export default function IpListPage() {
           <h2 className="text-xl font-bold text-slate-800">IP Whitelist</h2>
           <p className="text-sm text-slate-500">Manage allowed IP addresses for API access</p>
         </div>
-        <button onClick={() => setShowForm(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">+ Add IP</button>
+        <div className="flex items-center gap-3">
+          <FilterToggle showFilters={showFilters} hasActive={hasActive} activeCount={activeFilterCount} onClick={toggle} />
+          <button onClick={() => setShowForm(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">+ Add IP</button>
+        </div>
       </div>
 
       {showForm && (
@@ -59,9 +72,10 @@ export default function IpListPage() {
               <th className="text-left px-5 py-3">Status</th>
               <th className="text-left px-5 py-3">Actions</th>
             </tr>
+            {showFilters && <FilterRow filters={ipFilters} values={values} onChange={set} colSpan={1} />}
           </thead>
           <tbody>
-            {ips.map((ip) => (
+            {filteredIps.map((ip) => (
               <tr key={ip.id} className="border-b hover:bg-slate-50">
                 <td className="px-5 py-3 font-mono">{ip.ip_address}</td>
                 <td className="px-5 py-3">{ip.description || "—"}</td>
@@ -69,9 +83,10 @@ export default function IpListPage() {
                 <td className="px-5 py-3"><button onClick={() => handleDelete(ip.id)} className="text-red-600 hover:underline text-xs">Remove</button></td>
               </tr>
             ))}
-            {ips.length === 0 && <tr><td colSpan={4} className="px-5 py-8 text-center text-slate-400">No IPs whitelisted. All IPs allowed by default.</td></tr>}
+            {filteredIps.length === 0 && <tr><td colSpan={4} className="px-5 py-8 text-center text-slate-400">{hasActive ? "No IPs match your filters." : "No IPs whitelisted."}</td></tr>}
           </tbody>
         </table>
+        {hasActive && <div className="px-4 py-2 border-t bg-slate-50 text-xs text-slate-500">Showing {filteredIps.length} of {ips.length} IPs</div>}
       </div>
     </div>
   );

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useConfirmModal } from "@/components/confirm-modal";
 import CopyButton from "@/components/copy-button";
+import { useColumnFilters, FilterRow, FilterToggle, type ColumnFilterDef } from "@/components/column-filters";
 
 interface Client {
   id: number; client_code: string; name: string; company_name: string; contact_person: string;
@@ -103,6 +104,21 @@ export default function ClientPage() {
     setShowForm(true);
   };
 
+  // ── Column filters ──
+  const clientFilters: ColumnFilterDef[] = useMemo(() => [
+    { key: "name", placeholder: "Name / Code..." },
+    { key: "email", placeholder: "Email..." },
+    { key: "smpp_username", placeholder: "SMPP User..." },
+    { key: "smpp_port", placeholder: "Port..." },
+    { key: "bind_status", placeholder: "BIND / UNBOUND..." },
+    { key: "connection_type", placeholder: "SMPP / HTTP..." },
+    { key: "balance", placeholder: "Balance..." },
+    { key: "is_active", placeholder: "Active / Inactive..." },
+  ], []);
+  const { values, set, toggle, showFilters, hasActive, filterData } = useColumnFilters(clientFilters);
+  const activeFilterCount = useMemo(() => Object.values(values).filter(v => v.trim()).length, [values]);
+  const filteredClients = useMemo(() => filterData(clients), [clients, filterData]);
+
   const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
 
   const handleDelete = async (id: number) => {
@@ -125,9 +141,12 @@ export default function ClientPage() {
             )}
           </p>
         </div>
-        <button onClick={() => { setShowForm(true); setEditing(null); setShowPwd(false); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium">
-          + Add Client
-        </button>
+        <div className="flex items-center gap-3">
+          <FilterToggle showFilters={showFilters} hasActive={hasActive} activeCount={activeFilterCount} onClick={toggle} />
+          <button onClick={() => { setShowForm(true); setEditing(null); setShowPwd(false); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium">
+            + Add Client
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -227,9 +246,11 @@ export default function ClientPage() {
 
       <div className="bg-white rounded-xl border shadow-sm overflow-x-auto">
         <table className="w-full text-sm min-w-[1000px]">
-          <thead className="bg-slate-50"><tr><th className="text-left px-4 py-3">Code/Name</th><th className="text-left px-4 py-3">Contact</th><th className="text-left px-4 py-3">SMPP User</th><th className="text-left px-4 py-3">Port</th><th className="text-left px-4 py-3">Bind</th><th className="text-left px-4 py-3">Type</th><th className="text-left px-4 py-3">Balance</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Actions</th></tr></thead>
+          <thead className="bg-slate-50"><tr><th className="text-left px-4 py-3">Code/Name</th><th className="text-left px-4 py-3">Contact</th><th className="text-left px-4 py-3">SMPP User</th><th className="text-left px-4 py-3">Port</th><th className="text-left px-4 py-3">Bind</th><th className="text-left px-4 py-3">Type</th><th className="text-left px-4 py-3">Balance</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Actions</th></tr>
+          {showFilters && <FilterRow filters={clientFilters.slice(0, 8)} values={values} onChange={set} colSpan={1} />}
+          </thead>
           <tbody>
-            {clients.map(c => (
+            {filteredClients.map(c => (
               <tr key={c.id} className="border-b hover:bg-slate-50">
                 <td className="px-4 py-3"><span className="font-medium">{c.name}</span><br/><span className="text-xs text-slate-400">{c.client_code || "—"}</span></td>
                 <td className="px-4 py-3 text-xs">{c.email}<br/>{c.phone}</td>
@@ -253,9 +274,10 @@ export default function ClientPage() {
                 <td className="px-4 py-3"><button onClick={() => handleEdit(c)} className="text-blue-600 hover:underline text-xs mr-2">Edit</button><button onClick={() => handleDelete(c.id)} className="text-red-600 hover:underline text-xs">Delete</button></td>
               </tr>
             ))}
-            {clients.length === 0 && <tr><td colSpan={9} className="py-8 text-center text-slate-400">No SMPP clients configured.</td></tr>}
+            {filteredClients.length === 0 && <tr><td colSpan={9} className="py-8 text-center text-slate-400">{hasActive ? "No clients match your filters." : "No SMPP clients configured."}</td></tr>}
           </tbody>
         </table>
+        {hasActive && <div className="px-4 py-2 border-t bg-slate-50 text-xs text-slate-500">Showing {filteredClients.length} of {clients.length} clients</div>}
       </div>
       {confirmModal}
     </div>

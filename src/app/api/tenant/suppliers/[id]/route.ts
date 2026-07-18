@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 import { softDelete, auditLog } from "@/lib/db-helpers";
@@ -39,6 +40,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
   await auditLog("suppliers", parseInt(id), "UPDATE", tenant.email, oldResult.rows[0] || {}, body, tenant.tenantId);
 
+  revalidatePath('/dashboard/suppliers');
   return NextResponse.json({ supplier: result.rows[0] });
 }
 
@@ -50,5 +52,6 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const deleted = await softDelete(tenant.schemaName, "suppliers", parseInt(id), tenant.email, tenant.tenantId);
   if (!deleted) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  revalidatePath('/dashboard/suppliers');
   return NextResponse.json({ success: true, message: "Supplier archived to CDR" });
 }

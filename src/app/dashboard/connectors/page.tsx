@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useConfirmModal } from "@/components/confirm-modal";
+import { useColumnFilters, FilterRow, FilterToggle, type ColumnFilterDef } from "@/components/column-filters";
 
 interface Connector {
   id: number; name: string; provider: string; type: string; region: string;
@@ -46,6 +47,16 @@ export default function FullConnectorsPage() {
 
   const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
 
+  const connFilters: ColumnFilterDef[] = useMemo(() => [
+    { key: "name", placeholder: "Name / Provider..." },
+    { key: "type", placeholder: "HTTP API / RCS..." },
+    { key: "region", placeholder: "Region..." },
+    { key: "auth_method", placeholder: "API_KEY / BASIC..." },
+    { key: "status", placeholder: "Active / Connected..." },
+  ], []);
+  const { values, set, toggle, showFilters, hasActive, filterData } = useColumnFilters(connFilters);
+  const activeFilterCount = useMemo(() => Object.values(values).filter(v => v.trim()).length, [values]);
+
   const handleDelete = async (id: number) => {
     if (!await confirmDelete("Delete this connector?")) return;
     await fetch(`/api/tenant/connectors/${id}`, { method: "DELETE" });
@@ -67,6 +78,10 @@ export default function FullConnectorsPage() {
   };
 
   const activeConnected = connectors.filter(c => c.status === "connected" && c.is_active).length;
+
+  const displayConnectors = useMemo(() => {
+    return showFilters ? filterData(filtered) : filtered;
+  }, [showFilters, filterData, filtered]);
 
   const authMethodColors: Record<string, string> = {
     API_KEY: "bg-blue-50 text-blue-700", BEARER: "bg-purple-50 text-purple-700", BASIC: "bg-slate-50 text-slate-700",
@@ -112,6 +127,7 @@ export default function FullConnectorsPage() {
           </button>
         ))}
         <div className="flex-1" />
+        <FilterToggle showFilters={showFilters} hasActive={hasActive} activeCount={activeFilterCount} onClick={toggle} />
         <input value={filter.search} onChange={e => setFilter({...filter, search: e.target.value})}
           placeholder="Search connectors..." className="border rounded-lg px-4 py-2 text-sm w-64" />
         <button onClick={() => { setShowForm(true); setEditing(null); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">
@@ -152,9 +168,10 @@ export default function FullConnectorsPage() {
                 <th className="text-left px-5 py-3">Status</th>
                 <th className="text-left px-5 py-3">Actions</th>
               </tr>
+              {showFilters && <FilterRow filters={connFilters} values={values} onChange={set} colSpan={1} />}
             </thead>
             <tbody>
-              {filtered.map(c => (
+              {displayConnectors.map(c => (
                 <tr key={c.id} className="border-b hover:bg-slate-50">
                   <td className="px-5 py-3">
                     <p className="font-medium">{c.name}</p>
@@ -176,7 +193,7 @@ export default function FullConnectorsPage() {
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-400">No connectors found.</td></tr>}
+              {displayConnectors.length === 0 && <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-400">No connectors found.</td></tr>}
             </tbody>
           </table>
         </div>

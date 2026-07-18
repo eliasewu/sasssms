@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 
@@ -27,5 +28,6 @@ export async function POST(request: Request) {
     `INSERT INTO routes (name, trunk_id, country_code, prefix, priority) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
     [name, trunkId, countryCode || null, prefix || null, priority || 1]
   );
+  revalidatePath('/dashboard/routes');
   return NextResponse.json({ route: result.rows[0] }, { status: 201 });
 }

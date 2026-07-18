@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useConfirmModal } from "@/components/confirm-modal";
+import { useColumnFilters, FilterRow, FilterToggle, type ColumnFilterDef } from "@/components/column-filters";
 
 interface Route { id: number; name: string; trunk_id: number; trunk_name: string; supplier_name: string; country_code: string | null; prefix: string | null; priority: number; is_active: boolean; }
 interface Trunk { id: number; name: string; supplier_name: string; supplier_id: number; capacity: number; is_active?: boolean; }
@@ -40,6 +41,18 @@ export default function RoutesPage() {
 
   const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
 
+  const routeFilters: ColumnFilterDef[] = useMemo(() => [
+    { key: "name", placeholder: "Route name..." },
+    { key: "trunk_name", placeholder: "Trunk..." },
+    { key: "supplier_name", placeholder: "Supplier..." },
+    { key: "country_code", placeholder: "Country..." },
+    { key: "priority", placeholder: "Priority..." },
+    { key: "is_active", placeholder: "Active / Inactive..." },
+  ], []);
+  const { values, set, toggle, showFilters, hasActive, filterData } = useColumnFilters(routeFilters);
+  const activeFilterCount = useMemo(() => Object.values(values).filter(v => v.trim()).length, [values]);
+  const filteredRoutes = useMemo(() => filterData(routes), [routes, filterData]);
+
   const handleDelete = async (id: number) => { if (!await confirmDelete("Archive this route?")) return; await fetch(`/api/tenant/routes/${id}`, { method: "DELETE" }); load(); };
 
   return (
@@ -50,6 +63,7 @@ export default function RoutesPage() {
           <p className="text-sm text-slate-500">Routes → show all available Trunks → which show all Suppliers</p>
         </div>
         <div className="flex gap-2">
+          <FilterToggle showFilters={showFilters} hasActive={hasActive} activeCount={activeFilterCount} onClick={toggle} />
           <button onClick={() => setShowSupplierInfo(!showSupplierInfo)} className="border px-4 py-2 rounded-lg text-sm hover:bg-slate-50">{showSupplierInfo ? "Hide" : "Show"} Supplier Info</button>
           <button onClick={() => { setShowForm(true); setEditing(null); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">+ Add Route</button>
         </div>
@@ -93,9 +107,11 @@ export default function RoutesPage() {
       )}
 
       <div className="bg-white rounded-xl border overflow-hidden">
-        <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-5 py-3 text-left">Route</th><th className="px-5 py-3 text-left">Trunk</th><th className="px-5 py-3 text-left">Supplier</th><th className="px-5 py-3 text-left">Country</th><th className="px-5 py-3 text-left">Priority</th><th className="px-5 py-3 text-left">Status</th><th className="px-5 py-3 text-left">Actions</th></tr></thead>
+        <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-5 py-3 text-left">Route</th><th className="px-5 py-3 text-left">Trunk</th><th className="px-5 py-3 text-left">Supplier</th><th className="px-5 py-3 text-left">Country</th><th className="px-5 py-3 text-left">Priority</th><th className="px-5 py-3 text-left">Status</th><th className="px-5 py-3 text-left">Actions</th></tr>
+        {showFilters && <FilterRow filters={routeFilters} values={values} onChange={set} colSpan={1} />}
+        </thead>
         <tbody>
-          {routes.map(r => {
+          {filteredRoutes.map(r => {
             const trunk = trunks.find(t => t.id === r.trunk_id);
             return (<tr key={r.id} className="border-b hover:bg-slate-50">
               <td className="px-5 py-3 font-medium">{r.name}</td>
@@ -107,7 +123,9 @@ export default function RoutesPage() {
               <td className="px-5 py-3"><button onClick={() => { setEditing(r); setForm({ name: r.name, trunkId: r.trunk_id.toString(), countryCode: r.country_code || "", prefix: r.prefix || "", priority: r.priority.toString() }); setShowForm(true); }} className="text-blue-600 hover:underline text-xs mr-2">Edit</button><button onClick={() => handleDelete(r.id)} className="text-red-600 hover:underline text-xs">Delete</button></td>
             </tr>);
           })}
+          {filteredRoutes.length === 0 && <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-400">{hasActive ? "No routes match your filters." : "No routes configured."}</td></tr>}
         </tbody></table>
+        {hasActive && <div className="px-4 py-2 border-t bg-slate-50 text-xs text-slate-500">Showing {filteredRoutes.length} of {routes.length} routes</div>}
       </div>
       {confirmModal}
     </div>

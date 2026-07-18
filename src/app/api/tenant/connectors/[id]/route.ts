@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 
@@ -16,6 +17,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     [name, type, apiUrl, apiKey, endpoints, isActive, id]
   );
 
+  revalidatePath('/dashboard/connectors');
   return NextResponse.json({ connector: result.rows[0] });
 }
 
@@ -25,5 +27,6 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
   const { id } = await params;
   await tenantQuery(tenant.schemaName, "DELETE FROM connectors WHERE id = $1", [id]);
+  revalidatePath('/dashboard/connectors');
   return NextResponse.json({ success: true });
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 
@@ -27,5 +28,6 @@ export async function POST(request: Request) {
     [name, supplierId, capacity || 100, mccAllowList || null, mccDenyList || null]
   );
 
+  revalidatePath('/dashboard/trunks');
   return NextResponse.json({ trunk: result.rows[0] }, { status: 201 });
 }

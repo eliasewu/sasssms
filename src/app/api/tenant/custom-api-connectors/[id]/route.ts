@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 import { buildUrl, evaluateCondition, extractFromResponse, parseHeaders } from "@/lib/api-connector-parser";
@@ -49,6 +50,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   );
 
   if (result.rows.length === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  revalidatePath('/dashboard/custom-api');
   return NextResponse.json({ connector: result.rows[0] });
 }
 
@@ -59,6 +61,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const { id } = await params;
 
   await tenantQuery(tenant.schemaName, "DELETE FROM custom_api_connectors WHERE id = $1", [id]);
+  revalidatePath('/dashboard/custom-api');
   return NextResponse.json({ success: true });
 }
 

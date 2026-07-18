@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 
@@ -74,6 +75,7 @@ export async function POST(request: Request) {
      tenant.email, createdForType, createdForId, createdForName]
   );
 
+  revalidatePath('/dashboard/invoices');
   return NextResponse.json({
     invoice: result.rows[0],
     details: { messageCount: parseInt(msgResult.rows[0].msg_count), amount, tax, totalAmount, totalRevenue, totalCost, profit, createdForName },

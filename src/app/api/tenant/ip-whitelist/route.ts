@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 
@@ -18,5 +19,6 @@ export async function POST(request: Request) {
     `INSERT INTO ip_whitelist (ip_address, description) VALUES ($1,$2) RETURNING *`,
     [body.ipAddress, body.description || null]
   );
+  revalidatePath('/dashboard/ip-list');
   return NextResponse.json({ ip: result.rows[0] }, { status: 201 });
 }

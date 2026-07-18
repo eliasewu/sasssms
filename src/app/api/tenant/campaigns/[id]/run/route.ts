@@ -7,6 +7,8 @@ import { getOnlineOttDevices, sendOttMessage } from "@/lib/ott-pairing-engine";
 import type { OttDeviceType } from "@/lib/ott-pairing-engine";
 import { lookupClientRate } from "@/lib/rates";
 
+export const dynamic = "force-dynamic";
+
 function generateMessageId(): string {
   return "CAMP_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
 }

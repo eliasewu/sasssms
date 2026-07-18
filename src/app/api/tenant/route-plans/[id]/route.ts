@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 
+export const dynamic = "force-dynamic";
+
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const tenant = getTenantFromRequest(request);
   if (!tenant) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

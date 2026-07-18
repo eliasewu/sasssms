@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useColumnFilters, FilterRow, FilterToggle, type ColumnFilterDef } from "@/components/column-filters";
 
 interface User { id: number; name: string; email: string; role_id: number; is_active: boolean; last_login: string; }
 interface Role { id: number; name: string; }
@@ -30,6 +31,16 @@ export default function UsersPage() {
     load();
   };
 
+  const userFilters: ColumnFilterDef[] = useMemo(() => [
+    { key: "name", placeholder: "Name..." },
+    { key: "email", placeholder: "Email..." },
+    { key: "role_id", placeholder: "Role..." },
+    { key: "is_active", placeholder: "Active / Inactive..." },
+  ], []);
+  const { values, set, toggle, showFilters, hasActive, filterData } = useColumnFilters(userFilters);
+  const activeFilterCount = useMemo(() => Object.values(values).filter(v => v.trim()).length, [values]);
+  const filteredUsers = useMemo(() => filterData(users), [users, filterData]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -37,7 +48,10 @@ export default function UsersPage() {
           <h2 className="text-xl font-bold text-slate-800">User Management</h2>
           <p className="text-sm text-slate-500">Manage tenant users and their access</p>
         </div>
-        <button onClick={() => setShowForm(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">+ Add User</button>
+        <div className="flex items-center gap-3">
+          <FilterToggle showFilters={showFilters} hasActive={hasActive} activeCount={activeFilterCount} onClick={toggle} />
+          <button onClick={() => setShowForm(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">+ Add User</button>
+        </div>
       </div>
 
       {showForm && (
@@ -68,9 +82,10 @@ export default function UsersPage() {
               <th className="text-left px-5 py-3">Last Login</th>
               <th className="text-left px-5 py-3">Status</th>
             </tr>
+            {showFilters && <FilterRow filters={userFilters} values={values} onChange={set} />}
           </thead>
           <tbody>
-            {users.map((u) => (
+            {filteredUsers.map((u) => (
               <tr key={u.id} className="border-b hover:bg-slate-50">
                 <td className="px-5 py-3 font-medium">{u.name}</td>
                 <td className="px-5 py-3">{u.email}</td>
@@ -79,9 +94,10 @@ export default function UsersPage() {
                 <td className="px-5 py-3"><span className={`px-2 py-0.5 rounded-full text-xs ${u.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{u.is_active ? "Active" : "Inactive"}</span></td>
               </tr>
             ))}
-            {users.length === 0 && <tr><td colSpan={5} className="px-5 py-8 text-center text-slate-400">No users created.</td></tr>}
+            {filteredUsers.length === 0 && <tr><td colSpan={5} className="px-5 py-8 text-center text-slate-400">{hasActive ? "No users match your filters." : "No users created."}</td></tr>}
           </tbody>
         </table>
+        {hasActive && <div className="px-4 py-2 border-t bg-slate-50 text-xs text-slate-500">Showing {filteredUsers.length} of {users.length} users</div>}
       </div>
     </div>
   );
