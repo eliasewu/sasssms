@@ -71,6 +71,16 @@ export async function PUT(request: Request) {
     }
 
     if (action === "approve") {
+      // ── Compute first-payment bonus BEFORE marking transaction COMPLETED ──
+      // (so the COUNT(*) query in computeFirstPaymentBonus sees 0 previous payments)
+      const isStarterOrTopup = (txn.package_type || "").toLowerCase() === "starter" || 
+        (!txn.package_type && (txn.sms_amount || 0) > 0);
+      let smsWithBonus: number | null = null;
+      if (isStarterOrTopup && txn.sms_amount > 0) {
+        const bonus = await computeFirstPaymentBonus(txn.tenant_id, txn.amount, txn.sms_amount);
+        smsWithBonus = bonus.totalSms;
+      }
+
       // Update transaction status
       await client.query(
         `UPDATE payment_transactions SET status = 'COMPLETED', approved_by = $1, approved_at = NOW()
@@ -99,9 +109,6 @@ export async function PUT(request: Request) {
       const ENT_MONTHLY_FEE = "399";
       const PRO_SMS_CREDITS = 10_000_000;
 
-      // First-payment promo bonus (computed once, used for limit + email)
-      let smsWithBonus: number | null = null;
-
       if (tenantData) {
         // ── Package upgrade: Professional or Enterprise ──
         if (isPackagePurchase) {
@@ -127,9 +134,7 @@ export async function PUT(request: Request) {
         // ── Starter recharge: 6-month validity with carry-forward (first-payment +100k bonus) ──
         else if (isStarterRecharge && txn.sms_amount > 0) {
           const currentLimit = safeInt(tenantData.smsLimit || 0);
-          const bonus = await computeFirstPaymentBonus(txn.tenant_id, txn.amount, txn.sms_amount);
-          smsWithBonus = bonus.totalSms;
-          const newLimit = currentLimit + smsWithBonus;
+          const newLimit = currentLimit + (smsWithBonus ?? txn.sms_amount);
 
           // 6-month validity: extend from now or carry forward if still valid
           let validUntil: Date;
@@ -154,9 +159,7 @@ export async function PUT(request: Request) {
         // ── Fallback: generic SMS top-up (first-payment +100k bonus) ──
         else if (txn.sms_amount > 0) {
           const currentLimit = safeInt(tenantData.smsLimit || 0);
-          const bonus = await computeFirstPaymentBonus(txn.tenant_id, txn.amount, txn.sms_amount);
-          smsWithBonus = bonus.totalSms;
-          const newLimit = currentLimit + smsWithBonus;
+          const newLimit = currentLimit + (smsWithBonus ?? txn.sms_amount);
 
           let validUntil: Date;
           if (tenantData.smsValidUntil && new Date(tenantData.smsValidUntil) > new Date()) {
