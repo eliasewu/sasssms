@@ -1231,7 +1231,11 @@ export default function LandingPage() {
                 </div>
               )}
               <h3 className="text-2xl font-bold text-gray-900 mb-1">Starter</h3>
-              <div className="mb-2"><span className="text-4xl font-bold text-gray-900">Free</span><span className="text-gray-500 ml-2 text-sm">+ <strong className="text-green-600">100 free SMS</strong></span></div>
+              <div className="mb-2"><span className="text-4xl font-bold text-gray-900">Free</span><span className="text-gray-500 ml-2 text-sm">platform access</span></div>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4 space-y-1">
+                <p className="text-xs text-green-700 font-semibold">🎁 <strong>100 free SMS</strong> on signup</p>
+                <p className="text-xs text-green-700 font-semibold">💰 <strong>+100,000 bonus SMS</strong> on first payment ≥ 250k</p>
+              </div>
               <p className="text-gray-500 mb-6 text-sm font-medium">Pay-as-you-go • ${costPerSms.toFixed(5)}/SMS</p>
               <ul className="space-y-3 mb-8">
                 {(starterPkg?.features || ["Isolated database","50 TPS","HTTP API","Basic routing","5 sub-clients","Email support"]).map((f: string, j: number) => (
