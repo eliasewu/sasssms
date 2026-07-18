@@ -5,6 +5,8 @@ import { tenantQuery } from "@/lib/tenant-schema";
 import { auditLog } from "@/lib/db-helpers";
 import { VALID_BIND_TYPES } from "@/lib/validation";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   const tenant = getTenantFromRequest(request);
   if (!tenant) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

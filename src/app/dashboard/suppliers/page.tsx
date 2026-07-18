@@ -55,8 +55,8 @@ export default function SupplierPage() {
   const load = useCallback(async () => {
     try {
       const [sr, cr] = await Promise.all([
-        fetch("/api/tenant/suppliers").then(r => r.json()),
-        fetch("/api/tenant/connectors").then(r => r.json()).catch(() => ({ connectors: [] })),
+        fetch("/api/tenant/suppliers", { cache: "no-store" }).then(r => r.json()),
+        fetch("/api/tenant/connectors", { cache: "no-store" }).then(r => r.json()).catch(() => ({ connectors: [] })),
       ]);
       setSuppliers(sr.suppliers || []);
       setConnectors(cr.connectors || []);
