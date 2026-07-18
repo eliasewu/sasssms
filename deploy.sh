@@ -2,9 +2,25 @@
 # ═══════════════════════════════════════════════════════════════════
 #  Net2APP SMS Platform — Production Deploy Script
 #  Ubuntu 22/24 | Debian 12
-#  Run: chmod +x deploy.sh && sudo bash deploy.sh
+#
+#  FULL DEPLOY (first time or after source changes):
+#    chmod +x deploy.sh && sudo bash deploy.sh
+#
+#  QUICK DEPLOY (pre-built .next — skips setup, npm install, build):
+#    npm run build && sudo bash deploy.sh --quick
+#
+#  ONE-LINER (after code changes only):
+#    npm run build && rsync -a --delete .next/ /opt/net2app/.next/ && pm2 restart net2app
+#
+#  ⚠️  PM2 runs from /opt/net2app — always sync .next there after building!
 # ===================================================================
 set -euo pipefail
+
+# ── Quick-deploy flag ──────────────────────────────────────────────
+QUICK_DEPLOY=false
+if [ "${1:-}" = "--quick" ] || [ "${1:-}" = "-q" ]; then
+  QUICK_DEPLOY=true
+fi
 
 APP_DIR="/opt/net2app"
 DB_USER="postgres"
@@ -21,6 +37,52 @@ warn(){ echo -e "${YELLOW}[WARN]${NC} $1"; }
 err(){ echo -e "${RED}[ERR]${NC} $1"; }
 
 if [ "$EUID" -ne 0 ]; then echo -e "${RED}Run as root: sudo bash deploy.sh${NC}"; exit 1; fi
+
+# ── Quick Deploy: rsync pre-built .next → /opt/net2app ────────────
+if [ "$QUICK_DEPLOY" = true ]; then
+  SOURCE_DIR="$(pwd)"
+
+  if [ ! -d "$SOURCE_DIR/.next" ]; then
+    err "No .next directory found in $SOURCE_DIR"
+    echo "  Run 'npm run build' first, then re-run with --quick"
+    exit 1
+  fi
+
+  echo -e "${GREEN}═══ Quick Deploy ═══${NC}"
+  echo "  Source: $SOURCE_DIR/.next"
+  echo "  Target: $APP_DIR/.next"
+
+  # Verify target dir exists (must have been deployed at least once)
+  if [ ! -d "$APP_DIR" ]; then
+    err "$APP_DIR does not exist — run full deploy first: sudo bash deploy.sh"
+    exit 1
+  fi
+
+  # Sync build artifacts (rsync only touches .next/ — .env and uploads are safe)
+  echo "  Syncing .next..."
+  rsync -a --delete "$SOURCE_DIR/.next/" "$APP_DIR/.next/"
+
+  ok "Build artifacts synced ($(du -sh $APP_DIR/.next | cut -f1))"
+
+  # Restart PM2 (resilient: restart or fresh start)
+  set +e
+  pm2 restart net2app 2>/dev/null || pm2 start npm --name "net2app" -- run start
+  pm2 save 2>/dev/null
+  set -e
+  ok "PM2 restarted"
+
+  # Quick health check
+  sleep 2
+  if ss -tlnp 2>/dev/null | grep -q ":$APP_PORT "; then
+    ok "App port $APP_PORT: listening"
+  else
+    warn "App port $APP_PORT: NOT listening yet — check 'pm2 logs net2app'"
+  fi
+
+  echo ""
+  echo -e "${GREEN}  ✅ Quick deploy complete${NC}"
+  exit 0
+fi
 
 IS_UPDATE=false; [ -d "$APP_DIR" ] && IS_UPDATE=true && warn "UPDATE mode — preserving .env and uploads"
 
@@ -103,7 +165,13 @@ ok "npm install done"
 
 echo "[7/9] Building application..."
 npm run build 2>&1 | tail -5
-ok "Build complete"
+
+# Verify .next was created (failsafe against silent build failures)
+if [ ! -d "$APP_DIR/.next" ]; then
+  err "Build failed: .next directory not created in $APP_DIR"
+  exit 1
+fi
+ok "Build complete (.next: $(du -sh $APP_DIR/.next | cut -f1))"
 
 # ===== 8. Database schema =====
 echo "[8/9] Database schema..."
