@@ -3,6 +3,8 @@ import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 import { pool } from "@/db";
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/tenant/connectors
  *

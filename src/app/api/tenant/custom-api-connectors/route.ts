@@ -3,6 +3,8 @@ import { revalidatePath } from "next/cache";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/tenant/custom-api-connectors — list all custom connectors
 export async function GET(request: Request) {
   const tenant = getTenantFromRequest(request);

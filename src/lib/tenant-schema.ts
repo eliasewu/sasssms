@@ -80,7 +80,7 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       deleted_at TIMESTAMP, created_at TIMESTAMP DEFAULT NOW())`);
 
     await createTable(`CREATE TABLE IF NOT EXISTS route_plans (
-      id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, description TEXT,
+      id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL UNIQUE, description TEXT,
       is_active BOOLEAN DEFAULT true, updated_at TIMESTAMP DEFAULT NOW(),
       created_at TIMESTAMP DEFAULT NOW())`);
 
@@ -88,6 +88,15 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
     await createTable(`CREATE TABLE IF NOT EXISTS route_plan_routes (
       id SERIAL PRIMARY KEY, route_plan_id INTEGER NOT NULL, route_id INTEGER NOT NULL,
       priority INTEGER DEFAULT 1)`);
+
+    // Seed default route plans so new tenants have routing options immediately
+    await client.query(`INSERT INTO route_plans (name, is_active) VALUES
+      ('Default Plan', true),
+      ('SIM OTP', true),
+      ('SIM Marketing', true),
+      ('Local Direct OTP', true),
+      ('Local Direct Marketing', true)
+      ON CONFLICT (name) DO NOTHING`);
 
     await createTable(`CREATE TABLE IF NOT EXISTS messages (
       id SERIAL PRIMARY KEY, client_id INTEGER NOT NULL, sender VARCHAR(20) NOT NULL,
