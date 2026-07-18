@@ -6,6 +6,7 @@ import Link from "next/link";
 
 interface LandingSettings {
   costPerSms: string;
+  promo?: { active: boolean; title: string; text: string; badge: string };
   packages: Array<{
     id: number; name: string; description: string; price: string;
     monthlyFee: string; smsCredits: number; freeSmsPerMonth: boolean;
@@ -178,6 +179,7 @@ export default function LandingPage() {
   const proPkg = settings.packages.find(p => p.name === "Professional" && p.isActive);
   const entPkg = settings.packages.find(p => p.name === "Enterprise" && p.isActive);
 
+  const promo = settings.promo;
   const proMonthly = proPkg?.monthlyFee || "150";
   const entMonthly = entPkg?.monthlyFee || "400";
 
@@ -454,6 +456,17 @@ export default function LandingPage() {
         </div>
       </nav>
 
+      {/* Promo Banner */}
+      {promo?.active && (
+        <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 text-white">
+          <div className="max-w-7xl mx-auto px-6 lg:px-8 py-3 flex items-center justify-center gap-3 flex-wrap text-center">
+            <span className="text-2xl">🎉</span>
+            <span className="font-bold text-sm lg:text-base">{promo.text}</span>
+            <span className="bg-white/20 rounded-full px-3 py-0.5 text-xs font-semibold whitespace-nowrap">{promo.title}</span>
+          </div>
+        </div>
+      )}
+
       {/* Hero */}
       <section className="bg-gradient-to-br from-slate-50 via-blue-50 to-white">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 pt-20 pb-24">
@@ -463,6 +476,12 @@ export default function LandingPage() {
                 <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
                 <span className="text-blue-700 text-sm font-medium">No Setup Fees • Pay As You Go</span>
               </div>
+              {promo?.active && (
+                <div className="inline-flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-full px-4 py-1.5 mb-4 ml-2">
+                  <span className="text-lg">🔥</span>
+                  <span className="text-amber-700 text-sm font-bold">{promo.badge}</span>
+                </div>
+              )}
               <h1 className="text-4xl lg:text-5xl font-extrabold text-gray-900 leading-tight mb-6">
                 The platform for
                 <span className="block text-blue-600">conversations in the AI era</span>

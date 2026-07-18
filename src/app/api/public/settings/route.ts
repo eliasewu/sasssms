@@ -18,6 +18,12 @@ export async function GET() {
       costPerSms: obj.globalCostPerSms || "0.00010",
       smppServerIp: obj.smppServerIp || "0.0.0.0",
       smppServerPort: parseInt(obj.smppServerPort || "2775"),
+      promo: {
+        active: obj.limited_promo_active === "true",
+        title: obj.limited_promo_title || "Limited Time Offer",
+        text: obj.limited_promo_text || "First Starter payment of 250,000 → Get +100,000 bonus SMS!",
+        badge: obj.limited_promo_badge || "+100,000 Bonus SMS",
+      },
       packages: allPkgs.map(p => ({
         id: p.id, name: p.name, description: p.description,
         price: p.price, monthlyFee: p.monthlyFee, smsCredits: p.smsCredits,
