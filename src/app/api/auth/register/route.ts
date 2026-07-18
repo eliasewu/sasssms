@@ -58,7 +58,7 @@ export async function POST(request: Request) {
       smppServerIp: "0.0.0.0",
       smppServerPort: 2775,
       costPerSms: safeDecimal(platformRate, "0.00025"),      // ← uses current platform rate
-      smsLimit: 20,                                            // ← 20 free SMS for testing
+      smsLimit: 100,                                           // ← 100 free SMS for new tenants
       accountExpiresAt: expiresAt,
       emailVerified: true,
       phoneVerified: true,
