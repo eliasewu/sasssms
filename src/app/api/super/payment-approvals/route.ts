@@ -5,6 +5,7 @@ import { tenants } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { safeInt } from "@/lib/validation";
 import { notifyClientPaymentApproved, notifyClientPaymentRejected } from "@/lib/email-service";
+import { computeFirstPaymentBonus } from "@/lib/payment-service";
 
 export async function GET(request: Request) {
   const admin = getSuperAdminFromRequest(request);
@@ -98,6 +99,9 @@ export async function PUT(request: Request) {
       const ENT_MONTHLY_FEE = "399";
       const PRO_SMS_CREDITS = 10_000_000;
 
+      // First-payment promo bonus (computed once, used for limit + email)
+      let smsWithBonus: number | null = null;
+
       if (tenantData) {
         // ── Package upgrade: Professional or Enterprise ──
         if (isPackagePurchase) {
@@ -120,10 +124,12 @@ export async function PUT(request: Request) {
             updatedAt: new Date(),
           }).where(eq(tenants.id, txn.tenant_id));
         }
-        // ── Starter recharge: 6-month validity with carry-forward ──
+        // ── Starter recharge: 6-month validity with carry-forward (first-payment +100k bonus) ──
         else if (isStarterRecharge && txn.sms_amount > 0) {
           const currentLimit = safeInt(tenantData.smsLimit || 0);
-          const newLimit = currentLimit + txn.sms_amount;
+          const bonus = await computeFirstPaymentBonus(txn.tenant_id, txn.amount, txn.sms_amount);
+          smsWithBonus = bonus.totalSms;
+          const newLimit = currentLimit + smsWithBonus;
 
           // 6-month validity: extend from now or carry forward if still valid
           let validUntil: Date;
@@ -145,10 +151,12 @@ export async function PUT(request: Request) {
             updatedAt: new Date(),
           }).where(eq(tenants.id, txn.tenant_id));
         }
-        // ── Fallback: generic SMS top-up (no package specified) ──
+        // ── Fallback: generic SMS top-up (first-payment +100k bonus) ──
         else if (txn.sms_amount > 0) {
           const currentLimit = safeInt(tenantData.smsLimit || 0);
-          const newLimit = currentLimit + txn.sms_amount;
+          const bonus = await computeFirstPaymentBonus(txn.tenant_id, txn.amount, txn.sms_amount);
+          smsWithBonus = bonus.totalSms;
+          const newLimit = currentLimit + smsWithBonus;
 
           let validUntil: Date;
           if (tenantData.smsValidUntil && new Date(tenantData.smsValidUntil) > new Date()) {
@@ -169,7 +177,7 @@ export async function PUT(request: Request) {
         }
       }
 
-      // Send confirmation email to client
+      // Send confirmation email (bonus included only if actually applied)
       if (txn.client_email) {
         let meta: Record<string, unknown> = {};
         try { meta = JSON.parse(txn.metadata || "{}"); } catch {}
@@ -179,7 +187,7 @@ export async function PUT(request: Request) {
           amount: txn.amount,
           paymentMethod: txn.payment_method,
           transactionId: txn.id,
-          smsAdded: txn.sms_amount,
+          smsAdded: smsWithBonus ?? txn.sms_amount,
         }).catch(() => {});
       }
 

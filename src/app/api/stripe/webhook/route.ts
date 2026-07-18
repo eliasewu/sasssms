@@ -4,6 +4,7 @@ import { tenants } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { safeInt } from "@/lib/validation";
 import { notifyClientPaymentApproved } from "@/lib/email-service";
+import { computeFirstPaymentBonus } from "@/lib/payment-service";
 
 // Stripe webhook secret from env
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
@@ -53,6 +54,9 @@ export async function POST(request: Request) {
         .from(tenants)
         .where(eq(tenants.id, txn.tenant_id));
 
+      // First-payment promo bonus (computed once, used for limit + email)
+      let smsWithBonus: number | null = null;
+
       if (tenantData) {
         const pkgType = (txn.package_type || "").toLowerCase();
         const isPackagePurchase = pkgType === "professional" || pkgType === "enterprise";
@@ -83,9 +87,11 @@ export async function POST(request: Request) {
             updatedAt: new Date(),
           }).where(eq(tenants.id, txn.tenant_id));
         }
-        // ── Starter recharge: 6-month validity with carry-forward ──
+        // ── Starter recharge: 6-month validity (first-payment +100k bonus) ──
         else if (isStarterRecharge && txn.sms_amount > 0) {
-          const newLimit = safeInt((tenantData.smsLimit || 0) + txn.sms_amount);
+          const bonus = await computeFirstPaymentBonus(txn.tenant_id, txn.amount, txn.sms_amount);
+          smsWithBonus = bonus.totalSms;
+          const newLimit = safeInt((tenantData.smsLimit || 0) + smsWithBonus);
           const validUntil = new Date();
           validUntil.setMonth(validUntil.getMonth() + 6);
 
@@ -97,9 +103,11 @@ export async function POST(request: Request) {
             updatedAt: new Date(),
           }).where(eq(tenants.id, txn.tenant_id));
         }
-        // ── Fallback: generic SMS top-up ──
+        // ── Fallback: generic SMS top-up (first-payment +100k bonus) ──
         else if (txn.sms_amount > 0) {
-          const newLimit = safeInt((tenantData.smsLimit || 0) + txn.sms_amount);
+          const bonus = await computeFirstPaymentBonus(txn.tenant_id, txn.amount, txn.sms_amount);
+          smsWithBonus = bonus.totalSms;
+          const newLimit = safeInt((tenantData.smsLimit || 0) + smsWithBonus);
           const validUntil = new Date();
           validUntil.setMonth(validUntil.getMonth() + 6);
 
@@ -113,7 +121,7 @@ export async function POST(request: Request) {
         }
       }
 
-      // Send confirmation email
+      // Send confirmation email (bonus included only if actually applied)
       if (txn.client_email) {
         let meta: Record<string, unknown> = {};
         try { meta = JSON.parse(txn.metadata || "{}"); } catch {}
@@ -123,7 +131,7 @@ export async function POST(request: Request) {
           amount: txn.amount,
           paymentMethod: txn.payment_method,
           transactionId: txn.id,
-          smsAdded: txn.sms_amount,
+          smsAdded: smsWithBonus ?? txn.sms_amount,
         }).catch(() => {});
       }
     } finally {
