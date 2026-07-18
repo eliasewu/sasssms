@@ -1191,6 +1191,31 @@ export default function LandingPage() {
       </div>
 
       {/* Pricing - Clean Design */}
+      {/* Promo Card above Pricing */}
+      {promo?.active && (
+        <div className="py-16 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50">
+          <div className="max-w-4xl mx-auto px-6 lg:px-8">
+            <div className="bg-white rounded-2xl border-2 border-amber-300 shadow-lg overflow-hidden">
+              <div className="grid grid-cols-1 md:grid-cols-2">
+                <div className="bg-gradient-to-br from-amber-500 to-orange-600 p-8 flex items-center justify-center">
+                  <div className="text-center text-white">
+                    <p className="text-5xl mb-2">🎉</p>
+                    <p className="text-3xl font-extrabold">+100,000</p>
+                    <p className="text-lg font-semibold">Bonus SMS</p>
+                  </div>
+                </div>
+                <div className="p-8 flex flex-col justify-center">
+                  <p className="text-sm font-bold text-amber-600 uppercase tracking-wider mb-2">{promo.title}</p>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-3">{promo.text}</h3>
+                  <p className="text-gray-600 mb-4">Make your first Starter payment of 250,000 or more and get 100,000 bonus SMS added to your account. One-time offer for new tenants only.</p>
+                  <button onClick={() => setMode("register")} className="self-start px-6 py-3 bg-amber-600 text-white rounded-xl hover:bg-amber-700 transition font-semibold shadow-sm">Claim this offer →</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div id="pricing" className="py-20 bg-gray-50">
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
           <div className="text-center mb-16">
@@ -1199,9 +1224,14 @@ export default function LandingPage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             {/* Starter */}
-            <div className="bg-white border border-gray-200 rounded-3xl p-8 shadow-sm hover:shadow-md transition">
+            <div className={`bg-white border rounded-3xl p-8 shadow-sm hover:shadow-md transition ${promo?.active ? "border-amber-400 shadow-lg shadow-amber-100" : "border-gray-200"}`}>
+              {promo?.active && (
+                <div className="-mt-12 mb-4">
+                  <span className="inline-block bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs font-bold px-4 py-1.5 rounded-full shadow-md">🔥 {promo.badge}</span>
+                </div>
+              )}
               <h3 className="text-2xl font-bold text-gray-900 mb-1">Starter</h3>
-              <div className="mb-2"><span className="text-4xl font-bold text-gray-900">Free</span><span className="text-gray-500 ml-2 text-sm">platform access</span></div>
+              <div className="mb-2"><span className="text-4xl font-bold text-gray-900">Free</span><span className="text-gray-500 ml-2 text-sm">+ <strong className="text-green-600">100 free SMS</strong></span></div>
               <p className="text-gray-500 mb-6 text-sm font-medium">Pay-as-you-go • ${costPerSms.toFixed(5)}/SMS</p>
               <ul className="space-y-3 mb-8">
                 {(starterPkg?.features || ["Isolated database","50 TPS","HTTP API","Basic routing","5 sub-clients","Email support"]).map((f: string, j: number) => (
