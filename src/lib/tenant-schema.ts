@@ -89,14 +89,20 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       id SERIAL PRIMARY KEY, route_plan_id INTEGER NOT NULL, route_id INTEGER NOT NULL,
       priority INTEGER DEFAULT 1)`);
 
-    // Seed default route plans so new tenants have routing options immediately
-    await client.query(`INSERT INTO route_plans (name, is_active) VALUES
-      ('Default Plan', true),
-      ('SIM OTP', true),
-      ('SIM Marketing', true),
-      ('Local Direct OTP', true),
-      ('Local Direct Marketing', true)
-      ON CONFLICT (name) DO NOTHING`);
+    // Seed default route plans so new tenants have routing options immediately.
+    // Plain INSERT with try-catch: works with or without a UNIQUE constraint on name.
+    const seedPlans = async (name: string) => {
+      try {
+        await client.query(`INSERT INTO "${schemaName}".route_plans (name, is_active) VALUES ($1, true)`, [name]);
+      } catch (e) { 
+        console.error(`[${schemaName}] route_plan seed failed for "${name}":`, (e as Error).message);
+      }
+    };
+    await seedPlans('Default Plan');
+    await seedPlans('SIM OTP');
+    await seedPlans('SIM Marketing');
+    await seedPlans('Local Direct OTP');
+    await seedPlans('Local Direct Marketing');
 
     await createTable(`CREATE TABLE IF NOT EXISTS messages (
       id SERIAL PRIMARY KEY, client_id INTEGER NOT NULL, sender VARCHAR(20) NOT NULL,
