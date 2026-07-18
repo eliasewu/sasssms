@@ -6,6 +6,13 @@ import { createTenantSchema } from "@/lib/tenant-schema";
 import { eq } from "drizzle-orm";
 import { safeInt, safeDecimal, safeText } from "@/lib/validation";
 
+async function getSignupBonus(): Promise<number> {
+  try {
+    const { rows } = await pool.query("SELECT value FROM platform_settings WHERE key = 'signup_bonus_sms'");
+    return parseInt(rows[0]?.value || "100");
+  } catch { return 100; }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -58,7 +65,7 @@ export async function POST(request: Request) {
       smppServerIp: "0.0.0.0",
       smppServerPort: 2775,
       costPerSms: safeDecimal(platformRate, "0.00025"),      // ← uses current platform rate
-      smsLimit: 100,                                           // ← 100 free SMS for new tenants
+      smsLimit: await getSignupBonus(),                           // ← configurable signup bonus from platform_settings
       accountExpiresAt: expiresAt,
       emailVerified: true,
       phoneVerified: true,

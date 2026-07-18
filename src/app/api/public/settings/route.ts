@@ -21,8 +21,11 @@ export async function GET() {
       promo: {
         active: obj.limited_promo_active === "true",
         title: obj.limited_promo_title || "Limited Time Offer",
-        text: obj.limited_promo_text || "First Starter payment of 250,000 → Get +100,000 bonus SMS!",
+        text: obj.limited_promo_text || "First Starter payment → Get bonus SMS!",
         badge: obj.limited_promo_badge || "+100,000 Bonus SMS",
+        bonusSms: parseInt(obj.first_payment_bonus_sms || "100000"),
+        minAmount: parseFloat(obj.first_payment_min_amount || "250000"),
+        signupBonus: parseInt(obj.signup_bonus_sms || "100"),
       },
       packages: allPkgs.map(p => ({
         id: p.id, name: p.name, description: p.description,

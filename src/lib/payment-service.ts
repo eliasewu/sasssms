@@ -1,7 +1,8 @@
 import { pool } from "@/db";
 
 /**
- * First-time payment promo: +100,000 bonus SMS on first payment of 250,000+
+ * First-time payment promo: bonus SMS on first payment meeting min threshold.
+ * Both bonus amount and min threshold are configurable via platform_settings.
  * 
  * Returns the total SMS to add (base + promo bonus if applicable).
  * Call this BEFORE updating payment_transactions status to COMPLETED.
@@ -15,8 +16,20 @@ export async function computeFirstPaymentBonus(
   bonusSms: number;
   isFirstPayment: boolean;
 }> {
-  const bonusSms = 100_000;
-  const minAmount = 250_000; // minimum payment amount to qualify
+  let bonusSms = 100_000;       // fallback default
+  let minAmount = 250_000;       // fallback default
+
+  try {
+    // Read promo config from platform_settings
+    const { rows } = await pool.query(
+      `SELECT key, value FROM platform_settings WHERE key IN ('first_payment_bonus_sms','first_payment_min_amount','limited_promo_active')`
+    );
+    for (const row of rows) {
+      if (row.key === 'first_payment_bonus_sms') bonusSms = parseInt(row.value) || 100_000;
+      if (row.key === 'first_payment_min_amount') minAmount = parseFloat(row.value) || 250_000;
+      if (row.key === 'limited_promo_active' && row.value !== 'true') return { totalSms: baseSmsAmount, bonusSms: 0, isFirstPayment: false };
+    }
+  } catch { /* use fallback defaults */ }
 
   try {
     // Check if this is the tenant's first COMPLETED payment

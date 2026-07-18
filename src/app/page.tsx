@@ -6,7 +6,7 @@ import Link from "next/link";
 
 interface LandingSettings {
   costPerSms: string;
-  promo?: { active: boolean; title: string; text: string; badge: string };
+  promo?: { active: boolean; title: string; text: string; badge: string; bonusSms: number; minAmount: number; signupBonus: number };
   packages: Array<{
     id: number; name: string; description: string; price: string;
     monthlyFee: string; smsCredits: number; freeSmsPerMonth: boolean;
@@ -1200,14 +1200,14 @@ export default function LandingPage() {
                 <div className="bg-gradient-to-br from-amber-500 to-orange-600 p-8 flex items-center justify-center">
                   <div className="text-center text-white">
                     <p className="text-5xl mb-2">🎉</p>
-                    <p className="text-3xl font-extrabold">+100,000</p>
-                    <p className="text-lg font-semibold">Bonus SMS</p>
+                  <p className="text-3xl font-extrabold">+{(promo?.bonusSms ?? 100000).toLocaleString()}</p>
+                  <p className="text-lg font-semibold">Bonus SMS</p>
                   </div>
                 </div>
                 <div className="p-8 flex flex-col justify-center">
                   <p className="text-sm font-bold text-amber-600 uppercase tracking-wider mb-2">{promo.title}</p>
                   <h3 className="text-2xl font-bold text-gray-900 mb-3">{promo.text}</h3>
-                  <p className="text-gray-600 mb-4">Make your first Starter payment of 250,000 or more and get 100,000 bonus SMS added to your account. One-time offer for new tenants only.</p>
+                  <p className="text-gray-600 mb-4">Make your first Starter payment of {(promo?.minAmount ?? 250000).toLocaleString()} or more and get {(promo?.bonusSms ?? 100000).toLocaleString()} bonus SMS added to your account. One-time offer for new tenants only.</p>
                   <button onClick={() => setMode("register")} className="self-start px-6 py-3 bg-amber-600 text-white rounded-xl hover:bg-amber-700 transition font-semibold shadow-sm">Claim this offer →</button>
                 </div>
               </div>
@@ -1233,8 +1233,8 @@ export default function LandingPage() {
               <h3 className="text-2xl font-bold text-gray-900 mb-1">Starter</h3>
               <div className="mb-2"><span className="text-4xl font-bold text-gray-900">Free</span><span className="text-gray-500 ml-2 text-sm">platform access</span></div>
               <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4 space-y-1">
-                <p className="text-xs text-green-700 font-semibold">🎁 <strong>100 free SMS</strong> on signup</p>
-                <p className="text-xs text-green-700 font-semibold">💰 <strong>+100,000 bonus SMS</strong> on first payment ≥ 250k</p>
+                <p className="text-xs text-green-700 font-semibold">🎁 <strong>{promo?.signupBonus ?? 100} free SMS</strong> on signup</p>
+                <p className="text-xs text-green-700 font-semibold">💰 <strong>+{(promo?.bonusSms ?? 100000).toLocaleString()} bonus SMS</strong> on first payment ≥ {(promo?.minAmount ?? 250000).toLocaleString()}</p>
               </div>
               <p className="text-gray-500 mb-6 text-sm font-medium">Pay-as-you-go • ${costPerSms.toFixed(5)}/SMS</p>
               <ul className="space-y-3 mb-8">
