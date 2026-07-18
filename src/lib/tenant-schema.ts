@@ -3,6 +3,16 @@ import { pool } from "@/db";
 export async function createTenantSchema(schemaName: string): Promise<void> {
   const client = await pool.connect();
   try {
+    // Ensure global SMPP username index table exists (public schema, shared across tenants)
+    await client.query(`CREATE TABLE IF NOT EXISTS smpp_usernames (
+      id SERIAL PRIMARY KEY,
+      smpp_username VARCHAR(100) NOT NULL UNIQUE,
+      tenant_id INTEGER NOT NULL,
+      client_id INTEGER NOT NULL,
+      schema_name VARCHAR(100) NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`);
+
     await client.query(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`);
     await client.query(`SET search_path TO "${schemaName}"`);
 
