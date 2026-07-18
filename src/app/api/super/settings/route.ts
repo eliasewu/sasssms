@@ -59,6 +59,15 @@ export async function PUT(request: Request) {
   if (body.smppServerPort) await upsert("smppServerPort", String(body.smppServerPort));
   if (body.secondarySmppIp !== undefined) await upsert("secondarySmppIp", body.secondarySmppIp || "");
 
+  // Promo & SMS bonus settings
+  if (body.limitedPromoActive !== undefined) await upsert("limited_promo_active", String(body.limitedPromoActive));
+  if (body.signupBonusSms !== undefined) await upsert("signup_bonus_sms", String(body.signupBonusSms));
+  if (body.firstPaymentBonusSms !== undefined) await upsert("first_payment_bonus_sms", String(body.firstPaymentBonusSms));
+  if (body.firstPaymentMinAmount !== undefined) await upsert("first_payment_min_amount", String(body.firstPaymentMinAmount));
+  if (body.limitedPromoTitle !== undefined) await upsert("limited_promo_title", body.limitedPromoTitle);
+  if (body.limitedPromoText !== undefined) await upsert("limited_promo_text", body.limitedPromoText);
+  if (body.limitedPromoBadge !== undefined) await upsert("limited_promo_badge", body.limitedPromoBadge);
+
   // Auto-sync to all tenants
   let syncedCount = 0;
   if (body.syncToAllTenants) {

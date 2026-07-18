@@ -38,6 +38,14 @@ export default function SuperSettingsPage() {
   const [qrFile, setQrFile] = useState<File | null>(null);
   const [qrPreview, setQrPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  // Promo & SMS bonus settings
+  const [promoActive, setPromoActive] = useState(true);
+  const [signupBonusSms, setSignupBonusSms] = useState("100");
+  const [firstPaymentBonusSms, setFirstPaymentBonusSms] = useState("100000");
+  const [firstPaymentMinAmount, setFirstPaymentMinAmount] = useState("250000");
+  const [promoTitle, setPromoTitle] = useState("Limited Time Offer");
+  const [promoText, setPromoText] = useState("First Starter payment of 250,000 → Get +100,000 bonus SMS!");
+  const [promoBadge, setPromoBadge] = useState("+100,000 Bonus SMS");
 
   const detectIp = async () => {
     try {
@@ -56,6 +64,14 @@ export default function SuperSettingsPage() {
     if (r.settings?.smppServerIp) setSmppIp(r.settings.smppServerIp);
     if (r.settings?.smppServerPort) setSmppPort(r.settings.smppServerPort);
     if (r.settings?.secondarySmppIp) setSecondaryIp(r.settings.secondarySmppIp);
+    // Promo settings
+    if (r.settings?.limited_promo_active) setPromoActive(r.settings.limited_promo_active === "true");
+    if (r.settings?.signup_bonus_sms) setSignupBonusSms(r.settings.signup_bonus_sms);
+    if (r.settings?.first_payment_bonus_sms) setFirstPaymentBonusSms(r.settings.first_payment_bonus_sms);
+    if (r.settings?.first_payment_min_amount) setFirstPaymentMinAmount(r.settings.first_payment_min_amount);
+    if (r.settings?.limited_promo_title) setPromoTitle(r.settings.limited_promo_title);
+    if (r.settings?.limited_promo_text) setPromoText(r.settings.limited_promo_text);
+    if (r.settings?.limited_promo_badge) setPromoBadge(r.settings.limited_promo_badge);
     setGateways(r.payments || []);
   }, []);
 
@@ -72,6 +88,13 @@ export default function SuperSettingsPage() {
         smppServerIp: smppIp,
         smppServerPort: parseInt(smppPort),
         secondarySmppIp: secondaryIp,
+        limitedPromoActive: promoActive,
+        signupBonusSms: parseInt(signupBonusSms) || 0,
+        firstPaymentBonusSms: parseInt(firstPaymentBonusSms) || 0,
+        firstPaymentMinAmount: parseInt(firstPaymentMinAmount) || 0,
+        limitedPromoTitle: promoTitle,
+        limitedPromoText: promoText,
+        limitedPromoBadge: promoBadge,
         syncToAllTenants: true,  // ← triggers auto-sync
       }),
     });
@@ -294,6 +317,59 @@ export default function SuperSettingsPage() {
         <div className="mt-4 bg-slate-50 rounded-lg p-3 text-xs text-slate-600">
           <strong>Clients connect to:</strong> {smppIp}:{smppPort} (SMPP v3.4, Java 21 ESME/SMSC compatible)
           {secondaryIp && <span> · Fallback: {secondaryIp}:{smppPort}</span>}
+        </div>
+      </div>
+
+      {/* Promo & SMS Bonuses */}
+      <div className="bg-white rounded-xl border p-6 shadow-sm">
+        <div className="flex items-center gap-3 mb-4">
+          <h3 className="font-semibold text-lg">🎁 Promo & SMS Bonuses</h3>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={promoActive} onChange={e => setPromoActive(e.target.checked)} className="accent-amber-500 w-4 h-4" />
+            <span className={`text-sm font-medium ${promoActive ? "text-green-600" : "text-slate-400"}`}>{promoActive ? "Promo Active" : "Promo Disabled"}</span>
+          </label>
+        </div>
+        <p className="text-sm text-slate-500 mb-4">Controls the limited-time promo banner on the landing page, signup bonus, and first-payment bonus. Changes take effect immediately — no deploy needed.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div>
+            <label className="block text-sm font-medium mb-1">Signup Bonus SMS</label>
+            <input type="number" min="0" value={signupBonusSms} onChange={e => setSignupBonusSms(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm font-mono" />
+            <p className="text-xs text-slate-400 mt-1">Free SMS given to new tenants on registration</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">First Payment Bonus SMS</label>
+            <input type="number" min="0" value={firstPaymentBonusSms} onChange={e => setFirstPaymentBonusSms(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm font-mono" />
+            <p className="text-xs text-slate-400 mt-1">Bonus SMS awarded on first payment approval</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Minimum Payment to Qualify</label>
+            <input type="number" min="0" value={firstPaymentMinAmount} onChange={e => setFirstPaymentMinAmount(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm font-mono" />
+            <p className="text-xs text-slate-400 mt-1">Minimum payment amount to trigger the first-payment bonus</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Promo Badge Text</label>
+            <input value={promoBadge} onChange={e => setPromoBadge(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm" />
+            <p className="text-xs text-slate-400 mt-1">Shown as the hero badge (e.g., "+100,000 Bonus SMS")</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Promo Title</label>
+            <input value={promoTitle} onChange={e => setPromoTitle(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm" />
+            <p className="text-xs text-slate-400 mt-1">Banner/promo card heading text</p>
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium mb-1">Promo Text</label>
+            <input value={promoText} onChange={e => setPromoText(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm" />
+            <p className="text-xs text-slate-400 mt-1">Full promo message shown in the banner and promo card</p>
+          </div>
+        </div>
+        <div className="mt-4 bg-amber-50 rounded-lg p-3 text-xs text-amber-800">
+          <strong>💡 Tip:</strong> Disabling the promo hides ALL promo elements (banner, hero badge, promo card) from the landing page instantly. Numbers update in real-time.
         </div>
       </div>
 
