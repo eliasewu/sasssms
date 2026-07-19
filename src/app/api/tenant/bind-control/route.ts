@@ -95,9 +95,16 @@ export async function POST(request: Request) {
         );
 
         if (!connected) {
+          // Query the bind_error from the supplier row for detailed diagnostics
+          const diagResult = await tenantQuery(
+            tenant.schemaName,
+            `SELECT bind_error FROM suppliers WHERE id = $1`,
+            [entityId]
+          );
+          const bindError = diagResult.rows[0]?.bind_error || "Unknown SMSC rejection";
           return NextResponse.json({
             success: false,
-            error: `Failed to bind to supplier SMPP at ${host}:${port}. Check credentials and ensure the remote SMSC is reachable.`,
+            error: `Failed to bind to supplier SMPP at ${host}:${port}. ${bindError}.`,
             entity: { id: entityId, name: entity.name || entity.supplier_code, bindStatus: "BIND_FAILED" },
           }, { status: 400 });
         }
@@ -146,10 +153,17 @@ export async function POST(request: Request) {
       );
 
       if (!connected) {
-        await tenantQuery(tenant.schemaName, `UPDATE suppliers SET bind_status = $1, bind_error = NULL, updated_at = NOW() WHERE id = $2`, ["UNBOUND", entityId]);
+        await tenantQuery(tenant.schemaName, `UPDATE suppliers SET bind_status = $1, updated_at = NOW() WHERE id = $2`, ["UNBOUND", entityId]);
+        // Query the bind_error that connectToSupplier already wrote
+        const diagResult = await tenantQuery(
+          tenant.schemaName,
+          `SELECT bind_error FROM suppliers WHERE id = $1`,
+          [entityId]
+        );
+        const bindError = diagResult.rows[0]?.bind_error || "Unknown SMSC rejection";
         await auditLog(table, entityId, "REBIND_FAILED", tenant.email, { bind_status: entity.bind_status }, { bind_status: "UNBOUND" }, tenant.tenantId);
         return NextResponse.json({
-          success: false, error: `Force rebind failed: disconnected but could not reconnect to ${host}:${port}.`,
+          success: false, error: `Force rebind failed: disconnected but could not reconnect to ${host}:${port}. ${bindError}.`,
           entity: { id: entityId, name: entity.name || entity.supplier_code, bindStatus: "UNBOUND" },
         }, { status: 400 });
       }

@@ -41,6 +41,8 @@ export default function SupplierPage() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [bindLoading, setBindLoading] = useState<number | null>(null);
+  const [testLoading, setTestLoading] = useState<number | null>(null);
+  const [testResult, setTestResult] = useState<{ supplierId: number; supplierName: string; data: any } | null>(null);
   const [form, setForm] = useState({
     supplierCode: "", name: "", companyName: "", contactPerson: "", email: "", phone: "",
     connectionType: "SMPP", connectionMode: "CLIENT",
@@ -189,6 +191,19 @@ export default function SupplierPage() {
     }
     setBindLoading(null);
     load();
+  };
+
+  const handleTestConnection = async (supplierId: number) => {
+    setTestLoading(supplierId);
+    setTestResult(null);
+    try {
+      const res = await fetch(`/api/tenant/suppliers/${supplierId}/test-connection`, { cache: "no-store" });
+      const data = await res.json();
+      setTestResult({ supplierId, supplierName: suppliers.find(s => s.id === supplierId)?.name || "", data });
+    } catch {
+      setTestResult({ supplierId, supplierName: "", data: { error: "Network error — could not reach the API." } });
+    }
+    setTestLoading(null);
   };
 
   const handleDelete = async (id: number) => {
@@ -505,8 +520,15 @@ export default function SupplierPage() {
                 </td>
                 <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs ${s.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{s.is_active ? "Active" : "Inactive"}</span></td>
                 <td className="px-4 py-3">
-                  <button onClick={() => handleEdit(s)} className="text-blue-600 hover:underline text-xs mr-2">Edit</button>
-                  <button onClick={() => handleDelete(s.id)} className="text-red-600 hover:underline text-xs">Delete</button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {s.connection_type === "SMPP" && s.connection_mode === "CLIENT" && (
+                      <button onClick={() => handleTestConnection(s.id)} disabled={testLoading === s.id} className="text-purple-600 hover:text-purple-800 disabled:opacity-50 text-xs" title="Run TCP + SMPP bind diagnostic">
+                        {testLoading === s.id ? "⏳" : "🧪"}
+                      </button>
+                    )}
+                    <button onClick={() => handleEdit(s)} className="text-blue-600 hover:underline text-xs">Edit</button>
+                    <button onClick={() => handleDelete(s.id)} className="text-red-600 hover:underline text-xs">Delete</button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -516,6 +538,119 @@ export default function SupplierPage() {
         {hasActive && <div className="px-4 py-2 border-t bg-slate-50 text-xs text-slate-500">Showing {filteredSuppliers.length} of {suppliers.length} suppliers</div>}
       </div>
       {confirmModal}
+
+      {/* ── Connection Test Results Modal ── */}
+      {testResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setTestResult(null)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center z-10">
+              <div>
+                <h3 className="font-semibold text-lg">🧪 Connection Test: {testResult.supplierName || `Supplier #${testResult.supplierId}`}</h3>
+                <p className="text-xs text-slate-500">{testResult.data?.supplier?.host}:{testResult.data?.supplier?.port} · {testResult.data?.supplier?.systemType} · SMPP {testResult.data?.supplier?.smppVersion}</p>
+              </div>
+              <button onClick={() => setTestResult(null)} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {testResult.data?.error && !testResult.data?.tcp && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{testResult.data.error}</div>
+              )}
+
+              {/* TCP Check */}
+              {testResult.data?.tcp && (
+                <div className={`rounded-xl p-5 ${testResult.data.tcp.success ? "bg-emerald-50 border border-emerald-200" : "bg-red-50 border border-red-200"}`}>
+                  <h4 className="font-semibold mb-2 flex items-center gap-2">
+                    <span>{testResult.data.tcp.success ? "✅" : "❌"}</span> TCP Connectivity
+                  </h4>
+                  {testResult.data.tcp.success ? (
+                    <p className="text-sm text-emerald-700">
+                      Connected to {testResult.data.supplier?.host}:{testResult.data.supplier?.port} in {testResult.data.tcp.latencyMs}ms
+                    </p>
+                  ) : (
+                    <p className="text-sm text-red-700">{testResult.data.tcp.error || testResult.data.tcp.note || "TCP connection failed"}</p>
+                  )}
+                </div>
+              )}
+
+              {/* SMPP Bind */}
+              {testResult.data?.smpp && (
+                <div className={`rounded-xl p-5 ${testResult.data.smpp.success ? "bg-emerald-50 border border-emerald-200" : "bg-amber-50 border border-amber-200"}`}>
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <span>{testResult.data.smpp.success ? "✅" : "❌"}</span> SMPP Bind
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="bg-white rounded-lg border px-3 py-2">
+                      <span className="text-xs text-slate-400">Status Code</span>
+                      <div className={`font-mono font-bold ${testResult.data.smpp.success ? "text-emerald-700" : "text-red-700"}`}>
+                        {testResult.data.smpp.commandStatus} ({testResult.data.smpp.statusLabel})
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border px-3 py-2">
+                      <span className="text-xs text-slate-400">SMSC System ID</span>
+                      <div className="font-mono font-bold text-slate-800">
+                        {testResult.data.smpp.systemId || "(not provided)"}
+                      </div>
+                    </div>
+                    {testResult.data.smpp.smscVersionHex && (
+                      <div className="bg-white rounded-lg border px-3 py-2">
+                        <span className="text-xs text-slate-400">Negotiated Version</span>
+                        <div className="font-mono font-bold text-blue-700">{testResult.data.smpp.smscVersionHex}</div>
+                      </div>
+                    )}
+                    {testResult.data.smpp.error && (
+                      <div className="bg-white rounded-lg border px-3 py-2 col-span-2">
+                        <span className="text-xs text-slate-400">Error</span>
+                        <div className="text-sm text-red-700">{testResult.data.smpp.error}</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Hex Dump */}
+                  {(testResult.data.smpp.sentHex || testResult.data.smpp.respHex) && (
+                    <details className="mt-3">
+                      <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-700">📊 Raw PDU Hex Dump</summary>
+                      <div className="mt-2 space-y-2">
+                        {testResult.data.smpp.sentHex && (
+                          <div>
+                            <span className="text-xs font-medium text-green-600">📤 Sent:</span>
+                            <pre className="text-xs font-mono bg-slate-100 rounded p-2 mt-0.5 overflow-x-auto">{testResult.data.smpp.sentHex.match(/.{1,32}/g)?.join("\n")}</pre>
+                          </div>
+                        )}
+                        {testResult.data.smpp.respHex && (
+                          <div>
+                            <span className="text-xs font-medium text-blue-600">📥 Received:</span>
+                            <pre className="text-xs font-mono bg-slate-100 rounded p-2 mt-0.5 overflow-x-auto">{testResult.data.smpp.respHex.match(/.{1,32}/g)?.join("\n")}</pre>
+                          </div>
+                        )}
+                        {testResult.data.smpp.hexDump && (
+                          <div>
+                            <span className="text-xs font-medium text-slate-600">🔍 Parsed:</span>
+                            <pre className="text-xs font-mono bg-slate-100 rounded p-2 mt-0.5 overflow-x-auto">{testResult.data.smpp.hexDump}</pre>
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              )}
+
+              {/* Diagnostics */}
+              {testResult.data?.diagnostics && testResult.data.diagnostics.length > 0 && (
+                <div className="bg-slate-50 rounded-xl p-5 border">
+                  <h4 className="font-semibold mb-2">🔍 Diagnostics</h4>
+                  <ul className="space-y-1">
+                    {testResult.data.diagnostics.map((d: string, i: number) => (
+                      <li key={i} className={`text-sm font-mono ${d.startsWith("✅") ? "text-emerald-700" : d.startsWith("❌") ? "text-red-700" : d.startsWith("   ") ? "text-slate-500 ml-4" : "text-slate-700"}`}>{d}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="text-xs text-slate-400">Tested at: {testResult.data?.testedAt ? new Date(testResult.data.testedAt).toLocaleString() : "—"}</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -120,6 +120,37 @@ function smppVersionToHex(version: string): number {
   return 0x34;
 }
 
+/** Human-readable SMPP command_status description */
+function statusDescription(status: number): string {
+  const desc: Record<number, string> = {
+    0x00: "OK", 0x01: "RINVMSGLEN", 0x02: "RINVCMDLEN", 0x03: "RINVCMDID",
+    0x04: "RINVBNDSTS", 0x05: "RALYBND", 0x08: "RSYSERR", 0x0A: "RINVDSTADR",
+    0x0B: "RINVMSGID", 0x0C: "RBINDFAIL", 0x0D: "RINVPASWD", 0x0E: "RINVSYSID",
+    0x0F: "RCANCELFAIL", 0x14: "RMSGQFUL",
+  };
+  return desc[status] || `0x${status.toString(16)}`;
+}
+
+/** Determine TON (Type of Number) from an address. 1=International, 5=Alphanumeric, 0=Unknown */
+function determineTon(address: string): number {
+  if (!address) return 0;
+  // Alphanumeric sender IDs (non-numeric)
+  if (!/^[\d+]+$/.test(address)) return 5;
+  // International numbers (start with +)
+  if (address.startsWith("+")) return 1;
+  // Numeric-only: assume international if long enough, otherwise unknown
+  return address.length >= 10 ? 1 : 0;
+}
+
+/** Determine NPI (Numbering Plan Indicator). 1=ISDN/E.164, 0=Unknown */
+function determineNpi(address: string): number {
+  if (!address) return 0;
+  // Alphanumeric → unknown NPI
+  if (!/^[\d+]+$/.test(address)) return 0;
+  // Numeric/international → ISDN
+  return 1;
+}
+
 /**
  * Parse DLR from deliver_sm short_message
  * Format: "id:{msgId} sub:001 dlvrd:001 submit date:{date} done date:{date} stat:{status} err:{err} text:{text}"
@@ -357,34 +388,41 @@ function attemptBind(
           supplierConnections.set(key, conn);
 
           sess.on("deliver_sm", (pdu: any) => {
+            // ACK the deliver_sm immediately so the SMSC doesn't stall its window
+            try { sess.send(pdu.response({ message_id: "" })); } catch {}
             processSupplierDlr(tenantId, schemaName, supplierId, pdu).catch((err) => {
               console.error(`[SMPP-CLIENT] DLR processing error:`, err);
             });
           });
 
-          console.log(`[SMPP-CLIENT] BOUND to supplier ${supplierId} @ ${host}:${port} (SMPP ${vLabel})`);
+          console.log(`[SMPP-CLIENT] ✅ BOUND to supplier ${supplierId} @ ${host}:${port} (SMPP ${vLabel})`);
           updateSupplierBindStatus(schemaName, supplierId, "BOUND");
           resolve(0);
         } else {
           settled = true;
           const status = resp.command_status;
+          const statusLabel = statusDescription(status);
+          const smscSystemId = resp.system_id || "(none)";
+          console.error(`[SMPP-CLIENT] ❌ Bind REJECTED by ${host}:${port} — status=${status} (${statusLabel}), smsc_id="${smscSystemId}", our_id="${systemId}", version=0x${interfaceVersion.toString(16)}`);
           sess.close();
           resolve(status);
         }
       });
     });
 
-    sess.on("error", () => {
+    sess.on("error", (err: Error) => {
       if (settled) return;
       settled = true;
       sess.close();
-      reject(new Error(`TCP error connecting to ${host}:${port}`));
+      console.error(`[SMPP-CLIENT] ❌ TCP error connecting to ${host}:${port}: ${err.message}`);
+      reject(new Error(`TCP error connecting to ${host}:${port}: ${err.message}`));
     });
 
     sess.on("close", () => {
       if (settled) return;
       settled = true;
-      reject(new Error(`Connection closed during bind to ${host}:${port}`));
+      console.error(`[SMPP-CLIENT] ❌ Connection closed during bind to ${host}:${port} (no response from SMSC)`);
+      reject(new Error(`Connection closed during bind to ${host}:${port} (no response from SMSC)`));
     });
 
     setTimeout(() => {
@@ -505,7 +543,8 @@ async function doVersionFallback(
   const configuredHex = smppVersionToHex(smppVersion);
   const candidateVersions: { hex: number; label: string }[] = [];
   const seen = new Set<number>();
-  for (const h of [configuredHex, 0x34, 0x33]) {
+  // Try configured → 3.4 → 3.3 → 5.0 (full spectrum)
+  for (const h of [configuredHex, 0x34, 0x33, 0x50]) {
     if (!seen.has(h)) {
       seen.add(h);
       candidateVersions.push({ hex: h, label: hexToVersionLabel(h) });
@@ -530,7 +569,7 @@ async function doVersionFallback(
   }
 
   const statusList = failedStatuses.length > 0
-    ? failedStatuses.map((f) => `v${f.label}=${f.status}`).join(", ")
+    ? failedStatuses.map((f) => `v${f.label}=${statusDescription(f.status)}`).join(", ")
     : "unknown error";
   console.error(`[SMPP-CLIENT] All SMPP versions failed for supplier ${supplierId} @ ${host}:${port} (${statusList})`);
   updateSupplierBindStatus(schemaName, supplierId, "BIND_FAILED", `Rejected by SMSC [${statusList}]`);
@@ -585,7 +624,14 @@ function registerSessionHandlers(sess: any, sessKey: string) {
         reconnectToSupplier(tenantId, schemaName, supplierId);
       }, RECONNECT_INTERVAL);
     } else {
-      console.log(`[SMPP-CLIENT] TX_RX partial disconnect for supplier ${supplierId} (${sessKey}), sibling still active — holding`);
+      console.log(`[SMPP-CLIENT] TX_RX partial disconnect for supplier ${supplierId} (${sessKey}), sibling still active`);
+      // If the TX (transmitter) dropped, reconnect just the TX so outbound SMS works
+      if (sessKey.endsWith(":tx")) {
+        console.log(`[SMPP-CLIENT] TX_RX: transmitter dropped — reconnecting TX for supplier ${supplierId}`);
+        setTimeout(() => {
+          reconnectTxOnly(tenantId, schemaName, supplierId);
+        }, RECONNECT_INTERVAL);
+      }
     }
   });
 }
@@ -617,6 +663,56 @@ async function reconnectToSupplier(tenantId: number, schemaName: string, supplie
 }
 
 /**
+ * Reconnect only the TX (transmitter) leg in TX_RX mode.
+ * Called when TX drops but RX is still alive — avoids a full reconnect cycle.
+ */
+async function reconnectTxOnly(tenantId: number, schemaName: string, supplierId: number) {
+  // Guard: if RX also dropped by the time this timer fires, do a full reconnect instead
+  const rxKey = `${tenantId}:${supplierId}:rx`;
+  const rxConn = supplierConnections.get(rxKey);
+  if (!rxConn || rxConn.status !== "BOUND") {
+    console.log(`[SMPP-CLIENT] TX_RX: RX also down for supplier ${supplierId}, doing full reconnect`);
+    reconnectToSupplier(tenantId, schemaName, supplierId);
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query(`SET search_path TO "${schemaName}"`);
+    const { rows } = await client.query(
+      `SELECT host, port, username, password, system_id, bind_type, system_type, connection_mode, smpp_version
+       FROM suppliers WHERE id = $1 AND is_active = true AND deleted_at IS NULL`,
+      [supplierId]
+    );
+    if (rows.length === 0 || rows[0].connection_mode !== "CLIENT") return;
+    const s = rows[0];
+
+    // Only reconnect TX — RX is still alive
+    const txKey = `${tenantId}:${supplierId}:tx`;
+    console.log(`[SMPP-CLIENT] Reconnecting TX only for supplier ${supplierId} @ ${s.host}:${s.port}`);
+    const txOk = await doVersionFallback(
+      txKey, s.host, s.port, s.username || s.system_id, s.password,
+      "transmitter", s.system_type || "SMSC", s.smpp_version || "3.4",
+      supplierId, tenantId, schemaName
+    );
+    if (txOk) {
+      const txConn = supplierConnections.get(txKey);
+      if (txConn) registerSessionHandlers(txConn.session, txKey);
+      // Update bind_status back to BOUND since we recovered
+      updateSupplierBindStatus(schemaName, supplierId, "BOUND");
+      console.log(`[SMPP-CLIENT] TX_RX TX leg recovered for supplier ${supplierId}`);
+    } else {
+      console.error(`[SMPP-CLIENT] Failed to recover TX leg for supplier ${supplierId}`);
+    }
+  } catch (err) {
+    console.error(`[SMPP-CLIENT] TX-only reconnect error:`, err);
+  } finally {
+    await client.query(`SET search_path TO public`);
+    client.release();
+  }
+}
+
+/**
  * Send submit_sm through an active outbound supplier connection.
  * Returns the supplier-assigned message_id on success.
  */
@@ -640,7 +736,11 @@ export function sendViaSupplierConnection(
   return new Promise((resolve) => {
     conn.session.send(
       new smppLib.PDU("submit_sm", {
+        source_addr_ton: determineTon(source),
+        source_addr_npi: determineNpi(source),
         source_addr: source,
+        dest_addr_ton: determineTon(destination),
+        dest_addr_npi: determineNpi(destination),
         destination_addr: destination,
         short_message: { message: content },
         registered_delivery: 1,
@@ -691,7 +791,11 @@ export function sendViaSupplierServerSession(
     try {
       sess.session.send(
         new smppLib.PDU("submit_sm", {
+          source_addr_ton: determineTon(source),
+          source_addr_npi: determineNpi(source),
           source_addr: source,
+          dest_addr_ton: determineTon(destination),
+          dest_addr_npi: determineNpi(destination),
           destination_addr: destination,
           short_message: { message: content },
           registered_delivery: 1,  // request DLR
@@ -712,7 +816,11 @@ export function sendViaSupplierServerSession(
             try {
               sess.session.send(
                 new smppLib.PDU("deliver_sm", {
+                  source_addr_ton: determineTon(source),
+                  source_addr_npi: determineNpi(source),
                   source_addr: source,
+                  dest_addr_ton: determineTon(destination),
+                  dest_addr_npi: determineNpi(destination),
                   destination_addr: destination,
                   short_message: { message: content },
                   esm_class: 0,
