@@ -105,6 +105,12 @@ setInterval(() => {
 
 const RECONNECT_INTERVAL = 30000;
 const BIND_TIMEOUT = 10000;
+const MAX_RECONNECT_BACKOFF = 300000; // 5 minutes max backoff
+const ENQUIRE_LINK_PERIOD = 30000; // 30s keepalive
+
+// Track reconnect backoff per supplier to avoid tight loops
+const reconnectBackoffs: Map<string, number> = new Map();
+const reconnectTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
 /**
  * Convert smpp_version string to interface_version hex value.
@@ -355,7 +361,7 @@ function attemptBind(
   schemaName: string
 ): Promise<number> {
   return new Promise((resolve, reject) => {
-    const sess = smppLib.connect(`esms://${host}:${port}`);
+    const sess = smppLib.connect({ host, port, auto_enquire_link_period: ENQUIRE_LINK_PERIOD });
 
     const bindEvent = bindType === "transmitter"
       ? "bind_transmitter"
@@ -456,7 +462,7 @@ export async function connectToSupplier(
   systemId: string,
   password: string,
   bindType: string = "transceiver",
-  systemType: string = "SMSC",
+  systemType: string = "ESME",
   smppVersion: string = "3.4"
 ): Promise<boolean> {
   const key = `${tenantId}:${supplierId}`;
@@ -573,6 +579,13 @@ async function doVersionFallback(
     : "unknown error";
   console.error(`[SMPP-CLIENT] All SMPP versions failed for supplier ${supplierId} @ ${host}:${port} (${statusList})`);
   updateSupplierBindStatus(schemaName, supplierId, "BIND_FAILED", `Rejected by SMSC [${statusList}]`);
+  // Schedule persistent reconnect unless it's a permanent auth failure (wrong password or system_id)
+  const isAuthFailure = failedStatuses.some(f => f.status === 0x0D || f.status === 0x0E);
+  if (!isAuthFailure) {
+    scheduleReconnect(tenantId, schemaName, supplierId);
+  } else {
+    console.error(`[SMPP-CLIENT] Auth failure for supplier ${supplierId} — will NOT auto-retry (check credentials)`);
+  }
   return false;
 }
 
@@ -620,17 +633,20 @@ function registerSessionHandlers(sess: any, sessKey: string) {
 
     if (!hasSiblingSession()) {
       updateSupplierBindStatus(schemaName, supplierId, "UNBOUND", "Connection closed");
-      setTimeout(() => {
-        reconnectToSupplier(tenantId, schemaName, supplierId);
-      }, RECONNECT_INTERVAL);
+      // Reset backoff on clean disconnect — the SMSC may just be restarting
+      reconnectBackoffs.delete(`${tenantId}:${supplierId}`);
+      scheduleReconnect(tenantId, schemaName, supplierId);
     } else {
       console.log(`[SMPP-CLIENT] TX_RX partial disconnect for supplier ${supplierId} (${sessKey}), sibling still active`);
       // If the TX (transmitter) dropped, reconnect just the TX so outbound SMS works
       if (sessKey.endsWith(":tx")) {
         console.log(`[SMPP-CLIENT] TX_RX: transmitter dropped — reconnecting TX for supplier ${supplierId}`);
-        setTimeout(() => {
-          reconnectTxOnly(tenantId, schemaName, supplierId);
-        }, RECONNECT_INTERVAL);
+        scheduleReconnectTxOnly(tenantId, schemaName, supplierId);
+      }
+      // If the RX (receiver) dropped, reconnect just the RX so DLRs keep flowing
+      if (sessKey.endsWith(":rx")) {
+        console.log(`[SMPP-CLIENT] TX_RX: receiver dropped — reconnecting RX for supplier ${supplierId}`);
+        scheduleReconnectRxOnly(tenantId, schemaName, supplierId);
       }
     }
   });
@@ -648,14 +664,19 @@ async function reconnectToSupplier(tenantId: number, schemaName: string, supplie
     if (rows.length === 0 || rows[0].connection_mode !== "CLIENT") return;
     const s = rows[0];
     console.log(`[SMPP-CLIENT] Reconnecting to supplier ${supplierId} @ ${s.host}:${s.port}`);
-    await connectToSupplier(
+    const ok = await connectToSupplier(
       tenantId, schemaName, supplierId,
       s.host, s.port, s.username || s.system_id, s.password,
-      s.bind_type || "transceiver", s.system_type || "SMSC",
+      s.bind_type || "transceiver", s.system_type || "ESME",
       s.smpp_version || "3.4"
     );
+    // On success, reset backoff; on failure, scheduleReconnect was already called by doVersionFallback
+    if (ok) {
+      reconnectBackoffs.delete(`${tenantId}:${supplierId}`);
+    }
   } catch (err) {
     console.error(`[SMPP-CLIENT] Reconnect error:`, err);
+    scheduleReconnect(tenantId, schemaName, supplierId);
   } finally {
     await client.query(`SET search_path TO public`);
     client.release();
@@ -698,18 +719,121 @@ async function reconnectTxOnly(tenantId: number, schemaName: string, supplierId:
     if (txOk) {
       const txConn = supplierConnections.get(txKey);
       if (txConn) registerSessionHandlers(txConn.session, txKey);
-      // Update bind_status back to BOUND since we recovered
       updateSupplierBindStatus(schemaName, supplierId, "BOUND");
+      reconnectBackoffs.delete(`${tenantId}:${supplierId}`);
       console.log(`[SMPP-CLIENT] TX_RX TX leg recovered for supplier ${supplierId}`);
     } else {
       console.error(`[SMPP-CLIENT] Failed to recover TX leg for supplier ${supplierId}`);
+      scheduleReconnectTxOnly(tenantId, schemaName, supplierId);
     }
   } catch (err) {
     console.error(`[SMPP-CLIENT] TX-only reconnect error:`, err);
+    scheduleReconnectTxOnly(tenantId, schemaName, supplierId);
   } finally {
     await client.query(`SET search_path TO public`);
     client.release();
   }
+}
+
+/**
+ * Reconnect only the RX (receiver) leg in TX_RX mode.
+ * Called when RX drops but TX is still alive — keeps DLRs flowing.
+ */
+async function reconnectRxOnly(tenantId: number, schemaName: string, supplierId: number) {
+  const txKey = `${tenantId}:${supplierId}:tx`;
+  const txConn = supplierConnections.get(txKey);
+  if (!txConn || txConn.status !== "BOUND") {
+    console.log(`[SMPP-CLIENT] TX_RX: TX also down for supplier ${supplierId}, doing full reconnect`);
+    reconnectToSupplier(tenantId, schemaName, supplierId);
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query(`SET search_path TO "${schemaName}"`);
+    const { rows } = await client.query(
+      `SELECT host, port, username, password, system_id, bind_type, system_type, connection_mode, smpp_version
+       FROM suppliers WHERE id = $1 AND is_active = true AND deleted_at IS NULL`,
+      [supplierId]
+    );
+    if (rows.length === 0 || rows[0].connection_mode !== "CLIENT") return;
+    const s = rows[0];
+
+    const rxKey = `${tenantId}:${supplierId}:rx`;
+    console.log(`[SMPP-CLIENT] Reconnecting RX only for supplier ${supplierId} @ ${s.host}:${s.port}`);
+    const rxOk = await doVersionFallback(
+      rxKey, s.host, s.port, s.username || s.system_id, s.password,
+      "receiver", s.system_type || "SMSC", s.smpp_version || "3.4",
+      supplierId, tenantId, schemaName
+    );
+    if (rxOk) {
+      const rxConn = supplierConnections.get(rxKey);
+      if (rxConn) registerSessionHandlers(rxConn.session, rxKey);
+      updateSupplierBindStatus(schemaName, supplierId, "BOUND");
+      reconnectBackoffs.delete(`${tenantId}:${supplierId}`);
+      console.log(`[SMPP-CLIENT] TX_RX RX leg recovered for supplier ${supplierId}`);
+    } else {
+      console.error(`[SMPP-CLIENT] Failed to recover RX leg for supplier ${supplierId}`);
+      scheduleReconnectRxOnly(tenantId, schemaName, supplierId);
+    }
+  } catch (err) {
+    console.error(`[SMPP-CLIENT] RX-only reconnect error:`, err);
+    scheduleReconnectRxOnly(tenantId, schemaName, supplierId);
+  } finally {
+    await client.query(`SET search_path TO public`);
+    client.release();
+  }
+}
+
+/**
+ * Schedule a full reconnect with exponential backoff.
+ * Backoff: 30s → 60s → 120s → 240s → max 300s.
+ * Resets to 30s on successful reconnect.
+ */
+function scheduleReconnect(tenantId: number, schemaName: string, supplierId: number) {
+  const backoffKey = `${tenantId}:${supplierId}`;
+  const timerKey = `full:${backoffKey}`;
+
+  // Clear any existing reconnect timer for this supplier
+  const existing = reconnectTimers.get(timerKey);
+  if (existing) clearTimeout(existing);
+
+  const currentBackoff = reconnectBackoffs.get(backoffKey) || RECONNECT_INTERVAL;
+  const nextBackoff = Math.min(currentBackoff * 2, MAX_RECONNECT_BACKOFF);
+  reconnectBackoffs.set(backoffKey, nextBackoff);
+
+  console.log(`[SMPP-CLIENT] Scheduling reconnect for supplier ${supplierId} in ${currentBackoff / 1000}s`);
+  const timer = setTimeout(() => {
+    reconnectTimers.delete(timerKey);
+    reconnectToSupplier(tenantId, schemaName, supplierId);
+  }, currentBackoff);
+  reconnectTimers.set(timerKey, timer);
+}
+
+function scheduleReconnectTxOnly(tenantId: number, schemaName: string, supplierId: number) {
+  const timerKey = `tx:${tenantId}:${supplierId}`;
+  const existing = reconnectTimers.get(timerKey);
+  if (existing) clearTimeout(existing);
+
+  console.log(`[SMPP-CLIENT] Scheduling TX reconnect for supplier ${supplierId} in ${RECONNECT_INTERVAL / 1000}s`);
+  const timer = setTimeout(() => {
+    reconnectTimers.delete(timerKey);
+    reconnectTxOnly(tenantId, schemaName, supplierId);
+  }, RECONNECT_INTERVAL);
+  reconnectTimers.set(timerKey, timer);
+}
+
+function scheduleReconnectRxOnly(tenantId: number, schemaName: string, supplierId: number) {
+  const timerKey = `rx:${tenantId}:${supplierId}`;
+  const existing = reconnectTimers.get(timerKey);
+  if (existing) clearTimeout(existing);
+
+  console.log(`[SMPP-CLIENT] Scheduling RX reconnect for supplier ${supplierId} in ${RECONNECT_INTERVAL / 1000}s`);
+  const timer = setTimeout(() => {
+    reconnectTimers.delete(timerKey);
+    reconnectRxOnly(tenantId, schemaName, supplierId);
+  }, RECONNECT_INTERVAL);
+  reconnectTimers.set(timerKey, timer);
 }
 
 /**
@@ -1053,6 +1177,14 @@ async function updateSupplierBindStatus(schemaName: string, supplierId: number, 
  * Close and remove an active supplier connection
  */
 export function disconnectSupplier(tenantId: number, supplierId: number): boolean {
+  // Clear any pending reconnect timers for this supplier
+  for (const prefix of ["full:", "tx:", "rx:"]) {
+    const timerKey = `${prefix}${tenantId}:${supplierId}`;
+    const timer = reconnectTimers.get(timerKey);
+    if (timer) { clearTimeout(timer); reconnectTimers.delete(timerKey); }
+  }
+  reconnectBackoffs.delete(`${tenantId}:${supplierId}`);
+
   let closed = false;
   for (const suffix of ["", ":tx", ":rx"]) {
     const key = `${tenantId}:${supplierId}${suffix}`;
@@ -1089,7 +1221,7 @@ export async function initSupplierConnections() {
           connectToSupplier(
             t.id, t.schema_name, s.id,
             s.host, s.port, s.username || s.system_id, s.password,
-            s.bind_type || "transceiver", s.system_type || "SMSC",
+            s.bind_type || "transceiver", s.system_type || "ESME",
             s.smpp_version || "3.4"
           ).catch(() => {});
         }

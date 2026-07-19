@@ -22,7 +22,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     tenant.schemaName,
     `UPDATE suppliers SET 
       supplier_code=$1, name=$2, company_name=$3, contact_person=$4, email=$5, phone=$6,
-      connection_type=$7, host=$8, port=$9, username=$10, password=COALESCE(NULLIF($11, '••••••••'), password), system_id=$12,
+      connection_type=$7, host=$8, port=$9, username=COALESCE(NULLIF($10, ''), username), password=COALESCE(NULLIF($11, '••••••••'), password), system_id=$12,
       system_type=$13, smpp_version=$14, bind_type=$15, address_ton=$16, address_npi=$17,
       address_range=$18, inbound_mode=$19, api_url=$20, api_key=COALESCE(NULLIF($21, '••••••••'), api_key),
       currency=$22, initial_balance=$23, credit_limit=$24,

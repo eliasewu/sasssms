@@ -50,7 +50,7 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       company_name VARCHAR(255), contact_person VARCHAR(255), email VARCHAR(255),
       phone VARCHAR(50), connection_type VARCHAR(50) NOT NULL, connection_mode VARCHAR(20) DEFAULT 'CLIENT',
       host VARCHAR(255), port INTEGER DEFAULT 2775, username VARCHAR(255), password VARCHAR(255),
-      system_id VARCHAR(100), system_type VARCHAR(50), smpp_version VARCHAR(20) DEFAULT '3.4',
+      system_id VARCHAR(100), system_type VARCHAR(50) DEFAULT 'ESME', smpp_version VARCHAR(20) DEFAULT '3.4',
       bind_type VARCHAR(20) DEFAULT 'TRX', address_ton INTEGER DEFAULT 0, address_npi INTEGER DEFAULT 0,
       address_range VARCHAR(100), inbound_mode BOOLEAN DEFAULT false, api_url TEXT, api_key TEXT,
       currency VARCHAR(10) DEFAULT 'USD',
