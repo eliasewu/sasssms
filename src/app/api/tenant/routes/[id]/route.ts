@@ -19,6 +19,21 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     [body.name ?? '', body.trunkId ?? null, body.countryCode ?? null, body.prefix ?? null, body.priority ?? 1, body.isActive ?? true, id]
   );
 
+  // Update multiple trunks via route_trunks junction
+  if (body.trunkIds !== undefined) {
+    // Delete existing route_trunks entries and re-insert
+    await tenantQuery(tenant.schemaName, `DELETE FROM route_trunks WHERE route_id = $1`, [id]);
+    if (Array.isArray(body.trunkIds) && body.trunkIds.length > 0) {
+      for (let i = 0; i < body.trunkIds.length; i++) {
+        await tenantQuery(
+          tenant.schemaName,
+          `INSERT INTO route_trunks (route_id, trunk_id, priority) VALUES ($1, $2, $3)`,
+          [id, body.trunkIds[i], i + 1]
+        );
+      }
+    }
+  }
+
   await auditLog("routes", parseInt(id), "UPDATE", tenant.email, oldResult.rows[0] || {}, body, tenant.tenantId);
   revalidatePath('/dashboard/routes');
   return NextResponse.json({ route: result.rows[0] });

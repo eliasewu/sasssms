@@ -243,15 +243,20 @@ export async function POST(request: Request) {
   } else if (routePlanId) {
     const routeResult = await tenantQuery(
       tenant.schemaName,
-      `SELECT rpr.route_id, rpr.priority, r.name as route_name, r.trunk_id,
+      `SELECT rpr.priority as plan_priority, r.id as route_id, r.name as route_name,
+              r.trunk_id as single_trunk_id,
+              rt.priority as trunk_priority,
+              COALESCE(rt.trunk_id, r.trunk_id) as trunk_id,
               t.name as trunk_name, t.supplier_id, t.is_active as trunk_active,
               t.mcc_allow_list, t.mcc_deny_list,
               s.name as supplier_name, s.connection_type, s.is_active as supplier_active
        FROM route_plan_routes rpr
        JOIN routes r ON rpr.route_id = r.id AND r.is_active = true
-       JOIN trunks t ON r.trunk_id = t.id AND t.is_active = true
+       LEFT JOIN route_trunks rt ON rt.route_id = r.id AND rt.is_active = true
+       JOIN trunks t ON COALESCE(rt.trunk_id, r.trunk_id) = t.id AND t.is_active = true
        JOIN suppliers s ON t.supplier_id = s.id AND s.is_active = true
-       WHERE rpr.route_plan_id = $1 ORDER BY rpr.priority ASC`,
+       WHERE rpr.route_plan_id = $1
+       ORDER BY rpr.priority ASC, COALESCE(rt.priority, 0) ASC`,
       [routePlanId]
     );
     if (routeResult.rows.length === 0) {
@@ -271,7 +276,7 @@ export async function POST(request: Request) {
       supplierId: r.supplier_id as number,
       supplierName: r.supplier_name as string,
       connectionType: r.connection_type as string,
-      priority: r.priority as number,
+      priority: ((r.plan_priority as number) || 0) * 100 + ((r.trunk_priority as number) || 0),
     }));
   } else {
     return NextResponse.json({ error: "No route plan or route specified" }, { status: 400 });
@@ -711,7 +716,32 @@ export async function POST(request: Request) {
     } catch { /* use defaults */ }
   }
 
-  // Insert message (store original + translated values)
+  // ── Force DLR check BEFORE message INSERT — so correct status is stored immediately ──
+  let forceDlrApplied = false;
+  const clientForceDlr = !!(client.force_dlr);
+  let supplierForceDlr = false;
+
+  const actualSupplierId = deliveryResult?.routeUsed?.supplierId || (selectedRoute.supplier_id as number) || supplierId;
+  if (!clientForceDlr && actualSupplierId) {
+    try {
+      const suppCheck = await tenantQuery(
+        tenant.schemaName,
+        "SELECT force_dlr FROM suppliers WHERE id = $1",
+        [actualSupplierId]
+      );
+      supplierForceDlr = !!(suppCheck.rows[0]?.force_dlr);
+    } catch { /* proceed without */ }
+  }
+
+  console.log(`[FORCE-DLR-DEBUG] clientForceDlr=${clientForceDlr} supplierForceDlr=${supplierForceDlr} status=${status} dlrStatus=${dlrStatus} clientRaw=${client.force_dlr}`);
+
+  if ((clientForceDlr || supplierForceDlr) && status === "SENT" && dlrStatus === "PENDING") {
+    forceDlrApplied = true;
+    dlrStatus = "DELIVERED";
+    status = "DELIVERED";
+  }
+
+  // Insert message (store original + translated values, with force DLR status already applied)
   const msgResult = await tenantQuery(
     tenant.schemaName,
     `INSERT INTO messages (client_id, sender, destination, content, status,
@@ -739,6 +769,7 @@ export async function POST(request: Request) {
   );
 
   // Increment tenant SMS counter on success (tenant-level billing)
+  // ── Charge on submit: deduct SMS credit immediately ──
   if (deliveryResult?.success || isVoiceOtp || (isOttRoute && status === "SENT") || customApiSuccess) {
     if (tenantData) {
       await db
@@ -746,6 +777,24 @@ export async function POST(request: Request) {
         .set({ smsCounter: (tenantData.smsCounter || 0) + 1 })
         .where(eq(tenants.id, tenant.tenantId));
     }
+  }
+
+  // ── Force DLR: push immediate DELIVERED callback to external client ──
+  if (forceDlrApplied && dlrCallbackUrl) {
+    const forcePayload = {
+      message_id: messageId,
+      destination: origDestination,
+      source: origSender,
+      status: "DELIVERED",
+      cost: ratePerSms,
+      timestamp: new Date().toISOString(),
+      route_name: deliveryResult?.routeUsed?.routeName || (selectedRoute.route_name as string) || (selectedRoute.name as string),
+      supplier_name: deliveryResult?.routeUsed?.supplierName || (selectedRoute.supplier_name as string),
+      supplier_message_id: deliveryResult?.supplierMessageId || null,
+      force_dlr: true,
+    };
+    pushDlrToClient(dlrCallbackUrl, forcePayload).catch(() => {});
+    console.log(`[FORCE-DLR] Immediate DELIVERED pushed for ${messageId} (${clientForceDlr ? 'client' : 'supplier'} force_dlr)`);
   }
 
   return NextResponse.json({

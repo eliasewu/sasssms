@@ -83,6 +83,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
     title: "Tools",
     items: [
       { href: "/dashboard/bind-status", label: "Bind Status", icon: "🔌" },
+      { href: "/dashboard/dlr-status", label: "DLR Status", icon: "📬" },
       { href: "/dashboard/number-validation", label: "Number Validation", icon: "✅" },
       { href: "/dashboard/ip-list", label: "IP Whitelist", icon: "🛡️" },
       { href: "/dashboard/reports", label: "Reports", icon: "📈" },

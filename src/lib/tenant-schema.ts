@@ -89,6 +89,12 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       id SERIAL PRIMARY KEY, route_plan_id INTEGER NOT NULL, route_id INTEGER NOT NULL,
       priority INTEGER DEFAULT 1)`);
 
+    // route_trunks — junction table allowing one route to have multiple trunks
+    await createTable(`CREATE TABLE IF NOT EXISTS route_trunks (
+      id SERIAL PRIMARY KEY, route_id INTEGER NOT NULL, trunk_id INTEGER NOT NULL,
+      priority INTEGER DEFAULT 1, is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT NOW())`);
+
     // Seed default route plans so new tenants have routing options immediately.
     // Plain INSERT with try-catch: works with or without a UNIQUE constraint on name.
     const seedPlans = async (name: string) => {
