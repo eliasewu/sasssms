@@ -733,7 +733,6 @@ export async function POST(request: Request) {
     } catch { /* proceed without */ }
   }
 
-  console.log(`[FORCE-DLR-DEBUG] clientForceDlr=${clientForceDlr} supplierForceDlr=${supplierForceDlr} status=${status} dlrStatus=${dlrStatus} clientRaw=${client.force_dlr}`);
 
   if ((clientForceDlr || supplierForceDlr) && status === "SENT" && dlrStatus === "PENDING") {
     forceDlrApplied = true;
