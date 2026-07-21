@@ -68,15 +68,23 @@ export async function PUT(request: Request) {
   if (body.limitedPromoText !== undefined) await upsert("limited_promo_text", body.limitedPromoText);
   if (body.limitedPromoBadge !== undefined) await upsert("limited_promo_badge", body.limitedPromoBadge);
 
-  // Auto-sync to all tenants
+  // Server locations (stored as JSON in platform_settings)
+  if (body.serverLocations !== undefined) await upsert("server_locations", JSON.stringify(body.serverLocations));
+
+  // Auto-sync to all tenants (cost_per_sms + smpp_server_port only —
+  // individual tenant smpp_server_ip is NOT overwritten to preserve per-tenant assignments)
   let syncedCount = 0;
   if (body.syncToAllTenants) {
     const client = await pool.connect();
     try {
       const vals: string[] = [];
       if (body.globalCostPerSms) vals.push(`cost_per_sms = ${body.globalCostPerSms}`);
-      if (body.smppServerIp) vals.push(`smpp_server_ip = '${body.smppServerIp}'`);
       if (body.smppServerPort) vals.push(`smpp_server_port = ${body.smppServerPort}`);
+      // NOTE: smpp_server_ip is intentionally excluded from global sync.
+      // Each tenant gets their own server IP assigned at registration based on
+      // the server location they chose. Overwriting it globally would reset all
+      // tenants to the same IP (usually 0.0.0.0). Super admins can update
+      // individual tenant IPs via the tenant edit modal.
       if (vals.length > 0) {
         const { rowCount } = await client.query(`UPDATE tenants SET ${vals.join(", ")}, updated_at = NOW()`);
         syncedCount = rowCount || 0;

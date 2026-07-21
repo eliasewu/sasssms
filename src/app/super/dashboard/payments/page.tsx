@@ -14,6 +14,7 @@ interface Transaction {
   sms_amount: number;
   transaction_id: string;
   notes: string;
+  metadata: string | null;
   created_at: string;
 }
 
@@ -22,6 +23,7 @@ export default function PaymentApprovalsPage() {
   const [tab, setTab] = useState<"pending" | "completed" | "rejected">("pending");
   const [msg, setMsg] = useState("");
   const [reasons, setReasons] = useState<Record<number, string>>({});
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const statusMap: Record<string, string> = {
@@ -86,6 +88,7 @@ export default function PaymentApprovalsPage() {
               <th className="text-left px-4 py-3">Method</th>
               <th className="text-left px-4 py-3">SMS</th>
               <th className="text-left px-4 py-3">Status</th>
+              <th className="text-left px-4 py-3">Proof</th>
               <th className="text-left px-4 py-3">Date</th>
               {tab === "pending" && <th className="text-left px-4 py-3">Actions</th>}
             </tr>
@@ -102,6 +105,30 @@ export default function PaymentApprovalsPage() {
                 <td className="px-4 py-3">{t.payment_method?.replace(/_/g, " ")}</td>
                 <td className="px-4 py-3">{t.sms_amount?.toLocaleString() || "—"}</td>
                 <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs ${statusBadge(t.status)}`}>{t.status}</span></td>
+                <td className="px-4 py-3">
+                  {(() => {
+                    let meta: any = null;
+                    try { meta = t.metadata ? (typeof t.metadata === "string" ? JSON.parse(t.metadata) : t.metadata) : null; } catch {}
+                    if (meta?.proofUrl) {
+                      const isImage = /\.(png|jpg|jpeg|webp|gif)$/i.test(meta.proofUrl);
+                      if (isImage) {
+                        return (
+                          <img src={meta.proofUrl} alt="Payment proof"
+                            onClick={() => setLightboxUrl(meta.proofUrl)}
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                            className="w-14 h-10 object-cover rounded border cursor-pointer hover:ring-2 hover:ring-blue-400 hover:scale-105 transition-all" />
+                        );
+                      }
+                      return (
+                        <a href={meta.proofUrl} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 underline">
+                          📄 View PDF
+                        </a>
+                      );
+                    }
+                    return <span className="text-xs text-slate-400">—</span>;
+                  })()}
+                </td>
                 <td className="px-4 py-3 text-xs">{new Date(t.created_at).toLocaleDateString()}</td>
                 {tab === "pending" && (
                   <td className="px-4 py-3">
@@ -120,11 +147,25 @@ export default function PaymentApprovalsPage() {
               </tr>
             ))}
             {transactions.length === 0 && (
-              <tr><td colSpan={tab === "pending" ? 8 : 7} className="px-4 py-8 text-center text-slate-400">No {tab} payments.</td></tr>
+              <tr><td colSpan={tab === "pending" ? 9 : 8} className="px-4 py-8 text-center text-slate-400">No {tab} payments.</td></tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Lightbox for proof images */}
+      {lightboxUrl && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[70] p-8"
+          onClick={() => setLightboxUrl(null)}
+          onKeyDown={(e) => { if (e.key === "Escape") setLightboxUrl(null); }}
+          tabIndex={0}>
+          <img src={lightboxUrl} alt="Payment proof" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />
+          <button onClick={() => setLightboxUrl(null)}
+            className="absolute top-4 right-4 bg-white/20 hover:bg-white/40 text-white rounded-full w-10 h-10 flex items-center justify-center text-lg transition">
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }

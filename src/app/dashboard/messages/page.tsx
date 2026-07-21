@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useColumnFilters, FilterRow, FilterToggle, type ColumnFilterDef } from "@/components/column-filters";
+import { lookupMccSync, formatMccMnc, padMnc } from "@/lib/mcc-lookup-client";
 
 interface Message {
   id: number;
@@ -25,6 +26,12 @@ interface Message {
   message_id: string;
   campaign_id: number;
   created_at: string;
+  // Translation-related
+  original_destination?: string;
+  original_sender?: string;
+  original_content?: string;
+  supplier_cost?: string;
+  profit?: string;
   // Extended fields
   consumer_user?: string;
   alias?: string;
@@ -55,6 +62,7 @@ interface Message {
   dst_receiver?: string;
   mcc?: string;
   mnc?: string;
+  mccmnc?: string;
   send_time?: string;
   done_time?: string;
   duration?: number;
@@ -82,48 +90,71 @@ export default function DetailedSmsLogsPage() {
     if (filter.status) params.set("status", filter.status);
     if (filter.clientId) params.set("clientId", filter.clientId);
     const r = await fetch(`/api/tenant/messages?${params}`).then(r => r.json());
-    const msgs = (r.messages || []).map((m: Message) => ({
-      ...m,
-      consumer_user: m.client_name || `CL_${m.client_id}`,
-      alias: m.client_name || `CL_${m.client_id}`,
-      src_type: m.connection_type || "SMPP",
-      type: "SMS",
-      business_type: "Default type",
-      send_type: m.connection_type || "SMPP",
-      job_submit_success: m.status === "DELIVERED" || m.status === "SENT" ? 1 : 0,
-      job_submit_fail: m.status === "FAILED" ? 1 : 0,
-      deliver_success: m.dlr_status === "DELIVERED" ? 1 : 0,
-      deliver_fail: m.dlr_status === "FAILED" ? 1 : 0,
-      pay: (parseFloat(m.cost || "0") * 1.4).toFixed(6),
-      route_name: `VL_Route_${m.route_id || 0}`,
-      channel: `VL_Channel_${m.trunk_id || 0}`,
-      device: "",
-      ports: 0,
-      slot: 0,
-      iccid: "",
-      charged_points: 1,
-      send_result: m.status === "DELIVERED" || m.status === "SENT" ? "success" : "fail",
-      reason: m.status === "DELIVERED" ? "success" : m.status,
-      deliver_result: m.dlr_status === "DELIVERED" ? "Success" : m.dlr_status || "Pending",
-      deliver_fail_reason: m.dlr_status === "FAILED" ? "Delivery failed" : "",
-      deliver_time: m.dlr_timestamp || "",
-      deliver_dur: m.dlr_timestamp ? Math.floor(Math.random() * 20 + 2) : 0,
-      ori_receiver: `00${m.destination.replace(/^\+/, "")}`,
-      recipients: m.destination.replace(/^\+/, ""),
-      dst_receiver: m.destination.replace(/^\+/, ""),
-      mcc: m.destination.slice(0, 3).replace(/^\+/, ""),
-      mnc: "",
-      send_time: m.created_at,
-      done_time: m.created_at,
-      duration: 0,
-      supplier_user: `VL_Supplier_${m.supplier_id || 0}`,
-      in_msg_id: String(Date.now() - m.id * 1000),
-      out_msg_id: String(Date.now() - m.id * 500),
-      sms_bytes: (m.content || "").length,
-      dest_sms: m.content || "",
-      dest_sms_bytes: (m.content || "").length,
-      ip: "199.188.150.58",
-    }));
+
+    // Batch fetch MCC/MNC for all destinations
+    const destinations = (r.messages || []).map((m: Message) =>
+      (m as any).original_destination || m.destination
+    );
+    let mccMncMap: Record<string, { mcc: string; mnc: string; mccmnc: string; countryName: string | null; networkName: string | null }> = {};
+    if (destinations.length > 0) {
+      try {
+        const mncRes = await fetch("/api/tenant/mccmnc", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ numbers: [...new Set(destinations)] }),
+        }).then(r => r.json());
+        for (const entry of (mncRes.results || [])) {
+          mccMncMap[entry.number] = entry;
+        }
+      } catch { /* MCC/MNC lookup non-critical */ }
+    }
+
+    const msgs = (r.messages || []).map((m: Message) => {
+      const dest = (m as any).original_destination || m.destination;
+      const mncData = mccMncMap[dest] || lookupMccSync(dest);
+      return {
+        ...m,
+        consumer_user: m.client_name || `CL_${m.client_id}`,
+        alias: m.client_name || `CL_${m.client_id}`,
+        src_type: m.connection_type || "SMPP",
+        type: "SMS",
+        business_type: "Default type",
+        send_type: m.connection_type || "SMPP",
+        job_submit_success: m.status === "DELIVERED" || m.status === "SENT" ? 1 : 0,
+        job_submit_fail: m.status === "FAILED" ? 1 : 0,
+        deliver_success: m.dlr_status === "DELIVERED" ? 1 : 0,
+        deliver_fail: m.dlr_status === "FAILED" ? 1 : 0,
+        route_name: (m as any).route_name || (m as any).route_plan_name || `Route #${m.route_id || 0}`,
+        channel: (m as any).trunk_name || `Trunk #${m.trunk_id || 0}`,
+        device: "",
+        ports: 0,
+        slot: 0,
+        iccid: "",
+        charged_points: 1,
+        send_result: m.status === "DELIVERED" || m.status === "SENT" ? "success" : "fail",
+        reason: m.status === "DELIVERED" ? "success" : m.status,
+        deliver_result: m.dlr_status === "DELIVERED" ? "Success" : m.dlr_status || "Pending",
+        deliver_fail_reason: m.dlr_status === "FAILED" ? "Delivery failed" : "",
+        deliver_time: m.dlr_timestamp || "",
+        deliver_dur: m.dlr_timestamp ? Math.floor(Math.random() * 20 + 2) : 0,
+        ori_receiver: (m as any).original_destination || m.destination,
+        recipients: ((m as any).original_destination || m.destination).replace(/^\+/, ""),
+        dst_receiver: m.destination.replace(/^\+/, ""),
+        mcc: mncData.mcc,
+        mnc: mncData.mnc || "",
+        mccmnc: mncData.mccmnc || formatMccMnc(mncData.mcc, mncData.mnc),
+        send_time: m.created_at,
+        done_time: m.created_at,
+        duration: 0,
+        supplier_user: (m as any).supplier_name || `Supplier #${m.supplier_id || 0}`,
+        in_msg_id: String(Date.now() - m.id * 1000),
+        out_msg_id: String(Date.now() - m.id * 500),
+        sms_bytes: (m.content || "").length,
+        dest_sms: m.content || "",
+        dest_sms_bytes: (m.content || "").length,
+        ip: "199.188.150.58",
+      };
+    });
     setMessages(msgs);
     setTotal(r.total || 0);
   }, [page, filter]);
@@ -144,8 +175,10 @@ export default function DetailedSmsLogsPage() {
     { key: "sender", placeholder: "Sender..." },
     { key: "recipients", placeholder: "Recipient..." },
     { key: "content", placeholder: "Content..." },
-    { key: "cost", placeholder: "Cost..." },
-    { key: "pay", placeholder: "Pay..." },
+    { key: "mcc", placeholder: "MCC..." },
+    { key: "mnc", placeholder: "MNC..." },
+    { key: "cost", placeholder: "Rate..." },
+    { key: "supplier_cost", placeholder: "Supplier..." },
     { key: "route_name", placeholder: "Route..." },
     { key: "channel", placeholder: "Channel..." },
     { key: "send_result", placeholder: "Success / Fail..." },
@@ -182,8 +215,8 @@ export default function DetailedSmsLogsPage() {
         <div className="bg-white rounded-lg border p-3 text-center"><p className="text-lg font-bold text-blue-600">{messages.filter(m => m.send_result === 'success').length}</p><p className="text-[10px] text-slate-500">Sent OK</p></div>
         <div className="bg-white rounded-lg border p-3 text-center"><p className="text-lg font-bold text-green-600">{messages.filter(m => m.deliver_result === 'Success').length}</p><p className="text-[10px] text-slate-500">DLR OK</p></div>
         <div className="bg-white rounded-lg border p-3 text-center"><p className="text-lg font-bold text-red-600">{messages.filter(m => m.send_result === 'fail').length}</p><p className="text-[10px] text-slate-500">Failed</p></div>
-        <div className="bg-white rounded-lg border p-3 text-center"><p className="text-lg font-bold text-amber-600">${messages.reduce((s, m) => s + parseFloat(m.cost || "0"), 0).toFixed(4)}</p><p className="text-[10px] text-slate-500">Cost</p></div>
-        <div className="bg-white rounded-lg border p-3 text-center"><p className="text-lg font-bold text-purple-600">${messages.reduce((s, m) => s + parseFloat(m.pay || "0"), 0).toFixed(4)}</p><p className="text-[10px] text-slate-500">Pay</p></div>
+        <div className="bg-white rounded-lg border p-3 text-center"><p className="text-lg font-bold text-amber-600">${messages.reduce((s, m) => s + parseFloat(m.cost || "0"), 0).toFixed(4)}</p><p className="text-[10px] text-slate-500">Client Cost</p></div>
+        <div className="bg-white rounded-lg border p-3 text-center"><p className="text-lg font-bold text-purple-600">${messages.reduce((s, m) => s + parseFloat(m.supplier_cost || "0"), 0).toFixed(4)}</p><p className="text-[10px] text-slate-500">Supplier Cost</p></div>
         <div className="bg-white rounded-lg border p-3 text-center"><p className="text-lg font-bold text-slate-800">{new Set(messages.map(m => m.route_name)).size}</p><p className="text-[10px] text-slate-500">Routes</p></div>
         <div className="bg-white rounded-lg border p-3 text-center"><p className="text-lg font-bold text-slate-800">{new Set(messages.map(m => m.supplier_user)).size}</p><p className="text-[10px] text-slate-500">Suppliers</p></div>
       </div>
@@ -200,8 +233,10 @@ export default function DetailedSmsLogsPage() {
                 <th className="text-left px-2 py-2 font-medium text-slate-500">Sender</th>
                 <th className="text-left px-2 py-2 font-medium text-slate-500">Recipients</th>
                 <th className="text-left px-2 py-2 font-medium text-slate-500">Content</th>
-                <th className="text-left px-2 py-2 font-medium text-slate-500">Cost</th>
-                <th className="text-left px-2 py-2 font-medium text-slate-500">Pay</th>
+                <th className="text-left px-2 py-2 font-medium text-slate-500">MCC</th>
+                <th className="text-left px-2 py-2 font-medium text-slate-500">MNC</th>
+                <th className="text-left px-2 py-2 font-medium text-slate-500">Rate</th>
+                <th className="text-left px-2 py-2 font-medium text-slate-500">Supplier</th>
                 <th className="text-left px-2 py-2 font-medium text-slate-500">Route</th>
                 <th className="text-left px-2 py-2 font-medium text-slate-500">Channel</th>
                 <th className="text-left px-2 py-2 font-medium text-slate-500">Send</th>
@@ -220,8 +255,10 @@ export default function DetailedSmsLogsPage() {
                   <td className="px-2 py-2">{m.sender}</td>
                   <td className="px-2 py-2 font-mono text-[10px]">{m.recipients}</td>
                   <td className="px-2 py-2 max-w-[120px] truncate">{m.content}</td>
+                  <td className="px-2 py-2 font-mono text-[10px]">{m.mcc || "—"}</td>
+                  <td className="px-2 py-2 font-mono text-[10px]">{padMnc(m.mnc) || "—"}</td>
                   <td className="px-2 py-2 font-mono text-[10px]">${parseFloat(m.cost || "0").toFixed(6)}</td>
-                  <td className="px-2 py-2 font-mono text-[10px]">${parseFloat(m.pay || "0").toFixed(6)}</td>
+                  <td className="px-2 py-2 font-mono text-[10px]">${parseFloat(m.supplier_cost || "0").toFixed(6)}</td>
                   <td className="px-2 py-2 text-[10px] max-w-[120px] truncate" title={m.route_name}>{m.route_name}</td>
                   <td className="px-2 py-2 text-[10px] max-w-[100px] truncate">{m.channel}</td>
                   <td className="px-2 py-2">
@@ -277,8 +314,9 @@ export default function DetailedSmsLogsPage() {
 
                 {/* Cost & Routing */}
                 <div className="col-span-full grid grid-cols-4 gap-4 bg-slate-50 rounded-lg p-4">
-                  <DetailField label="Cost" value={`$${parseFloat(selectedMsg.cost || "0").toFixed(6)}`} />
-                  <DetailField label="Pay" value={`$${parseFloat(selectedMsg.pay || "0").toFixed(6)}`} />
+                  <DetailField label="Client Rate" value={`$${parseFloat(selectedMsg.cost || "0").toFixed(6)}`} />
+                  <DetailField label="Supplier Cost" value={`$${parseFloat(selectedMsg.supplier_cost || "0").toFixed(6)}`} />
+                  <DetailField label="Profit" value={`$${parseFloat(selectedMsg.profit || "0").toFixed(6)}`} />
                   <DetailField label="Route" value={selectedMsg.route_name} />
                   <DetailField label="Channel" value={selectedMsg.channel} />
                   <DetailField label="Device" value={selectedMsg.device || "—"} />
@@ -327,8 +365,9 @@ export default function DetailedSmsLogsPage() {
                   <DetailField label="Sender" value={selectedMsg.sender} />
                   <DetailField label="Recipients" value={selectedMsg.recipients} />
                   <DetailField label="Dst receiver" value={selectedMsg.dst_receiver} />
-                  <DetailField label="MCC" value={selectedMsg.mcc} />
-                  <DetailField label="MNC" value={selectedMsg.mnc || "—"} />
+                  <DetailField label="MCCMNC" value={selectedMsg.mccmnc || (selectedMsg.mcc ? formatMccMnc(selectedMsg.mcc, selectedMsg.mnc || "") : "—")} />
+                  <DetailField label="MCC" value={selectedMsg.mcc || "—"} />
+                  <DetailField label="MNC" value={padMnc(selectedMsg.mnc) || "—"} />
                 </div>
 
                 {/* Content */}

@@ -15,7 +15,9 @@ export async function GET(request: Request) {
 
   const client = await pool.connect();
   try {
-    let query = `SELECT id, mcc, mnc, country_code as "countryCode", country_name as "countryName", network_name as "networkName", language
+    let query = `SELECT id, mcc, mnc, mccmnc,
+                        country_code as "countryCode", country_name as "countryName",
+                        network_name as "networkName", language
                  FROM mcc_mnc_database`;
     const params: unknown[] = [];
 
@@ -70,8 +72,8 @@ export async function POST(request: Request) {
     }
 
     const { rows } = await client.query(
-      `INSERT INTO mcc_mnc_database (mcc, mnc, country_code, country_name, network_name, language)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      `INSERT INTO mcc_mnc_database (mcc, mnc, country_code, country_name, network_name, language, mccmnc)
+       VALUES ($1,$2,$3,$4,$5,$6, $1 || LPAD(COALESCE($2,''), 3, '0')) RETURNING *`,
       [mcc, mnc || null, countryCode, countryName, networkName || null, language || "English"]
     );
 

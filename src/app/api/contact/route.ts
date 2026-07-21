@@ -125,7 +125,8 @@ export async function POST(request: Request) {
     const sSubject = sanitize(subject);
     const sMessage = sanitize(message);
 
-    const adminEmails = ["admin@net2app.com", "elias.ewu@gmail.com"];
+    const adminEmails = ["elias.ewu@gmail.com", "admin@net2app.com"];
+    const whatsappNumber = "+971505380825";
     const phoneRow = sPhone
       ? `<tr><td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0; color: #64748b;"><strong>Phone:</strong></td><td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0; color: #0f172a;">${sPhone}</td></tr>`
       : "";
@@ -159,8 +160,9 @@ export async function POST(request: Request) {
               <p style="color: #0f172a; margin: 0; line-height: 1.6; white-space: pre-wrap;">${sMessage}</p>
             </div>
             ${ipRow}
+            ${sPhone ? `<tr><td style="padding: 10px 8px; color: #64748b;"><strong>WhatsApp:</strong></td><td style="padding: 10px 8px;"><a href="https://wa.me/971505380825" style="color: #25D366;">+971505380825</a></td></tr>` : ""}
             <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-            <p style="color: #94a3b8; font-size: 11px; text-align: center;">Sent via Net2APP Contact Form</p>
+            <p style="color: #94a3b8; font-size: 11px; text-align: center;">Sent via Net2APP Contact Form | WhatsApp: +971505380825</p>
           </div>
         </div>
       `,

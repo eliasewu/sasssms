@@ -3,7 +3,7 @@ import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 import { db } from "@/db";
 import { tenants } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { filterRoutesByTrunkMcc } from "@/lib/smpp-client";
 import type { RouteInfo } from "@/lib/smpp-client";
 import { getOnlineOttDevices, sendOttMessage } from "@/lib/ott-pairing-engine";
@@ -207,11 +207,10 @@ export async function POST(request: Request) {
     ]
   );
 
-  // Increment tenant SMS counter (track free usage)
-  await db
-    .update(tenants)
-    .set({ smsCounter: (tenantData?.smsCounter || 0) + 1 })
-    .where(eq(tenants.id, tenant.tenantId));
+  // Increment tenant SMS counter atomically (track free usage)
+  await db.execute(
+    sql`UPDATE tenants SET sms_counter = sms_counter + 1 WHERE id = ${tenant.tenantId}`
+  );
 
   const remainingCredits = Math.max(0, freeCredits - 1);
 

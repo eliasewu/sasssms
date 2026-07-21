@@ -42,6 +42,7 @@ export const tenants = pgTable("tenants", {
   packageExpiresAt: timestamp("package_expires_at"),
   smppServerIp: varchar("smpp_server_ip", { length: 100 }),
   smppServerPort: integer("smpp_server_port").default(2775),
+  serverLocation: varchar("server_location", { length: 50 }),
   costPerSms: decimal("cost_per_sms", { precision: 10, scale: 6 }).default("0.00025").notNull(),
   smsValidUntil: timestamp("sms_valid_until"),
   lastRechargeAt: timestamp("last_recharge_at"),
@@ -49,6 +50,7 @@ export const tenants = pgTable("tenants", {
   accountExpiresAt: timestamp("account_expires_at"),
   emailVerified: boolean("email_verified").default(false),
   phoneVerified: boolean("phone_verified").default(false),
+  autoRenewEnabled: boolean("auto_renew_enabled").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -193,10 +195,23 @@ export const mccMncDatabase = pgTable("mcc_mnc_database", {
   id: serial("id").primaryKey(),
   mcc: varchar("mcc", { length: 10 }).notNull(),
   mnc: varchar("mnc", { length: 10 }),
+  mccmnc: varchar("mccmnc", { length: 6 }),
   countryCode: varchar("country_code", { length: 10 }).notNull(),
   countryName: varchar("country_name", { length: 100 }).notNull(),
   networkName: varchar("network_name", { length: 100 }),
   networkType: varchar("network_type", { length: 50 }),
+});
+
+// ── MCC/MNC Prefix Map — maps phone number prefixes → MNC per country ──
+// Used to resolve MNC when MNC codes don't match phone prefixes directly
+// (e.g., Bangladesh MNC "02" (Robi) matches phone prefix "18", not "02")
+export const mccMncPrefixMap = pgTable("mcc_mnc_prefix_map", {
+  id: serial("id").primaryKey(),
+  mcc: varchar("mcc", { length: 10 }).notNull(),
+  mnc: varchar("mnc", { length: 10 }).notNull(),
+  prefix: varchar("prefix", { length: 20 }).notNull(),
+  countryName: varchar("country_name", { length: 100 }),
+  networkName: varchar("network_name", { length: 255 }),
 });
 
 // ── Proxy Config (global, per tenant) ──
@@ -234,8 +249,6 @@ export const clients = pgTable("clients", {
   maxTps: integer("max_tps"),
   billingMode: varchar("billing_mode", { length: 50 }).default("prepaid"),
   currency: varchar("currency", { length: 10 }).default("USD"),
-  balance: decimal("balance", { precision: 12, scale: 4 }).default("0").notNull(),
-  creditLimit: decimal("credit_limit", { precision: 12, scale: 4 }).default("0"),
   routePlanId: integer("route_plan_id"),
   isActive: boolean("is_active").default(true).notNull(),
   enableHttpApi: boolean("enable_http_api").default(false),
@@ -273,8 +286,6 @@ export const suppliers = pgTable("suppliers", {
   apiUrl: text("api_url"),
   apiKey: text("api_key"),
   currency: varchar("currency", { length: 10 }).default("USD"),
-  initialBalance: decimal("initial_balance", { precision: 12, scale: 4 }).default("0"),
-  creditLimit: decimal("credit_limit", { precision: 12, scale: 4 }).default("0"),
   forceDlr: boolean("force_dlr").default(false),
   isActive: boolean("is_active").default(true).notNull(),
   config: text("config"),
@@ -385,12 +396,13 @@ export const messages = pgTable("messages", {
   originalContent: text("original_content"),
   translationNotes: text("translation_notes"),
   dlrCallbackUrl: text("dlr_callback_url"),
+  lastDlrPollAt: timestamp("last_dlr_poll_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // ── Other tables ──
-export const clientRates = pgTable("client_rates", { id: serial("id").primaryKey(), clientId: integer("client_id").notNull(), countryCode: varchar("country_code", { length: 10 }).notNull(), mcc: varchar("mcc", { length: 10 }), mnc: varchar("mnc", { length: 10 }), operatorName: varchar("operator_name", { length: 255 }), rate: decimal("rate", { precision: 10, scale: 6 }).notNull(), isActive: boolean("is_active").default(true).notNull() });
-export const supplierRates = pgTable("supplier_rates", { id: serial("id").primaryKey(), supplierId: integer("supplier_id").notNull(), countryCode: varchar("country_code", { length: 10 }).notNull(), mcc: varchar("mcc", { length: 10 }), mnc: varchar("mnc", { length: 10 }), operatorName: varchar("operator_name", { length: 255 }), cost: decimal("cost", { precision: 10, scale: 6 }).notNull(), isActive: boolean("is_active").default(true).notNull() });
+export const clientRates = pgTable("client_rates", { id: serial("id").primaryKey(), clientId: integer("client_id").notNull(), countryCode: varchar("country_code", { length: 10 }).notNull(), mcc: varchar("mcc", { length: 10 }), mnc: varchar("mnc", { length: 10 }), mccmnc: varchar("mccmnc", { length: 6 }), operatorName: varchar("operator_name", { length: 255 }), rate: decimal("rate", { precision: 10, scale: 6 }).notNull(), isActive: boolean("is_active").default(true).notNull() });
+export const supplierRates = pgTable("supplier_rates", { id: serial("id").primaryKey(), supplierId: integer("supplier_id").notNull(), countryCode: varchar("country_code", { length: 10 }).notNull(), mcc: varchar("mcc", { length: 10 }), mnc: varchar("mnc", { length: 10 }), mccmnc: varchar("mccmnc", { length: 6 }), operatorName: varchar("operator_name", { length: 255 }), cost: decimal("cost", { precision: 10, scale: 6 }).notNull(), isActive: boolean("is_active").default(true).notNull() });
 export const smsInbox = pgTable("sms_inbox", { id: serial("id").primaryKey(), sender: varchar("sender", { length: 20 }).notNull(), destination: varchar("destination", { length: 20 }).notNull(), content: text("content").notNull(), supplierId: integer("supplier_id"), receivedAt: timestamp("received_at").defaultNow().notNull(), isRead: boolean("is_read").default(false) });
 export const campaigns = pgTable("campaigns", { id: serial("id").primaryKey(), name: varchar("name", { length: 255 }).notNull(), clientId: integer("client_id").notNull(), sender: varchar("sender", { length: 20 }).notNull(), content: text("content").notNull(), recipients: text("recipients"), totalCount: integer("total_count").default(0), sentCount: integer("sent_count").default(0), deliveredCount: integer("delivered_count").default(0), failedCount: integer("failed_count").default(0), status: varchar("status", { length: 20 }).default("DRAFT"), scheduledAt: timestamp("scheduled_at"), startedAt: timestamp("started_at"), completedAt: timestamp("completed_at"), createdAt: timestamp("created_at").defaultNow().notNull() });
 export const invoices = pgTable("invoices", { id: serial("id").primaryKey(), clientId: integer("client_id").notNull(), invoiceNumber: varchar("invoice_number", { length: 50 }).notNull(), amount: decimal("amount", { precision: 12, scale: 4 }).notNull(), tax: decimal("tax", { precision: 12, scale: 4 }).default("0"), totalAmount: decimal("total_amount", { precision: 12, scale: 4 }).notNull(), status: varchar("status", { length: 20 }).default("DRAFT").notNull(), periodStart: timestamp("period_start").notNull(), periodEnd: timestamp("period_end").notNull(), dueDate: timestamp("due_date").notNull(), notes: text("notes"), createdBy: varchar("created_by", { length: 255 }), createdForType: varchar("created_for_type", { length: 50 }), createdForId: integer("created_for_id"), createdForName: varchar("created_for_name", { length: 255 }), createdAt: timestamp("created_at").defaultNow().notNull() });
@@ -499,6 +511,8 @@ export const customApiConnectors = pgTable("custom_api_connectors", {
   dlrSuccessCondition: text("dlr_success_condition"),
   dlrStatusPath: text("dlr_status_path"),
   dlrDeliveredValue: varchar("dlr_delivered_value", { length: 100 }).default("Delivered"),
+  dlrPollSeconds: integer("dlr_poll_seconds").default(30),
+  dlrTimeoutSeconds: integer("dlr_timeout_seconds").default(3600),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

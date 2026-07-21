@@ -64,7 +64,12 @@ export async function syncAllBindStatus() {
           }
         }
 
-        // ── Suppliers ──
+        // ── Non-SMPP Suppliers: set to ACTIVE ──
+        await client.query(
+          "UPDATE suppliers SET bind_status = 'ACTIVE', updated_at = NOW() WHERE connection_type != 'SMPP' AND is_active = true AND bind_status != 'ACTIVE'"
+        );
+
+        // ── SMPP Suppliers ──
         const { rows: suppliers } = await client.query(
           "SELECT id, name, supplier_code, connection_mode, bind_status FROM suppliers WHERE connection_type = 'SMPP' AND is_active = true"
         );

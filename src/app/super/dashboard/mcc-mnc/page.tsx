@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { padMnc } from "@/lib/mcc-lookup-client";
 
 interface MccMnc { id: number; mcc: string; mnc: string; countryCode: string; countryName: string; networkName: string; }
 
@@ -366,7 +367,7 @@ export default function MccMncSuperPage() {
                   <td className="px-5 py-3 font-mono">
                     {isEditing
                       ? <input value={editValues.mnc} onChange={e => setEditValues({...editValues, mnc: e.target.value})} className="w-16 border border-blue-300 rounded px-1.5 py-0.5 text-xs font-mono" />
-                      : (d.mnc || "—")}
+                      : <span className="text-slate-600">{padMnc(d.mnc) || "—"}</span>}
                   </td>
                   <td className="px-5 py-3 font-medium">
                     {isEditing

@@ -25,15 +25,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       connection_type=$7, host=$8, port=$9, username=COALESCE(NULLIF($10, ''), username), password=COALESCE(NULLIF($11, '••••••••'), password), system_id=$12,
       system_type=$13, smpp_version=$14, bind_type=$15, address_ton=$16, address_npi=$17,
       address_range=$18, inbound_mode=$19, api_url=$20, api_key=COALESCE(NULLIF($21, '••••••••'), api_key),
-      currency=$22, initial_balance=$23, credit_limit=$24,
-      force_dlr=$25, is_active=$26, config=$27, updated_at=NOW()
-    WHERE id=$28 AND deleted_at IS NULL RETURNING *`,
+      currency=$22, force_dlr=$23, is_active=$24, config=$25, updated_at=NOW()
+    WHERE id=$26 AND deleted_at IS NULL RETURNING *`,
     [
       body.supplierCode ?? null, body.name ?? '', body.companyName ?? null, body.contactPerson ?? null, body.email ?? null, body.phone ?? null,
       body.connectionType ?? null, body.host ?? null, body.port ?? null, body.username ?? null, body.password ?? null, body.systemId ?? null,
       body.systemType ?? null, body.smppVersion ?? '3.4', body.bindType ?? 'TRX', body.addressTon ?? 0, body.addressNpi ?? 0,
       body.addressRange ?? null, body.inboundMode ?? false, body.apiUrl ?? null, body.apiKey ?? null,
-      body.currency ?? 'USD', body.initialBalance ?? '0', body.creditLimit ?? '0',
+      body.currency ?? 'USD',
       body.forceDlr ?? false, body.isActive ?? true, body.config ?? null, id
     ]
   );

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
+import { batchEnrichMccMnc } from "@/lib/rates";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,16 @@ export async function GET(request: Request) {
   const offset = parseInt(url.searchParams.get("offset") || "0");
   const source = url.searchParams.get("source"); // "test", "client", "campaign"
 
-  let query = `SELECT m.*, c.name as client_name FROM messages m LEFT JOIN clients c ON m.client_id = c.id WHERE 1=1`;
+  let query = `SELECT m.*, c.name as client_name,
+    rp.name as route_plan_name, r.name as route_name,
+    t.name as trunk_name, s.name as supplier_name
+    FROM messages m
+    LEFT JOIN clients c ON m.client_id = c.id
+    LEFT JOIN route_plans rp ON m.route_plan_id = rp.id
+    LEFT JOIN routes r ON m.route_id = r.id
+    LEFT JOIN trunks t ON m.trunk_id = t.id
+    LEFT JOIN suppliers s ON m.supplier_id = s.id
+    WHERE 1=1`;
   const params: (string | number)[] = [];
   let idx = 1;
 
@@ -34,6 +44,19 @@ export async function GET(request: Request) {
 
   const result = await tenantQuery(tenant.schemaName, query, params);
 
+  // Batch-enrich messages with MCC/MNC data using original_destination (or destination as fallback)
+  const dests = result.rows.map(
+    (m: Record<string, unknown>) => (m.original_destination as string) || (m.destination as string) || ""
+  );
+  const enrichedMap = await batchEnrichMccMnc(dests);
+  const messages = result.rows.map((m: Record<string, unknown>, i: number) => {
+    const enriched = enrichedMap.get(dests[i]);
+    if (enriched) {
+      return { ...m, mcc: enriched.mcc, mnc: enriched.mnc, country: enriched.countryName, operator: enriched.networkName };
+    }
+    return m;
+  });
+
   // Get total count
   let countQuery = `SELECT COUNT(*) as total FROM messages WHERE 1=1`;
   const countParams: (string | number)[] = [];
@@ -44,7 +67,7 @@ export async function GET(request: Request) {
   const countResult = await tenantQuery(tenant.schemaName, countQuery, countParams);
 
   return NextResponse.json({
-    messages: result.rows,
+    messages,
     total: parseInt(countResult.rows[0]?.total || "0"),
   });
 }

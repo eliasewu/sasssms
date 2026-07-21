@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       email: email.toLowerCase().trim(), passwordHash, name,
     }).returning();
 
-    // Packages: Starter=Free, Professional=$150/month no SMS charge, Enterprise=$400
+    // Packages: Starter=Free ($25 min top-up), Professional=$150/month (10M SMS), Enterprise=$399/month (Unlimited)
     await db.insert(packages).values([
       {
         name: "Starter", description: "Pay-as-you-go SMS platform",
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       },
       {
         name: "Enterprise", description: "Unlimited volume • All services included",
-        price: "0", monthlyFee: "400", smsCredits: 0, freeSmsPerMonth: true,
+        price: "0", monthlyFee: "399", smsCredits: 0, freeSmsPerMonth: true,
         requiresLicense: true,
         features: '["Everything in Pro","Unlimited TPS","Unlimited volume","All connection types","RCS & OTT","WhatsApp","White-label","24/7 support","SLA guarantee"]',
       },

@@ -44,7 +44,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   // Preserve existing API key unless explicitly being changed
   let httpApiKey: string | null = body.httpApiKey ?? (oldData.http_api_key as string) ?? null;
   if (enableHttpApi && smppUsername && smppPassword) {
+    // New password provided — derive fresh key
     httpApiKey = deriveApiKey(smppUsername, smppPassword);
+  } else if (enableHttpApi && smppUsername && !httpApiKey && !smppPassword) {
+    // Password masked on edit + no existing API key — derive from stored password
+    const storedPassword = (oldData.smpp_password as string) || null;
+    if (storedPassword) {
+      httpApiKey = deriveApiKey(smppUsername, storedPassword);
+    }
   }
 
   const result = await tenantQuery(
@@ -54,15 +61,15 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       country=$7, address=$8, connection_type=$9, smpp_username=$10,
       smpp_allowed_ip=$12, smpp_port=$13, smpp_system_type=$14, max_tps=$15,
       smpp_password=COALESCE(NULLIF($11, '••••••••'), smpp_password),
-      billing_mode=$16, currency=$17, balance=$18, credit_limit=$19,
-      route_plan_id=$20, is_active=$21, enable_http_api=$22, http_api_key=$23, force_dlr=$24,
-      dlr_timeout_mode=$25, dlr_timeout=$26, webhook_url=$27, updated_at=NOW()
-    WHERE id=$28 AND deleted_at IS NULL RETURNING *`,
+      billing_mode=$16, currency=$17,
+      route_plan_id=$18, is_active=$19, enable_http_api=$20, http_api_key=$21, force_dlr=$22,
+      dlr_timeout_mode=$23, dlr_timeout=$24, webhook_url=$25, updated_at=NOW()
+    WHERE id=$26 AND deleted_at IS NULL RETURNING *`,
     [
       body.clientCode ?? null, body.name ?? '', body.companyName ?? null, body.contactPerson ?? null, body.email ?? '', body.phone ?? '',
       body.country ?? null, body.address ?? null, body.connectionType ?? null, body.smppUsername ?? null, smppPassword,
       body.smppAllowedIp ?? null, body.smppPort ?? 2775, body.smppSystemType ?? null, body.maxTps ?? null,
-      body.billingMode ?? 'prepaid', body.currency ?? 'USD', body.balance ?? '0', body.creditLimit ?? '0',
+      body.billingMode ?? 'prepaid', body.currency ?? 'USD',
       body.routePlanId ?? null, body.isActive ?? true, body.enableHttpApi ?? false, httpApiKey, body.forceDlr ?? false,
       body.dlrTimeoutMode ?? null, body.dlrTimeout ?? null, body.webhookUrl ?? null, id
     ]

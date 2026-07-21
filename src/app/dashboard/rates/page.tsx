@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useMccMncLookups } from "@/hooks/useMccMncLookups";
 import type { MccMncEntry } from "@/hooks/useMccMncLookups";
+import { padMnc } from "@/lib/mcc-lookup-client";
 
 interface Rate { id: number; client_id?: number; supplier_id?: number; country_code: string; mcc: string; mnc: string; operator_name: string; rate: string; cost?: string; is_active?: boolean; updated_at?: string; }
 interface Client { id: number; name: string; }
@@ -296,7 +297,7 @@ export default function BulkRatesPage() {
                 {operators.map(op => (
                   <label key={op.id} className={`flex items-center gap-2 p-1.5 rounded hover:bg-slate-50 text-sm ${selectAllOps ? "opacity-70" : ""}`}>
                     <input type="checkbox" id={`op_${op.id}`} defaultChecked disabled={selectAllOps} className="accent-blue-600" />
-                    <span>{op.networkName} <span className="text-xs text-slate-400">MCC:{op.mcc}/{op.mnc || "—"}</span></span>
+                    <span>{op.networkName} <span className="text-xs text-slate-400">MCC:{op.mcc}/MNC:{padMnc(op.mnc) || "—"}</span></span>
                   </label>
                 ))}
               </div>
@@ -357,7 +358,9 @@ export default function BulkRatesPage() {
           </div>
           <div className="overflow-auto max-h-[600px]">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 sticky top-0"><tr><th className="text-left px-4 py-3">Country</th><th className="text-left px-4 py-3">Operator</th><th className="text-left px-4 py-3">MCC</th><th className="text-left px-4 py-3">MNC</th><th className="text-left px-4 py-3">Rate</th><th className="text-left px-4 py-3">Marked Up ({downloadPct}%)</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3 w-28">Actions</th></tr></thead>
+              <thead className="bg-slate-50 sticky top-0"><tr><th className="text-left px-4 py-3">Country</th><th className="text-left px-4 py-3">Operator</th><th className="text-left px-4 py-3">MCC</th><th className="text-left px-4 py-3">MNC</th><th className="text-left px-4 py-3">Rate</th><th className="text-left px-4 py-3">Marked Up ({downloadPct}%)</th>                      <th className="text-left px-4 py-3">Status</th>
+                      <th className="text-left px-4 py-3">Last Updated</th>
+                      <th className="text-left px-4 py-3 w-28">Actions</th></tr></thead>
               <tbody>
                 {filteredRates.map((r, i) => {
                   const rateVal = tab === "client" ? r.rate : (r.cost || r.rate);
@@ -368,7 +371,7 @@ export default function BulkRatesPage() {
                       <td className="px-4 py-2 font-medium">{countryByMcc.get(r.mcc) || countryNameMap.get(r.country_code) || r.country_code}</td>
                       <td className="px-4 py-2 text-xs">{r.operator_name}</td>
                       <td className="px-4 py-2 font-mono text-xs">{r.mcc}</td>
-                      <td className="px-4 py-2 font-mono text-xs">{r.mnc || "—"}</td>
+                      <td className="px-4 py-2 font-mono text-xs">{padMnc(r.mnc) || "—"}</td>
                       <td className="px-4 py-2 font-mono">
                         {isEditing ? (
                           <input
@@ -398,6 +401,9 @@ export default function BulkRatesPage() {
                           {flashFailId === r.id ? "Failed!" : r.is_active !== false ? "Active" : "Inactive"}
                         </button>
                       </td>
+                      <td className="px-4 py-2 text-xs text-slate-400">
+                        {r.updated_at ? new Date(r.updated_at).toLocaleString() : "—"}
+                      </td>
                       <td className="px-4 py-2">
                         {isEditing ? (
                           <div className="flex gap-1">
@@ -414,7 +420,7 @@ export default function BulkRatesPage() {
                     </tr>
                   );
                 })}
-                {filteredRates.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">{currentRates.length === 0 ? "No rates set. Use the form on the left to add rates per country &amp; operator from the MCC/MNC database." : `No ${statusFilter} rates match the current filter.`}</td></tr>}
+                {filteredRates.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">{currentRates.length === 0 ? "No rates set. Use the form on the left to add rates per country &amp; operator from the MCC/MNC database." : `No ${statusFilter} rates match the current filter.`}</td></tr>}
               </tbody>
             </table>
           </div>

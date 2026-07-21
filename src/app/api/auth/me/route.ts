@@ -29,6 +29,7 @@ export async function GET(request: Request) {
       packageExpiresAt: tenants.packageExpiresAt,
       smppServerIp: tenants.smppServerIp,
       smppServerPort: tenants.smppServerPort,
+      serverLocation: tenants.serverLocation,
       costPerSms: tenants.costPerSms,
       isActive: tenants.isActive,
       smppEnabled: tenants.smppEnabled,

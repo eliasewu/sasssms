@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useMccMncLookups } from "@/hooks/useMccMncLookups";
 import type { MccMncEntry } from "@/hooks/useMccMncLookups";
+import { padMnc } from "@/lib/mcc-lookup-client";
 
 interface ClientRate {
   id: number;
@@ -14,11 +15,13 @@ interface ClientRate {
   operator_name: string;
   rate: string;
   is_active: boolean;
+  updated_at?: string;
 }
 
 interface Client {
   id: number;
   name: string;
+  currency: string;
 }
 
 export default function ClientRatesPage() {
@@ -50,7 +53,6 @@ export default function ClientRatesPage() {
     setSelectedCountry(countryName);
     const ops = mccMncList.filter(d => d.countryName === countryName);
     setFilteredOperators(ops);
-    // Pre-fill country code from first match
     if (ops.length > 0) {
       setForm({ ...form, countryCode: ops[0].countryCode, mcc: "", mnc: "", operatorName: "" });
     }
@@ -121,7 +123,6 @@ export default function ClientRatesPage() {
       operatorName: r.operator_name || "",
       rate: r.rate,
     });
-    // Find the country name for display
     const countryName = mccMncList.find(d => d.countryCode === r.country_code)?.countryName || "";
     setSelectedCountry(countryName);
     if (countryName) {
@@ -169,7 +170,6 @@ export default function ClientRatesPage() {
   };
 
   const toggleActive = async (rateId: number, currentActive: boolean) => {
-    // Optimistic update
     setRates(prev => prev.map(r => r.id === rateId ? { ...r, is_active: !currentActive } : r));
     try {
       const res = await fetch(`/api/tenant/client-rates/${rateId}`, {
@@ -179,7 +179,6 @@ export default function ClientRatesPage() {
       });
       if (!res.ok) throw new Error("Toggle failed");
     } catch {
-      // Revert on failure
       setRates(prev => prev.map(r => r.id === rateId ? { ...r, is_active: currentActive } : r));
       setFlashFailId(rateId);
       setTimeout(() => setFlashFailId(null), 700);
@@ -241,7 +240,7 @@ export default function ClientRatesPage() {
                       }`}
                     >
                       <div className="font-medium text-slate-700">{op.networkName || op.mcc}</div>
-                      <div className="text-slate-400 font-mono">MCC:{op.mcc} {op.mnc ? `/ ${op.mnc}` : ""}</div>
+                      <div className="text-slate-400 font-mono">MCC:{op.mcc}/MNC:{padMnc(op.mnc) || "—"}</div>
                     </button>
                   ))}
                 </div>
@@ -292,29 +291,17 @@ export default function ClientRatesPage() {
               <th className="text-left px-5 py-3 text-slate-500 font-medium">MCC</th>
               <th className="text-left px-5 py-3 text-slate-500 font-medium">MNC</th>
               <th className="text-left px-5 py-3 text-slate-500 font-medium">Rate</th>
-              <th className="text-left px-5 py-3 text-slate-500 font-medium">
-                Status
-                {filteredRates.length > 0 && (
-                  <button
-                    onClick={bulkToggleActive}
-                    className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold transition border ${
-                      allActive
-                        ? "bg-green-50 border-green-200 text-green-700 hover:bg-red-50 hover:border-red-200 hover:text-red-700"
-                        : "bg-red-50 border-red-200 text-red-700 hover:bg-green-50 hover:border-green-200 hover:text-green-700"
-                    }`}
-                    title={allActive ? "Deactivate all visible rates" : "Activate all visible rates"}
-                  >
-                    {allActive ? "☑ All" : "☐ All"}
-                  </button>
-                )}
-              </th>
+              <th className="text-left px-5 py-3 text-slate-500 font-medium">Status</th>
+              <th className="text-left px-5 py-3 text-slate-500 font-medium">Last Updated</th>
               <th className="text-left px-5 py-3 text-slate-500 font-medium w-24">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {filteredRates.map((r) => (
+            {filteredRates.map((r) => {
+              const client = clients.find((c) => c.id === r.client_id);
+              return (
               <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50">
-                <td className="px-5 py-3 font-medium">{clients.find((c) => c.id === r.client_id)?.name || r.client_id}</td>
+                <td className="px-5 py-3 font-medium">{client?.name || r.client_id}</td>
                 <td className="px-5 py-3">
                   <span className="font-medium">{countryByMcc.get(r.mcc) || countryNameMap.get(r.country_code) || r.country_code}</span>
                   <span className="text-xs text-slate-400 ml-1">({r.country_code})</span>
@@ -323,7 +310,7 @@ export default function ClientRatesPage() {
                   <span className="font-medium">{r.operator_name || networkNameMap.get(r.mcc) || "—"}</span>
                 </td>
                 <td className="px-5 py-3 font-mono text-xs">{r.mcc}</td>
-                <td className="px-5 py-3 font-mono text-xs">{r.mnc || "—"}</td>
+                <td className="px-5 py-3 font-mono text-xs">{padMnc(r.mnc) || "—"}</td>
                 <td className="px-5 py-3 font-mono font-medium">${parseFloat(r.rate).toFixed(6)}</td>
                 <td className="px-5 py-3">
                   <button
@@ -338,14 +325,17 @@ export default function ClientRatesPage() {
                     {flashFailId === r.id ? "Failed!" : r.is_active ? "Active" : "Inactive"}
                   </button>
                 </td>
+                <td className="px-5 py-3 text-xs text-slate-400">
+                  {r.updated_at ? new Date(r.updated_at).toLocaleString() : "—"}
+                </td>
                 <td className="px-5 py-3">
                   <div className="flex gap-2">
                     <button onClick={() => handleEdit(r)} className="text-blue-600 hover:underline text-xs">Edit</button>
                   </div>
                 </td>
               </tr>
-            ))}
-            {filteredRates.length === 0 && <tr><td colSpan={8} className="px-5 py-8 text-center text-slate-400">{rates.length === 0 ? "No custom rates configured. Click \"+ Add Rate\" to set per-country rates using the MCC/MNC database." : `No ${statusFilter} rates match the current filter.`}</td></tr>}
+            )})}
+            {filteredRates.length === 0 && <tr><td colSpan={9} className="px-5 py-8 text-center text-slate-400">{rates.length === 0 ? "No custom rates configured. Click \"+ Add Rate\" to set per-country rates using the MCC/MNC database." : `No ${statusFilter} rates match the current filter.`}</td></tr>}
           </tbody>
         </table>
       </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useMccMncLookups } from "@/hooks/useMccMncLookups";
 import type { MccMncEntry } from "@/hooks/useMccMncLookups";
+import { padMnc } from "@/lib/mcc-lookup-client";
 
 interface SupplierRate {
   id: number;
@@ -15,7 +16,11 @@ interface SupplierRate {
   is_active: boolean;
 }
 
-interface Supplier { id: number; name: string; }
+interface Supplier {
+  id: number;
+  name: string;
+  currency: string;
+}
 
 export default function SupplierRatesPage() {
   const [rates, setRates] = useState<SupplierRate[]>([]);
@@ -231,7 +236,7 @@ export default function SupplierRatesPage() {
                       }`}
                     >
                       <div className="font-medium text-slate-700">{op.networkName || op.mcc}</div>
-                      <div className="text-slate-400 font-mono">MCC:{op.mcc} {op.mnc ? `/ ${op.mnc}` : ""}</div>
+                      <div className="text-slate-400 font-mono">MCC:{op.mcc}/MNC:{padMnc(op.mnc) || "—"}</div>
                     </button>
                   ))}
                 </div>
@@ -302,9 +307,11 @@ export default function SupplierRatesPage() {
             </tr>
           </thead>
           <tbody>
-            {filteredRates.map((r) => (
+            {filteredRates.map((r) => {
+              const supplier = suppliers.find((s) => s.id === r.supplier_id);
+              return (
               <tr key={r.id} className="border-b hover:bg-slate-50">
-                <td className="px-5 py-3 font-medium">{suppliers.find((s) => s.id === r.supplier_id)?.name || r.supplier_id}</td>
+                <td className="px-5 py-3 font-medium">{supplier?.name || r.supplier_id}</td>
                 <td className="px-5 py-3">
                   <span className="font-medium">{countryByMcc.get(r.mcc) || countryNameMap.get(r.country_code) || r.country_code}</span>
                   <span className="text-xs text-slate-400 ml-1">({r.country_code})</span>
@@ -313,7 +320,7 @@ export default function SupplierRatesPage() {
                   <span className="font-medium">{r.operator_name || networkNameMap.get(r.mcc) || "—"}</span>
                 </td>
                 <td className="px-5 py-3 font-mono text-xs">{r.mcc}</td>
-                <td className="px-5 py-3 font-mono text-xs">{r.mnc || "—"}</td>
+                <td className="px-5 py-3 font-mono text-xs">{padMnc(r.mnc) || "—"}</td>
                 <td className="px-5 py-3 font-mono font-medium">${parseFloat(r.cost).toFixed(6)}</td>
                 <td className="px-5 py-3">
                   <button
@@ -334,7 +341,7 @@ export default function SupplierRatesPage() {
                   </div>
                 </td>
               </tr>
-            ))}
+            )})}
             {filteredRates.length === 0 && <tr><td colSpan={8} className="px-5 py-8 text-center text-slate-400">{rates.length === 0 ? "No supplier rates. Use the form to add cost rates per country & operator from the MCC/MNC database." : `No ${statusFilter} rates match the current filter.`}</td></tr>}
           </tbody>
         </table>

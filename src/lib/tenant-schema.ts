@@ -30,7 +30,6 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       connection_type VARCHAR(100), smpp_username VARCHAR(100), smpp_password VARCHAR(100),
       smpp_allowed_ip VARCHAR(255), smpp_port INTEGER DEFAULT 2775, smpp_system_type VARCHAR(50),
       max_tps INTEGER, billing_mode VARCHAR(50) DEFAULT 'prepaid', currency VARCHAR(10) DEFAULT 'USD',
-      balance DECIMAL(12,4) DEFAULT 0, credit_limit DECIMAL(12,4) DEFAULT 0,
       route_plan_id INTEGER,
       is_active BOOLEAN DEFAULT true, enable_http_api BOOLEAN DEFAULT false,
       http_api_key VARCHAR(255), force_dlr BOOLEAN DEFAULT false, dlr_timeout_mode VARCHAR(50),
@@ -41,9 +40,9 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
 
     await createTable(`CREATE TABLE IF NOT EXISTS client_rates (
       id SERIAL PRIMARY KEY, client_id INTEGER NOT NULL, country_code VARCHAR(10) NOT NULL,
-      mcc VARCHAR(10), mnc VARCHAR(10), operator_name VARCHAR(255),
+      mcc VARCHAR(10), mnc VARCHAR(10), mccmnc VARCHAR(6), operator_name VARCHAR(255),
       rate DECIMAL(10,6) NOT NULL,
-      is_active BOOLEAN DEFAULT true)`);
+      is_active BOOLEAN DEFAULT true, updated_at TIMESTAMP DEFAULT NOW())`);
 
     await createTable(`CREATE TABLE IF NOT EXISTS suppliers (
       id SERIAL PRIMARY KEY, supplier_code VARCHAR(50), name VARCHAR(255) NOT NULL,
@@ -54,7 +53,6 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       bind_type VARCHAR(20) DEFAULT 'TRX', address_ton INTEGER DEFAULT 0, address_npi INTEGER DEFAULT 0,
       address_range VARCHAR(100), inbound_mode BOOLEAN DEFAULT false, api_url TEXT, api_key TEXT,
       currency VARCHAR(10) DEFAULT 'USD',
-      initial_balance DECIMAL(12,4) DEFAULT 0, credit_limit DECIMAL(12,4) DEFAULT 0,
       force_dlr BOOLEAN DEFAULT false, is_active BOOLEAN DEFAULT true, config TEXT,
       bind_status VARCHAR(20) DEFAULT 'UNBOUND', last_bind_time TIMESTAMP,
       updated_at TIMESTAMP DEFAULT NOW(), deleted_at TIMESTAMP, deleted_by VARCHAR(255),
@@ -62,9 +60,9 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
 
     await createTable(`CREATE TABLE IF NOT EXISTS supplier_rates (
       id SERIAL PRIMARY KEY, supplier_id INTEGER NOT NULL, country_code VARCHAR(10) NOT NULL,
-      mcc VARCHAR(10), mnc VARCHAR(10), operator_name VARCHAR(255),
+      mcc VARCHAR(10), mnc VARCHAR(10), mccmnc VARCHAR(6), operator_name VARCHAR(255),
       cost DECIMAL(10,6) NOT NULL,
-      is_active BOOLEAN DEFAULT true)`);
+      is_active BOOLEAN DEFAULT true, updated_at TIMESTAMP DEFAULT NOW())`);
 
     await createTable(`CREATE TABLE IF NOT EXISTS trunks (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, supplier_id INTEGER NOT NULL,
@@ -121,6 +119,10 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       otp_code VARCHAR(10), language VARCHAR(50), message_id VARCHAR(100),
       campaign_id INTEGER, log_type VARCHAR(20) DEFAULT 'client',
       submit_result VARCHAR(20), dlr_callback_url TEXT,
+      original_sender VARCHAR(50), original_destination VARCHAR(50),
+      original_content TEXT, translation_notes TEXT,
+      supplier_message_id VARCHAR(255),
+      last_dlr_poll_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT NOW())`);
 
     await createTable(`CREATE TABLE IF NOT EXISTS sms_inbox (
@@ -271,7 +273,48 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       dlr_url_template TEXT, dlr_method VARCHAR(10) DEFAULT 'GET',
       dlr_success_condition TEXT, dlr_status_path TEXT,
       dlr_delivered_value VARCHAR(100) DEFAULT 'Delivered',
+      dlr_poll_seconds INTEGER DEFAULT 30,
+      dlr_timeout_seconds INTEGER DEFAULT 3600,
       is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`);
+
+    // ── MCC/MNC-based Translation Engine ──
+    await createTable(`CREATE TABLE IF NOT EXISTS translation_profiles (
+      id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL,
+      target_field VARCHAR(20) NOT NULL DEFAULT 'SENDER',
+      mode VARCHAR(20) NOT NULL DEFAULT 'FIXED',
+      category VARCHAR(30) DEFAULT 'SID',
+      match_pattern TEXT DEFAULT '.*',
+      replacement_fixed TEXT,
+      mcc VARCHAR(10), mnc VARCHAR(10),
+      sort_order INTEGER DEFAULT 0,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT NOW())`);
+
+    await createTable(`CREATE TABLE IF NOT EXISTS translation_pool_items (
+      id SERIAL PRIMARY KEY, profile_id INTEGER NOT NULL,
+      replacement_value TEXT NOT NULL)`);
+
+    await createTable(`CREATE TABLE IF NOT EXISTS translation_assignments (
+      id SERIAL PRIMARY KEY, profile_id INTEGER NOT NULL,
+      client_id INTEGER, supplier_id INTEGER,
+      priority INTEGER DEFAULT 1, is_active BOOLEAN DEFAULT true)`);
+
+    // ── OTP Extract & Forward ──
+    await createTable(`CREATE TABLE IF NOT EXISTS otp_extract_rules (
+      id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL,
+      mcc VARCHAR(10), mnc VARCHAR(10),
+      regex_pattern TEXT NOT NULL, otp_group_index INTEGER DEFAULT 1,
+      forward_supplier_id INTEGER, forward_sender VARCHAR(20),
+      forward_template TEXT DEFAULT '{otp}', is_active BOOLEAN DEFAULT true,
+      sort_order INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`);
+
+    await createTable(`CREATE TABLE IF NOT EXISTS otp_forward_logs (
+      id SERIAL PRIMARY KEY, rule_id INTEGER, inbox_message_id INTEGER,
+      original_sender VARCHAR(20), original_content TEXT,
+      extracted_otp VARCHAR(20), destination VARCHAR(20),
+      forward_status VARCHAR(30), forward_message_id VARCHAR(100),
+      error_message TEXT, created_at TIMESTAMP DEFAULT NOW())`);
 
     // Seed 80+ API connectors into new tenant
     const connectorSQL = `
@@ -548,5 +591,68 @@ export async function syncSmppUsernameChange(
   // Register new username in index (if provided)
   if (newUsername) {
     await registerSmppUsername(newUsername, tenantId, clientId, schemaName);
+  }
+}
+
+/**
+ * Seed MCC/MNC rate entries from the global mcc_mnc_database into a
+ * new tenant's client_rates and supplier_rates tables. Uses client_id=-1
+ * and supplier_id=-1 as placeholder entries (shared default rates).
+ * Called automatically on tenant registration.
+ */
+export async function seedMccMncRates(schemaName: string): Promise<void> {
+  const client = await pool.connect();
+  try {
+    // Fetch all MCC/MNC entries from global database
+    await client.query("SET search_path TO public");
+    const { rows: mccEntries } = await client.query(
+      "SELECT mcc, mnc, country_code, country_name, network_name FROM mcc_mnc_database ORDER BY country_name, network_name"
+    );
+    if (mccEntries.length === 0) return;
+
+    // Switch to tenant schema to insert
+    await client.query(`SET search_path TO "${schemaName}"`);
+
+    let inserted = 0;
+    let skipped = 0;
+
+    // Insert into client_rates (placeholder client_id = -1 for shared defaults)
+    for (const entry of mccEntries) {
+      try {
+        const { rowCount } = await client.query(
+          `INSERT INTO client_rates (client_id, country_code, mcc, mnc, operator_name, rate, mccmnc)
+           SELECT -1, $1, $2, $3, $4, 0.00025, $2 || LPAD(COALESCE($3,''), 3, '0')
+           WHERE NOT EXISTS (
+             SELECT 1 FROM client_rates
+             WHERE country_code = $1 AND mcc = $2 AND COALESCE(mnc,'') = COALESCE($3,'')
+           )`,
+          [entry.country_code, entry.mcc, entry.mnc || null, entry.network_name || null]
+        );
+        if (rowCount && rowCount > 0) inserted++; else skipped++;
+      } catch { skipped++; }
+    }
+
+    // Insert into supplier_rates (placeholder supplier_id = -1 for shared defaults)
+    for (const entry of mccEntries) {
+      try {
+        const { rowCount } = await client.query(
+          `INSERT INTO supplier_rates (supplier_id, country_code, mcc, mnc, operator_name, cost, mccmnc)
+           SELECT -1, $1, $2, $3, $4, 0.00020, $2 || LPAD(COALESCE($3,''), 3, '0')
+           WHERE NOT EXISTS (
+             SELECT 1 FROM supplier_rates
+             WHERE country_code = $1 AND mcc = $2 AND COALESCE(mnc,'') = COALESCE($3,'')
+           )`,
+          [entry.country_code, entry.mcc, entry.mnc || null, entry.network_name || null]
+        );
+        if (rowCount && rowCount > 0) inserted++; else skipped++;
+      } catch { skipped++; }
+    }
+
+    await client.query("SET search_path TO public");
+    console.log(`[TENANT] Seeded MCC/MNC rates for ${schemaName}: ${inserted} inserted, ${skipped} skipped`);
+  } catch (e) {
+    console.error(`[TENANT] MCC/MNC rate seeding failed for ${schemaName}:`, (e as Error).message);
+  } finally {
+    client.release();
   }
 }

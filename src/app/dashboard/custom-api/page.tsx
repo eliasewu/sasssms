@@ -18,6 +18,8 @@ interface Connector {
   dlr_success_condition?: string;
   dlr_status_path?: string;
   dlr_delivered_value?: string;
+  dlr_poll_seconds?: number;
+  dlr_timeout_seconds?: number;
   is_active: boolean;
   provider?: string;
   region?: string;
@@ -50,7 +52,7 @@ export default function CustomApiConnectorsPage() {
   // Form state
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState<Record<string, string>>({ type: "HTTP_API", send_method: "GET", dlr_method: "GET" });
+  const [form, setForm] = useState<Record<string, string>>({ type: "HTTP_API", send_method: "GET", dlr_method: "GET", dlr_poll_seconds: "30", dlr_timeout_seconds: "3600" });
   const [saving, setSaving] = useState(false);
 
   // Test state
@@ -111,9 +113,9 @@ export default function CustomApiConnectorsPage() {
       send_message_id_path: aiResult.sendMessageIdPath || "",
       dlr_url_template: aiResult.dlrUrlTemplate || "",
       dlr_method: aiResult.dlrMethod || "GET",
-      dlr_success_condition: aiResult.dlrSuccessCondition || "",
-      dlr_status_path: aiResult.dlrStatusPath || "",
-      dlr_delivered_value: aiResult.dlrDeliveredValue || "Delivered",
+      dlr_success_condition: aiResult.dlrSuccessCondition || "",      dlr_status_path: aiResult.dlrStatusPath || "", dlr_delivered_value: aiResult.dlrDeliveredValue || "Delivered",
+      dlr_poll_seconds: aiResult.dlrPollSeconds || "30",
+      dlr_timeout_seconds: aiResult.dlrTimeoutSeconds || "3600",
       name: aiResult.name || "",
     });
     setAiRaw("");
@@ -134,6 +136,8 @@ export default function CustomApiConnectorsPage() {
         dlrUrlTemplate: form.dlr_url_template || "", dlrMethod: form.dlr_method || "GET",
         dlrSuccessCondition: form.dlr_success_condition || "",
         dlrStatusPath: form.dlr_status_path || "", dlrDeliveredValue: form.dlr_delivered_value || "Delivered",
+        dlrPollSeconds: form.dlr_poll_seconds || "30",
+        dlrTimeoutSeconds: form.dlr_timeout_seconds || "3600",
       };
       const method = editingId ? "PUT" : "POST";
       const url = editingId
@@ -147,7 +151,7 @@ export default function CustomApiConnectorsPage() {
       });
       setShowForm(false);
       setEditingId(null);
-      setForm({ type: "HTTP_API", send_method: "GET", dlr_method: "GET" });
+      setForm({ type: "HTTP_API", send_method: "GET", dlr_method: "GET", dlr_poll_seconds: "30", dlr_timeout_seconds: "3600" });
       fetchConnectors();
     } catch { /* ignore */ }
     finally { setSaving(false); }
@@ -164,6 +168,8 @@ export default function CustomApiConnectorsPage() {
       dlr_url_template: conn.dlr_url_template || "", dlr_method: conn.dlr_method || "GET",
       dlr_success_condition: conn.dlr_success_condition || "",
       dlr_status_path: conn.dlr_status_path || "", dlr_delivered_value: conn.dlr_delivered_value || "Delivered",
+      dlr_poll_seconds: String(conn.dlr_poll_seconds ?? 30),
+      dlr_timeout_seconds: String(conn.dlr_timeout_seconds ?? 3600),
     });
     setShowForm(true);
   };
@@ -228,6 +234,8 @@ export default function CustomApiConnectorsPage() {
       dlr_success_condition: "",
       dlr_status_path: "",
       dlr_delivered_value: "Delivered",
+      dlr_poll_seconds: "30",
+      dlr_timeout_seconds: "3600",
     });
     setShowForm(true);
     setTab("custom");
@@ -312,6 +320,8 @@ export default function CustomApiConnectorsPage() {
               { label: "DLR Success Condition", field: "dlr_success_condition", placeholder: "response.code == 200" },
               { label: "DLR Status Path", field: "dlr_status_path", placeholder: "info.status" },
               { label: "DLR Delivered Value", field: "dlr_delivered_value", placeholder: "Delivered" },
+              { label: "DLR Poll Seconds", field: "dlr_poll_seconds", placeholder: "30" },
+              { label: "DLR Timeout Seconds", field: "dlr_timeout_seconds", placeholder: "3600" },
             ].map(({ label, field, placeholder }) => (
               <div key={field} className={field === "send_url_template" || field === "dlr_url_template" ? "col-span-2" : ""}>
                 <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>

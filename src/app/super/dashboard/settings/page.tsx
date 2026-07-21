@@ -8,6 +8,9 @@ interface PaymentGateway {
   credentials: string; qr_code_url: string | null; wallet_address: string | null;
   network: string | null; min_amount: string;
 }
+interface ServerLocation {
+  id: string; country: string; city: string; countryCodes: string; ipAddress: string; port: number; isActive: boolean;
+}
 
 const PAYMENT_METHODS = [
   { value: "stripe", label: "Stripe (Visa/Mastercard)", icon: "💳" },
@@ -46,6 +49,16 @@ export default function SuperSettingsPage() {
   const [promoTitle, setPromoTitle] = useState("Limited Time Offer");
   const [promoText, setPromoText] = useState("First Starter payment of 250,000 → Get +100,000 bonus SMS!");
   const [promoBadge, setPromoBadge] = useState("+100,000 Bonus SMS");
+  // Server locations
+  const [serverLocations, setServerLocations] = useState<ServerLocation[]>([
+    { id: "canada", country: "Canada", city: "Toronto", countryCodes: "US,CA,MX", ipAddress: "", port: 2775, isActive: true },
+    { id: "poland", country: "Poland", city: "Warsaw", countryCodes: "PL,CZ,SK,HU,UA,RO,BG,LT,LV,EE,HR,SI,RS,BY,MD", ipAddress: "", port: 2775, isActive: true },
+    { id: "france", country: "France", city: "Paris", countryCodes: "FR,DE,GB,ES,IT,NL,BE,CH,AT,LU,IE,PT,DK,NO,SE,FI", ipAddress: "", port: 2775, isActive: true },
+    { id: "usa", country: "USA", city: "New York", countryCodes: "", ipAddress: "", port: 2775, isActive: true },
+    { id: "germany", country: "Germany", city: "Frankfurt", countryCodes: "DE,AT,CH,CZ,SK,HU", ipAddress: "", port: 2775, isActive: false },
+    { id: "uk", country: "United Kingdom", city: "London", countryCodes: "GB,IE,PT,ES,FR,NL,BE", ipAddress: "", port: 2775, isActive: false },
+    { id: "singapore", country: "Singapore", city: "Singapore", countryCodes: "SG,MY,ID,TH,VN,PH,IN,BD,PK", ipAddress: "", port: 2775, isActive: false },
+  ]);
 
   const detectIp = async () => {
     try {
@@ -72,6 +85,10 @@ export default function SuperSettingsPage() {
     if (r.settings?.limited_promo_title) setPromoTitle(r.settings.limited_promo_title);
     if (r.settings?.limited_promo_text) setPromoText(r.settings.limited_promo_text);
     if (r.settings?.limited_promo_badge) setPromoBadge(r.settings.limited_promo_badge);
+    // Server locations
+    if (r.settings?.server_locations) {
+      try { const locs = JSON.parse(r.settings.server_locations); setServerLocations(locs); } catch {}
+    }
     setGateways(r.payments || []);
   }, []);
 
@@ -95,6 +112,7 @@ export default function SuperSettingsPage() {
         limitedPromoTitle: promoTitle,
         limitedPromoText: promoText,
         limitedPromoBadge: promoBadge,
+        serverLocations: serverLocations,
         syncToAllTenants: true,  // ← triggers auto-sync
       }),
     });
@@ -379,6 +397,116 @@ export default function SuperSettingsPage() {
           className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold disabled:opacity-50 hover:bg-blue-700 shadow-lg">
           {saving ? "Saving & Syncing All Tenants..." : "💾 Save & Sync All Settings to All Tenants"}
         </button>
+      </div>
+
+      {/* Server Locations */}
+      <div className="bg-white rounded-xl border p-6 shadow-sm">
+        <div className="flex justify-between items-center mb-4">
+          <div><h3 className="font-semibold text-lg">🌍 Server Locations</h3><p className="text-sm text-slate-500">Add/remove server locations. Country codes determine GeoIP auto-detection mapping.</p></div>
+          <button onClick={() => {
+            const newId = prompt("Location ID (e.g. singapore):");
+            if (!newId) return;
+            const country = prompt("Country name (e.g. Singapore):");
+            if (!country) return;
+            setServerLocations([...serverLocations, { id: newId.toLowerCase().replace(/[^a-z0-9]/g,'_'), country, city: "", countryCodes: "", ipAddress: "", port: 2775, isActive: true }]);
+          }} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700">+ Add Location</button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {serverLocations.map((loc, idx) => {
+            // Generate flag emoji from first country code
+            const firstCC = (loc.countryCodes || "").split(",")[0]?.trim().toUpperCase();
+            const flag = firstCC ? String.fromCodePoint(...[...firstCC].map(c => 0x1F1E6 + c.charCodeAt(0) - 65)) : "🌍";
+            return (
+            <div key={loc.id} className={`border rounded-xl p-4 ${loc.isActive ? "border-green-200 bg-white" : "border-slate-200 bg-slate-50 opacity-70"}`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{flag}</span>
+                  <div>
+                    <p className="font-semibold text-sm">{loc.country} — {loc.city || "No city set"}</p>
+                    <p className="text-xs text-slate-400">ID: {loc.id}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" checked={loc.isActive}
+                      onChange={e => {
+                        const updated = [...serverLocations];
+                        updated[idx] = { ...loc, isActive: e.target.checked };
+                        setServerLocations(updated);
+                      }}
+                      className="accent-green-500 w-4 h-4" />
+                    <span className="text-xs text-slate-500">Active</span>
+                  </label>
+                  <button onClick={async () => {
+                    if (!await confirmDelete(`Remove "${loc.country}" server location?`)) return;
+                    setServerLocations(serverLocations.filter((_, i) => i !== idx));
+                  }} className="text-red-500 hover:text-red-700 text-xs ml-1" title="Remove location">✕</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <div>
+                  <label className="block text-xs text-slate-500 mb-0.5">Country (editable)</label>
+                  <input value={loc.country}
+                    onChange={e => {
+                      const updated = [...serverLocations];
+                      updated[idx] = { ...loc, country: e.target.value };
+                      setServerLocations(updated);
+                    }}
+                    placeholder="Germany"
+                    className="w-full border rounded-lg px-2 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-0.5">City (editable)</label>
+                  <input value={loc.city}
+                    onChange={e => {
+                      const updated = [...serverLocations];
+                      updated[idx] = { ...loc, city: e.target.value };
+                      setServerLocations(updated);
+                    }}
+                    placeholder="Frankfurt"
+                    className="w-full border rounded-lg px-2 py-1.5 text-sm" />
+                </div>
+              </div>
+              <div className="mb-2">
+                <label className="block text-xs text-slate-500 mb-0.5">Country Codes (comma-separated, e.g. DE,AT,CH)</label>
+                <input value={loc.countryCodes}
+                  onChange={e => {
+                    const updated = [...serverLocations];
+                    updated[idx] = { ...loc, countryCodes: e.target.value };
+                    setServerLocations(updated);
+                  }}
+                  placeholder="DE,AT,CH"
+                  className="w-full border rounded-lg px-2 py-1.5 text-sm font-mono" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-slate-500 mb-0.5">Server IP</label>
+                  <input value={loc.ipAddress}
+                    onChange={e => {
+                      const updated = [...serverLocations];
+                      updated[idx] = { ...loc, ipAddress: e.target.value };
+                      setServerLocations(updated);
+                    }}
+                    placeholder="e.g. 192.168.1.100"
+                    className="w-full border rounded-lg px-2 py-1.5 text-sm font-mono" />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-0.5">Port</label>
+                  <input type="number" value={loc.port}
+                    onChange={e => {
+                      const updated = [...serverLocations];
+                      updated[idx] = { ...loc, port: parseInt(e.target.value) || 2775 };
+                      setServerLocations(updated);
+                    }}
+                    className="w-full border rounded-lg px-2 py-1.5 text-sm" />
+                </div>
+              </div>
+            </div>
+          )})}
+        </div>
+        <div className="mt-4 bg-blue-50 rounded-lg p-3 text-xs text-blue-700">
+          <strong>🌍 How it works:</strong> Tenants choose a server during signup. Country codes (e.g. DE,AT,CH) enable GeoIP auto-detection — users from those countries get this server auto-selected. Active locations with IPs appear in the registration form.
+        </div>
       </div>
 
       {/* Payment Gateways */}

@@ -178,14 +178,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         ]
       );
 
-      // Deduct balance for successful sends
-      if (isSuccess) {
-        await tenantQuery(
-          tenant.schemaName,
-          "UPDATE clients SET balance = balance - $1, updated_at = NOW() WHERE id = $2",
-          [ratePerSms, campaign.client_id]
-        );
-      }
+      // Track success/failure counts (balance tracking removed)
 
       // Register DLR callback for SMS routes (OTT DLR is handled by the OTT Worker)
       if (isSuccess && dlrCallbackUrl && !isOtt) {

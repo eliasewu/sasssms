@@ -46,9 +46,9 @@ export default function BillingTopupPage() {
   const load = useCallback(async () => {
     const [tr, pr, txr, pkr] = await Promise.all([
       fetch("/api/auth/me").then(r => r.json()),
-      fetch("/api/tenant/payment-gateways").then(r => r.json()).catch(() => ({ gateways: [] })),
-      fetch("/api/tenant/payment-transactions").then(r => r.json()).catch(() => ({ transactions: [] })),
-      fetch("/api/public/settings").then(r => r.json()).catch(() => ({ packages: [] })),
+      fetch("/api/tenant/payment-gateways").then(r => r.json()).catch((e) => { console.error("Failed to load payment gateways:", e); return { gateways: [] }; }),
+      fetch("/api/tenant/payment-transactions").then(r => r.json()).catch((e) => { console.error("Failed to load transactions:", e); return { transactions: [] }; }),
+      fetch("/api/public/settings").then(r => r.json()).catch((e) => { console.error("Failed to load packages:", e); return { packages: [] }; }),
     ]);
     if (tr.tenant) setTenant(tr.tenant);
     setGateways(pr.gateways || []);
@@ -83,7 +83,14 @@ export default function BillingTopupPage() {
     setProofFile(null);
     setProofPreview(null);
     setPaymentAmount(parseFloat(topupForm.amount));
-    setSmsEstimate(calculateSms(parseFloat(topupForm.amount)));
+    // SMS estimate: Professional = 10M, Enterprise = Unlimited, Starter = per-SMS rate
+    if (selectedPkg?.name === "Professional") {
+      setSmsEstimate(selectedPkg.smsCredits || 10_000_000);
+    } else if (selectedPkg?.name === "Enterprise") {
+      setSmsEstimate(0); // 0 = unlimited
+    } else {
+      setSmsEstimate(calculateSms(parseFloat(topupForm.amount)));
+    }
     setShowPayment(true);
   };
 
@@ -536,7 +543,13 @@ export default function BillingTopupPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">SMS:</span>
-                <span className="font-bold">{smsEstimate.toLocaleString()} SMS</span>
+                <span className="font-bold">
+                  {selectedPkg?.name === "Enterprise"
+                    ? "Unlimited"
+                    : smsEstimate > 0
+                    ? `${smsEstimate.toLocaleString()} SMS`
+                    : "—"}
+                </span>
               </div>
               {topupForm.packageType && (
                 <div className="flex justify-between mt-1">
@@ -658,11 +671,11 @@ export default function BillingTopupPage() {
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-8" onClick={() => setLightboxOpen(false)}>
           <img src={proofPreview} alt="Payment proof" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />
           <button onClick={() => setLightboxOpen(false)}
-            className="absolute top-4 right-4 bg-white/20 text-white rounded-full w-10 h-10 flex items-center justify-center text-lg hover:bg-white/40">
-            X
-          </button>
-        </div>
-      )}
+            className="absolute top-4 right-4 bg-white/20 text-white rounded-full w-10 h-10 flex items-center justify-center text-lg hover:bg-white/40"              >
+                X
+              </button>
+            </div>
+          )}
     </div>
   );
 }

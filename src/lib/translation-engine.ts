@@ -36,11 +36,13 @@ async function loadProfiles(
   entityId: number
 ): Promise<TranslationProfile[]> {
   const col = entityType === "client" ? "client_id" : "supplier_id";
+  // Also load globally-assigned profiles (those with NULL client_id AND NULL supplier_id)
   const result = await tenantQuery(
     schemaName,
     `SELECT tp.* FROM translation_profiles tp
      JOIN translation_assignments ta ON ta.profile_id = tp.id
-     WHERE ta.${col} = $1 AND ta.is_active = true AND tp.is_active = true
+     WHERE (ta.${col} = $1 OR (ta.client_id IS NULL AND ta.supplier_id IS NULL))
+       AND ta.is_active = true AND tp.is_active = true
      ORDER BY ta.priority ASC`,
     [entityId]
   );
@@ -115,7 +117,8 @@ async function applyProfile(
     const pick = pool[Math.floor(Math.random() * pool.length)];
     replacement = pick.replacementValue;
   } else {
-    replacement = profile.replacementFixed || input;
+    // Use ?? instead of || — empty string "" is a valid replacement (e.g., strip prefix)
+    replacement = profile.replacementFixed ?? input;
   }
 
   // Perform the replacement (supports $1, $2 capture groups)
@@ -163,6 +166,7 @@ export async function applyEntityTranslations(
       currentDest = result.destination;
       currentContent = result.content;
       appliedNames.push(profile.name);
+      console.log(`[Translation] ${entityType} #${entityId}: "${profile.name}" | field=${profile.targetField} | pattern=${profile.matchPattern} | dest: ${currentDest} → ${result.destination}`);
     }
   }
 

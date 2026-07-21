@@ -37,6 +37,7 @@ export async function POST(request: Request) {
     sendSuccessCondition, sendMessageIdPath,
     dlrUrlTemplate, dlrMethod = "GET",
     dlrSuccessCondition, dlrStatusPath, dlrDeliveredValue,
+    dlrPollSeconds, dlrTimeoutSeconds,
   } = body;
 
   if (!name || !sendUrlTemplate) {
@@ -49,13 +50,16 @@ export async function POST(request: Request) {
       name, type, send_url_template, send_method, send_headers, send_body_template,
       send_success_condition, send_message_id_path,
       dlr_url_template, dlr_method,
-      dlr_success_condition, dlr_status_path, dlr_delivered_value
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+      dlr_success_condition, dlr_status_path, dlr_delivered_value,
+      dlr_poll_seconds, dlr_timeout_seconds
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
     [
       name, type, sendUrlTemplate, sendMethod, sendHeaders || null, sendBodyTemplate || null,
       sendSuccessCondition || null, sendMessageIdPath || null,
       dlrUrlTemplate || null, dlrMethod || "GET",
       dlrSuccessCondition || null, dlrStatusPath || null, dlrDeliveredValue || "Delivered",
+      (() => { const v = parseInt(String(dlrPollSeconds)); return dlrPollSeconds != null && !isNaN(v) ? v : 30; })(),
+      (() => { const v = parseInt(String(dlrTimeoutSeconds)); return dlrTimeoutSeconds != null && !isNaN(v) ? v : 3600; })(),
     ]
   );
 

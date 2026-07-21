@@ -10,6 +10,20 @@ const nextConfig: NextConfig = {
   env: {
     SMPP_PORT: process.env.SMPP_PORT || "2775",
   },
+  async redirects() {
+    return [
+      {
+        source: "/dashboard/sms-translations",
+        destination: "/dashboard/translations/sid",
+        permanent: true,
+      },
+      {
+        source: "/dashboard/translations",
+        destination: "/dashboard/translations/sid",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

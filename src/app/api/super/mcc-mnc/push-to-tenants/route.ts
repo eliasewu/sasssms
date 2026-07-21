@@ -58,7 +58,7 @@ export async function POST(request: Request) {
 
     // 1. Fetch all MCC/MNC entries
     const { rows: mccEntries } = await client.query(
-      "SELECT mcc, mnc, country_code, country_name, network_name FROM mcc_mnc_database ORDER BY country_name, network_name"
+      "SELECT mcc, mnc, mccmnc, country_code, country_name, network_name FROM mcc_mnc_database ORDER BY country_name, network_name"
     );
 
     if (mccEntries.length === 0) {
@@ -97,8 +97,8 @@ export async function POST(request: Request) {
         // Push to client_rates using batch WHERE NOT EXISTS to skip duplicates
         for (const entry of mccEntries) {
           const { rowCount } = await client.query(
-            `INSERT INTO client_rates (client_id, country_code, mcc, mnc, operator_name, rate)
-             SELECT $1, $2, $3, $4, $5, $6
+            `INSERT INTO client_rates (client_id, country_code, mcc, mnc, mccmnc, operator_name, rate)
+             SELECT $1, $2, $3, $4, $3 || LPAD(COALESCE($4,''), 3, '0'), $5, $6
              WHERE NOT EXISTS (
                SELECT 1 FROM client_rates
                WHERE country_code = $2 AND mcc = $3 AND COALESCE(mnc,'') = $7
@@ -112,8 +112,8 @@ export async function POST(request: Request) {
         // Push to supplier_rates
         for (const entry of mccEntries) {
           const { rowCount } = await client.query(
-            `INSERT INTO supplier_rates (supplier_id, country_code, mcc, mnc, operator_name, cost)
-             SELECT $1, $2, $3, $4, $5, $6
+            `INSERT INTO supplier_rates (supplier_id, country_code, mcc, mnc, mccmnc, operator_name, cost)
+             SELECT $1, $2, $3, $4, $3 || LPAD(COALESCE($4,''), 3, '0'), $5, $6
              WHERE NOT EXISTS (
                SELECT 1 FROM supplier_rates
                WHERE country_code = $2 AND mcc = $3 AND COALESCE(mnc,'') = $7

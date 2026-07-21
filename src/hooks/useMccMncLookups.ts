@@ -7,6 +7,7 @@ export interface MccMncEntry {
   id: number;
   mcc: string;
   mnc: string;
+  mccmnc: string;
   countryCode: string;
   countryName: string;
   networkName: string;

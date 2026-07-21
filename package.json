@@ -39,12 +39,11 @@
     "react-dom": "19.2.6",
     "smpp": "^0.6.0-rc.4",
     "socks-proxy-agent": "^10.1.0",
-    "telegram": "^2.26.22",
     "uuid": "^14.0.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.2",
+    "@tailwindcss/postcss": "^4.1.17",
     "@types/node": "22.19.15",
     "@types/pg": "8.18.0",
     "@types/react": "19.2.14",
@@ -53,8 +52,8 @@
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
     "postcss": "8.5.8",
-    "tailwindcss": "4.1.17",
+    "tailwindcss": "^4.1.17",
     "tsx": "^4.23.0",
-    "typescript": "5.9.3"
+    "typescript": "^5.9.3"
   }
 }

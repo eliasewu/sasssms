@@ -37,6 +37,7 @@ import {
   extractRemoteAddress,
 } from "@/lib/smpp-bind-validator";
 import { lookupClientRate } from "@/lib/rates";
+import { executeVoiceOtpCall } from "@/lib/voice-otp-engine";
 
 /** SMPP interface_version hex constants */
 const SMPP_V33 = 0x33; // 51 — SMPP v3.3
@@ -660,11 +661,6 @@ async function processSubmitSm(
 
       const ratePerSms = await lookupClientRate(dest, es.clientId, es.schemaName);
 
-      // Check balance
-      if (parseFloat(c.balance) < ratePerSms) {
-        return { success: false, messageId, errorCode: 20 };
-      }
-
       // Build RouteInfo list for smpp-client
       const routeInfos: RouteInfo[] = allRoutes.map((r) => ({
         routeId: r.route_id,
@@ -687,6 +683,87 @@ async function processSubmitSm(
            VALUES ($1,$2,$3,$4,'FAILED',$5,$6,'FAILED',$7,NOW())`,
           [es.clientId, src, dest, content, c.route_plan_id, ratePerSms.toString(), messageId]
         );
+        return { success: false, messageId, errorCode: 8 };
+      }
+
+      // ── Check connection type: handle Voice OTP / OTT / CUSTOM_API routes specially ──
+      const firstRoute = filteredRoutes[0];
+      const connType = firstRoute.connectionType;
+
+      // ── Voice OTP: use shared engine (same as HTTP API) ──
+      if (connType === "VOICE_OTP" || connType === "Voice OTP") {
+        const otpCode = content.match(/\b(\d{4,8})\b/)?.[1] || null;
+        if (!otpCode) {
+          return { success: false, messageId, errorCode: 10 }; // RINVDSTADR = invalid content
+        }
+
+        // tenants table is in public schema, switch temporarily
+        await client.query(`SET search_path TO public`);
+        const tenantData = await client.query(
+          `SELECT max_concurrent_calls FROM tenants WHERE id = $1`,
+          [es.tenantId]
+        );
+        await client.query(`SET search_path TO "${es.schemaName}"`);
+        const maxConcurrent = parseInt(tenantData.rows[0]?.max_concurrent_calls || "10");
+
+        const votpResult = await executeVoiceOtpCall({
+          schemaName: es.schemaName,
+          tenantId: es.tenantId,
+          destination: dest,
+          sender: src,
+          otpCode,
+          messageId,
+          supplierId: firstRoute.supplierId,
+          maxConcurrentCalls: maxConcurrent,
+        });
+
+        if (votpResult.success) {
+          await client.query(
+            `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, dlr_status, message_id, otp_code, language)
+             VALUES ($1,$2,$3,$4,'DELIVERED',$5,$6,$7,$8,$9,$10,'DELIVERED',$11,$12,$13)`,
+            [es.clientId, src, dest, content,
+             c.route_plan_id, firstRoute.routeId, firstRoute.trunkId,
+             firstRoute.supplierId, connType, ratePerSms, messageId, otpCode, votpResult.language]
+          );
+          await client.query(`SET search_path TO "${es.schemaName}"`);
+          console.log(`[SMPP] Voice OTP delivered via SMPP: ${dest} (${otpCode}), lang=${votpResult.language}, callSid=${votpResult.callSid}`);
+          return { success: true, messageId };
+        } else {
+          await client.query(
+            `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, dlr_status, message_id, otp_code, language, dlr_timestamp)
+             VALUES ($1,$2,$3,$4,'FAILED',$5,$6,$7,$8,$9,$10,'FAILED',$11,$12,$13,NOW())`,
+            [es.clientId, src, dest, content,
+             c.route_plan_id, firstRoute.routeId, firstRoute.trunkId,
+             firstRoute.supplierId, connType, ratePerSms, messageId, otpCode, votpResult.language]
+          );
+          console.log(`[SMPP] Voice OTP FAILED: ${dest} — ${votpResult.errorMessage || 'call failed'}`);
+          return { success: false, messageId, errorCode: 1 };
+        }
+      }
+
+      // ── OTT routes: not supported via SMPP ──
+      if (connType === "WhatsApp OTT" || connType === "Telegram OTT") {
+        await client.query(
+          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, dlr_status, message_id, dlr_timestamp)
+           VALUES ($1,$2,$3,$4,'FAILED',$5,$6,$7,$8,$9,$10,'FAILED',$11,NOW())`,
+          [es.clientId, src, dest, content,
+           c.route_plan_id, firstRoute.routeId, firstRoute.trunkId,
+           firstRoute.supplierId, connType, ratePerSms, messageId]
+        );
+        console.log(`[SMPP] OTT delivery not available via SMPP for route "${firstRoute.routeName}"`);
+        return { success: false, messageId, errorCode: 8 };
+      }
+
+      // ── CUSTOM_API routes: not supported via SMPP ──
+      if (connType === "CUSTOM_API") {
+        await client.query(
+          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, dlr_status, message_id, dlr_timestamp)
+           VALUES ($1,$2,$3,$4,'FAILED',$5,$6,$7,$8,$9,$10,'FAILED',$11,NOW())`,
+          [es.clientId, src, dest, content,
+           c.route_plan_id, firstRoute.routeId, firstRoute.trunkId,
+           firstRoute.supplierId, connType, ratePerSms, messageId]
+        );
+        console.log(`[SMPP] CUSTOM_API delivery not available via SMPP for route "${firstRoute.routeName}"`);
         return { success: false, messageId, errorCode: 8 };
       }
 
@@ -723,13 +800,7 @@ async function processSubmitSm(
           ]
         );
 
-        // Deduct balance
-        await client.query(
-          `UPDATE clients SET balance = balance - $1, updated_at = NOW() WHERE id = $2`,
-          [ratePerSms, es.clientId]
-        );
-
-        // Increment tenant SMS counter
+        // Deduct tenant SMS counter (balance tracking removed)
         await client.query(`SET search_path TO public`);
         await client.query(
           `UPDATE tenants SET sms_counter = COALESCE(sms_counter, 0) + 1 WHERE id = $1`,

@@ -5,7 +5,10 @@ export async function GET() {
   const client = await pool.connect();
   try {
     const { rows } = await client.query(
-      "SELECT id, mcc, mnc, country_code as \"countryCode\", country_name as \"countryName\", network_name as \"networkName\" FROM mcc_mnc_database ORDER BY country_name, network_name"
+      `SELECT id, mcc, mnc, mccmnc,
+              country_code as "countryCode", country_name as "countryName",
+              network_name as "networkName"
+       FROM mcc_mnc_database ORDER BY country_name, network_name`
     );
     return NextResponse.json({ data: rows });
   } catch (error) {
@@ -37,8 +40,8 @@ export async function POST(request: Request) {
     }
 
     const { rows } = await client.query(
-      `INSERT INTO mcc_mnc_database (mcc, mnc, country_code, country_name, network_name)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      `INSERT INTO mcc_mnc_database (mcc, mnc, country_code, country_name, network_name, mccmnc)
+       VALUES ($1,$2,$3,$4,$5, $1 || LPAD(COALESCE($2,''), 3, '0')) RETURNING *`,
       [mcc, mnc || null, countryCode, countryName, networkName || null]
     );
 

@@ -8,7 +8,7 @@ import { useColumnFilters, FilterRow, FilterToggle, type ColumnFilterDef } from 
 interface Client {
   id: number; client_code: string; name: string; company_name: string; contact_person: string;
   email: string; phone: string; country: string; connection_type: string;
-  balance: string; is_active: boolean; route_plan_id: number;
+  is_active: boolean; route_plan_id: number;
   smpp_username: string; smpp_password: string; smpp_allowed_ip: string; smpp_port: number; max_tps: number;
   billing_mode: string; currency: string; enable_http_api: boolean;
   force_dlr: boolean; webhook_url: string; http_api_key: string;
@@ -31,8 +31,8 @@ export default function ClientPage() {
     clientCode: "", name: "", companyName: "", contactPerson: "", email: "", phone: "",
     country: "", address: "", connectionType: "SMPP",
     smppUsername: "", smppPassword: "", smppAllowedIp: "", smppPort: "2775", smppSystemType: "ESME", maxTps: "10",
-    billingMode: "prepaid", currency: "USD", balance: "0", creditLimit: "0",
-    routePlanId: "", enableHttpApi: false, forceDlr: false,
+    billingMode: "prepaid", currency: "USD",
+    routePlanId: "", enableHttpApi: false, httpApiKey: "", forceDlr: false,
     dlrTimeoutMode: "fixed", dlrTimeout: "60", webhookUrl: "",
   });
 
@@ -56,10 +56,11 @@ export default function ClientPage() {
     const payload = {
       ...rest, routePlanId: form.routePlanId ? parseInt(form.routePlanId) : null,
       maxTps: parseInt(form.maxTps), smppPort: parseInt(form.smppPort) || 2775,
-      balance: parseFloat(form.balance), creditLimit: parseFloat(form.creditLimit),
       dlrTimeout: parseInt(form.dlrTimeout),
       // Only send password if it's been changed (not the masked placeholder)
       ...(smppPassword && smppPassword !== "••••••••" ? { smppPassword } : {}),
+      // Always send httpApiKey to preserve it
+      httpApiKey: form.httpApiKey || undefined,
     };
     if (editing) {
       const res = await fetch(`/api/tenant/clients/${editing.id}`, {
@@ -96,10 +97,9 @@ export default function ClientPage() {
       smppAllowedIp: c.smpp_allowed_ip || "", smppPort: (c.smpp_port?.toString()) || "2775",
       smppSystemType: "ESME", maxTps: c.max_tps?.toString() || "10",
       billingMode: c.billing_mode || "prepaid", currency: c.currency || "USD",
-      balance: c.balance, creditLimit: "0",
       routePlanId: c.route_plan_id?.toString() || "", enableHttpApi: c.enable_http_api || false,
       forceDlr: c.force_dlr || false, dlrTimeoutMode: "fixed", dlrTimeout: "60",
-      webhookUrl: c.webhook_url || "",
+      webhookUrl: c.webhook_url || "", httpApiKey: c.http_api_key || "",
     });
     setShowForm(true);
   };
@@ -112,7 +112,6 @@ export default function ClientPage() {
     { key: "smpp_port", placeholder: "Port..." },
     { key: "bind_status", placeholder: "BIND / UNBOUND..." },
     { key: "connection_type", placeholder: "SMPP / HTTP..." },
-    { key: "balance", placeholder: "Balance..." },
     { key: "is_active", placeholder: "Active / Inactive..." },
   ], []);
   const { values, set, toggle, showFilters, hasActive, filterData } = useColumnFilters(clientFilters);
@@ -210,10 +209,8 @@ export default function ClientPage() {
             <section className="bg-slate-50 rounded-xl p-5">
               <h4 className="font-semibold text-slate-700 mb-4">💰 Billing Settings</h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Select label="Billing Mode" value={form.billingMode} onChange={e => setForm({...form, billingMode: e.target.value})} options={[{v:"prepaid",l:"Prepaid"},{v:"postpaid",l:"Postpaid"}]} />
+                <Select label="Billing Mode" value={form.billingMode} onChange={e => setForm({...form, billingMode: e.target.value})} options={[{v:"prepaid",l:"Prepaid (submit)"},{v:"dlr",l:"DLR-Based"},{v:"postpaid",l:"Postpaid"}]} />
                 <Select label="Currency" value={form.currency} onChange={e => setForm({...form, currency: e.target.value})} options={[{v:"USD",l:"USD"},{v:"EUR",l:"EUR"},{v:"INR",l:"INR"},{v:"USDT",l:"USDT"}]} />
-                <Input label="Initial Balance" type="number" step="0.0001" value={form.balance} onChange={e => setForm({...form, balance: e.target.value})} />
-                <Input label="Credit Limit" type="number" step="0.0001" value={form.creditLimit} onChange={e => setForm({...form, creditLimit: e.target.value})} />
               </div>
             </section>
 
@@ -226,6 +223,9 @@ export default function ClientPage() {
                   <Check label="Enable HTTP API" checked={form.enableHttpApi} onChange={e => setForm({...form, enableHttpApi: e.target.checked})} />
                   <Check label="Force DLR" checked={form.forceDlr} onChange={e => setForm({...form, forceDlr: e.target.checked})} />
                 </div>
+                {form.enableHttpApi && (
+                  <Input label="HTTP API Key" value={form.httpApiKey} onChange={e => setForm({...form, httpApiKey: e.target.value})} placeholder="Auto-generated from SMPP credentials" suffix={form.httpApiKey ? <CopyButton value={form.httpApiKey} /> : undefined} />
+                )}
                 {form.forceDlr && <>
                   <Select label="DLR Timeout Mode" value={form.dlrTimeoutMode} onChange={e => setForm({...form, dlrTimeoutMode: e.target.value})} options={[{v:"fixed",l:"Fixed"},{v:"dynamic",l:"Dynamic"}]} />
                   <Input label="DLR Timeout (s)" type="number" value={form.dlrTimeout} onChange={e => setForm({...form, dlrTimeout: e.target.value})} />
@@ -246,7 +246,7 @@ export default function ClientPage() {
 
       <div className="bg-white rounded-xl border shadow-sm overflow-x-auto">
         <table className="w-full text-sm min-w-[1000px]">
-          <thead className="bg-slate-50"><tr><th className="text-left px-4 py-3">Code/Name</th><th className="text-left px-4 py-3">Contact</th><th className="text-left px-4 py-3">SMPP User</th><th className="text-left px-4 py-3">Port</th><th className="text-left px-4 py-3">Bind</th><th className="text-left px-4 py-3">Type</th><th className="text-left px-4 py-3">Balance</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Actions</th></tr>
+          <thead className="bg-slate-50"><tr><th className="text-left px-4 py-3">Code/Name</th><th className="text-left px-4 py-3">Contact</th><th className="text-left px-4 py-3">SMPP User</th><th className="text-left px-4 py-3">Port</th><th className="text-left px-4 py-3">Bind</th><th className="text-left px-4 py-3">Type</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Actions</th></tr>
           {showFilters && <FilterRow filters={clientFilters.slice(0, 8)} values={values} onChange={set} colSpan={1} />}
           </thead>
           <tbody>
@@ -268,13 +268,12 @@ export default function ClientPage() {
                     {c.bind_status || "UNBOUND"}
                   </span>
                 </td>
-                <td className="px-4 py-3"><span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs">{c.connection_type || "SMPP"}</span>{c.enable_http_api ? <><br/><span className="text-xs text-green-600 font-mono">🌐 HTTP API</span></> : null}</td>
-                <td className="px-4 py-3 font-mono text-xs">${parseFloat(c.balance).toFixed(4)}</td>
-                <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs ${c.is_active?"bg-green-100 text-green-700":"bg-red-100 text-red-700"}`}>{c.is_active?"Active":"Inactive"}</span></td>
+                <td className="px-4 py-3"><span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs">{c.connection_type || "SMPP"}</span>{c.enable_http_api ? <><br/><span className="text-xs text-green-600 font-mono inline-flex items-center gap-1">🌐 HTTP API {c.http_api_key && <CopyButton value={c.http_api_key} />}</span></> : null}</td>
+                <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs ${c.is_active?"bg-green-100 text-green-700":"bg-red-100 text-red-700"}`}>{c.is_active?"Active":"Inactive"}</span>{c.force_dlr ? <><br/><span className="text-xs text-purple-600">⚡ Force DLR</span></> : null}</td>
                 <td className="px-4 py-3"><button onClick={() => handleEdit(c)} className="text-blue-600 hover:underline text-xs mr-2">Edit</button><button onClick={() => handleDelete(c.id)} className="text-red-600 hover:underline text-xs">Delete</button></td>
               </tr>
             ))}
-            {filteredClients.length === 0 && <tr><td colSpan={9} className="py-8 text-center text-slate-400">{hasActive ? "No clients match your filters." : "No SMPP clients configured."}</td></tr>}
+            {filteredClients.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-slate-400">{hasActive ? "No clients match your filters." : "No SMPP clients configured."}</td></tr>}
           </tbody>
         </table>
         {hasActive && <div className="px-4 py-2 border-t bg-slate-50 text-xs text-slate-500">Showing {filteredClients.length} of {clients.length} clients</div>}

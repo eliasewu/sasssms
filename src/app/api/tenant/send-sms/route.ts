@@ -3,19 +3,15 @@ import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 import { db } from "@/db";
 import { tenants } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { applyTranslations, applyEntityTranslations } from "@/lib/translation-engine";
-import {
-  resolveLanguage, buildAttemptPlaylists, generateCallSid,
-  determineAttemptLanguages,
-} from "@/lib/voice-otp-engine";
-import { AsteriskAmiExecutor } from "@/lib/asterisk-ami";
+import { executeVoiceOtpCall } from "@/lib/voice-otp-engine";
 import {
   deliverSmsWithFallback,
   registerDlrCallback,
   filterRoutesByTrunkMcc,
 } from "@/lib/smpp-client";
-import type { AudioFile, SipConfig, CallAttempt, AudioPlaylistItem } from "@/lib/voice-otp-engine";
+import type { CallAttempt, VoiceOtpCallResult } from "@/lib/voice-otp-engine";
 import type { RouteInfo, DlrPayload } from "@/lib/smpp-client";
 import { getOnlineOttDevices, sendOttMessage } from "@/lib/ott-pairing-engine";
 import type { OttDeviceType } from "@/lib/ott-pairing-engine";
@@ -23,9 +19,6 @@ import { lookupClientRate, lookupSupplierCost } from "@/lib/rates";
 import { buildUrl, evaluateCondition, extractFromResponse, parseHeaders } from "@/lib/api-connector-parser";
 
 export const dynamic = "force-dynamic";
-
-// Use real Asterisk AMI executor, fall back to simulation if AMI is unavailable
-const amiExecutor = new AsteriskAmiExecutor();
 
 function extractOtp(content: string): string | null {
   const match = content.match(/\b(\d{4,8})\b/);
@@ -150,6 +143,8 @@ export async function POST(request: Request) {
   }
 
   const client = clientResult.rows[0];
+  const clientBillingMode = (client.billing_mode as string) || "prepaid";
+  const isDlrBilling = clientBillingMode === "dlr";
   const ratePerSms = await lookupClientRate(destination, clientId as number, tenant.schemaName);
   const clientMaxTps = parseInt(client.max_tps || "0");
   
@@ -176,6 +171,7 @@ export async function POST(request: Request) {
   // ── Apply Client-Level Translations ──
   let appliedTranslations: string[] = [];
   let routePlanId = client.route_plan_id;
+  let routePlanName: string | null = null;
   let selectedRoute: Record<string, unknown> = {};
   let supplierId: number | null = null;
 
@@ -209,6 +205,18 @@ export async function POST(request: Request) {
 
   // Generate message ID early (used by voice OTP handler for external API)
   const messageId = "MSG_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
+
+  // Fetch route plan name (used in both testRoute and routePlan branches)
+  if (routePlanId) {
+    try {
+      const rpResult = await tenantQuery(
+        tenant.schemaName,
+        "SELECT name FROM route_plans WHERE id = $1",
+        [routePlanId]
+      );
+      routePlanName = (rpResult.rows[0]?.name as string) || null;
+    } catch { /* non-critical */ }
+  }
 
   // Resolve routes (all of them for fallback capability)
   if (testRouteId) {
@@ -282,14 +290,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No route plan or route specified" }, { status: 400 });
   }
 
-  // Extract supplier ID from selected route
-  supplierId = (selectedRoute.supplier_id as number) || null;
-
   // ── Trunk-level MCC/MNC filtering ──
   allRoutes = filterRoutesByTrunkMcc(allRoutes, destination);
   if (allRoutes.length === 0) {
     return NextResponse.json({ error: "No routes available for this destination (MCC filtering)" }, { status: 400 });
   }
+
+  // Re-extract supplier ID from the first remaining route AFTER MCC filtering
+  supplierId = (allRoutes[0]?.supplierId as number) || null;
+  // Also update selectedRoute to the first active route post-filter
+  selectedRoute = { ...selectedRoute, ...allRoutes[0] as unknown as Record<string, unknown> };
 
   // --- Apply Supplier-Level Translations ---
   if (supplierId) {
@@ -307,7 +317,7 @@ export async function POST(request: Request) {
     }
   }
 
-  // ── Voice OTP handling (full engine-based flow with retry) ──
+  // ── Voice OTP handling (shared engine-based flow with retry) ──
   if (
     selectedRoute.connection_type === "VOICE_OTP" ||
     selectedRoute.connection_type === "Voice OTP"
@@ -317,253 +327,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No 4-8 digit OTP in content" }, { status: 400 });
     }
 
-    // ── 1. Country & Language Detection ──
-    langResolution = resolveLanguage(destination);
-    language = langResolution.primaryLanguage;
-    const mcc = langResolution.mcc;
-
-    // ── 2. Check concurrent call limit ──
     const maxConcurrent = tenantData?.maxConcurrentCalls ?? 10;
-    const activeCalls = await tenantQuery(
-      tenant.schemaName,
-      "SELECT COUNT(*) as count FROM voice_otp_call_logs WHERE status = 'IN_PROGRESS'"
-    );
-    const activeCount = parseInt(activeCalls.rows[0]?.count || "0");
-    if (activeCount >= maxConcurrent) {
-      return NextResponse.json({ 
-        error: `Concurrent call limit reached (max ${maxConcurrent}). Try again shortly.`,
-        concurrentCalls: activeCount,
+    const votpResult: VoiceOtpCallResult = await executeVoiceOtpCall({
+      schemaName: tenant.schemaName,
+      tenantId: tenant.tenantId,
+      destination,
+      sender,
+      otpCode,
+      messageId,
+      supplierId,
+      maxConcurrentCalls: maxConcurrent,
+    });
+
+    language = votpResult.language;
+    langResolution = votpResult.langResolution;
+    callAttempts = votpResult.callAttempts;
+    callSid = votpResult.callSid;
+    callSuccess = votpResult.success;
+    dlrStatus = votpResult.success ? "DELIVERED" : "FAILED";
+    status = votpResult.success ? "DELIVERED" : "FAILED";
+
+    if (!votpResult.success && votpResult.errorMessage) {
+      return NextResponse.json({
+        error: votpResult.errorMessage,
+        concurrentCalls: votpResult.errorMessage?.includes("Concurrent") ? maxConcurrent : undefined,
       }, { status: 429 });
     }
-
-    // ── 3. Fetch audio files, SIP configs & voice OTP language config ──
-    const [audioResult, sipResult, votpConfigResult] = await Promise.all([
-      tenantQuery(tenant.schemaName, "SELECT * FROM voice_otp_audio ORDER BY id").catch(() => ({ rows: [] as AudioFile[] })),
-      tenantQuery(tenant.schemaName, "SELECT * FROM voice_otp_sip_config WHERE is_active = true ORDER BY id").catch(() => ({ rows: [] as SipConfig[] })),
-      // Match language config by MCC prefix: each config's prefixes is a comma-separated list.
-      // Use string_to_array to split, then check if the destination MCC starts with any prefix.
-      tenantQuery(tenant.schemaName,
-        `SELECT * FROM voice_otp_config
-         WHERE is_active = true AND EXISTS (
-           SELECT 1 FROM unnest(string_to_array(COALESCE(prefixes,''), ',')) AS pfx
-           WHERE $1 LIKE pfx || '%'
-         ) ORDER BY id LIMIT 1`,
-        [langResolution.mcc]
-      ).catch(() => ({ rows: [] as Record<string,unknown>[] })),
-    ]);
-    const audioFiles: AudioFile[] = audioResult.rows;
-    const sipConfigs: SipConfig[] = sipResult.rows;
-    const activeSip = sipConfigs[0] || null;
-
-    // ── Get retry/play config from voice_otp_config (language tab settings) ──
-    const votpConfig = votpConfigResult.rows[0] as Record<string,unknown> | undefined;
-    const retryCount = (votpConfig?.retry_count as number) || (activeSip?.maxRetries as number) || 3;
-    const playCount = (votpConfig?.play_count as number) || 3;
-    const bilingual = (votpConfig?.bilingual as boolean) || false;
-    const primaryLang = (votpConfig?.primary_language as string) || langResolution.primaryLanguage;
-    const secondaryLang = (votpConfig?.secondary_language as string) || langResolution.fallbackLanguage;
-
-    // ── Reconnect schedule: delay between retry attempts (minutes → seconds) ──
-    // schedule 0 = immediate, 1 = 60s delay, 2 = 120s delay
-    const reconnectSchedule = [0, 60, 120];
-
-    // ── 4. Build audio playlists for all attempts ──
-    const attemptLanguages = determineAttemptLanguages(langResolution, retryCount);
-    let attemptPlaylists: Array<Array<AudioPlaylistItem>> = [];
-    try {
-      attemptPlaylists = await buildAttemptPlaylists(audioFiles, langResolution, otpCode, {
-        primaryLanguage: primaryLang,
-        secondaryLanguage: secondaryLang,
-        bilingual,
-        playCount,
-        retryCount,
-      });
-    } catch {
-      // Build empty playlists on error (will use built-in audio)
-      attemptPlaylists = attemptLanguages.map(() => []);
-    }
-
-    // ── Fetch supplier's API config (for external HTTP API mode) ──
-    let supplierApiUrl: string | null = null;
-    let supplierApiKey: string | null = null;
-    if (supplierId) {
-      try {
-        const suppResult = await tenantQuery(
-          tenant.schemaName,
-          "SELECT api_url, api_key, config FROM suppliers WHERE id = $1",
-          [supplierId]
-        );
-        if (suppResult.rows.length > 0) {
-          supplierApiUrl = (suppResult.rows[0].api_url as string) || null;
-          supplierApiKey = (suppResult.rows[0].api_key as string) || null;
-        }
-      } catch { /* proceed without */ }
-    }
-
-    // ── 5. Call execution: external HTTP API mode (preferred) or built-in Asterisk AMI ──
-    // NOTE: reconnect_schedule [0, 60, 120] means retry 1 is immediate,
-    // retry 2 after 1 minute, retry 3 after 2 minutes. Total window ~3 min.
-    // The initial IN_PROGRESS response is returned immediately; the full
-    // result can be checked via the voice_otp_call_logs table or call logs API.
-    callAttempts = [];
-    let totalDuration = 0;
-    callSid = generateCallSid();
-
-    // Log initial IN_PROGRESS
-    await tenantQuery(
-      tenant.schemaName,
-      `INSERT INTO voice_otp_call_logs (destination, otp_code, language, status, attempt_count,
-        sip_config_id, sip_config_name, call_sid, country, mcc)
-       VALUES ($1, $2, $3, 'IN_PROGRESS', 0, $4, $5, $6, $7, $8)`,
-      [destination, otpCode, language, activeSip?.id || null,
-       activeSip?.name || null, callSid, langResolution.country, mcc]
-    );
-
-    for (let attempt = 1; attempt <= retryCount; attempt++) {
-      const attLanguage = attemptLanguages[attempt - 1];
-      const attPlaylist = attemptPlaylists[attempt - 1] || [];
-      const startTime = new Date().toISOString();
-
-      // ── Apply reconnect delay between attempts (skip first attempt) ──
-      if (attempt > 1) {
-        const delaySec = reconnectSchedule[Math.min(attempt - 1, reconnectSchedule.length - 1)];
-        if (delaySec > 0) {
-          console.log(`[VOICE-OTP] Retry attempt ${attempt}/${retryCount} — waiting ${delaySec}s before next call...`);
-          await new Promise(resolve => setTimeout(resolve, delaySec * 1000));
-        }
-      }
-
-      // Execute SIP call: try external HTTP API first, fall back to Asterisk AMI
-      let sipResult: { success: boolean; callSid: string; duration: number; status: "ANSWERED"|"NO_ANSWER"|"BUSY"|"FAILED"; errorMessage?: string };
-
-      // ── Mode A: External Voice OTP HTTP API ──
-      if (supplierApiUrl) {
-        try {
-          const audioDir = attPlaylist.length > 0 && attPlaylist[0].fileUrl
-            ? attPlaylist[0].fileUrl.replace(/\/[^/]+$/, "") : "/audio/builtin";
-          const greetingFile = attPlaylist.find(p => p.type === "greeting");
-
-          const apiPayload: Record<string, unknown> = {
-            src_num: sender,
-            dst_num: destination,
-            message: otpCode,
-            internal_message_id: messageId || callSid,
-            src_sip_address: activeSip ? `${activeSip.sipHost || "127.0.0.1"}:${activeSip.sipPort || 5060}` : "127.0.0.1:5060",
-            dst_sip_address: activeSip ? `${activeSip.sipHost || "127.0.0.1"}:${activeSip.sipPort || 5060}` : "127.0.0.1:5060",
-            play_count: playCount,
-            play_sleep_ms: 0,
-            reconnect_schedule: "0,1,2",
-            dlr_send: true,
-            dlr_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://net2app.com"}/api/tenant/voice-otp-dlr-callback?message_id=${messageId || callSid}&supplier_id=${supplierId}&tenant_id=${tenant.tenantId}&schema=${encodeURIComponent(tenant.schemaName)}&status={{status}}`,
-            audio_files_dir: audioDir,
-            greeting_file: greetingFile?.fileName || "codeismen.mp3",
-            audio_codec: "G729",
-          };
-
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 30000);
-          const headers: Record<string, string> = { "Content-Type": "application/json" };
-          if (supplierApiKey) headers["Authorization"] = `Bearer ${supplierApiKey}`;
-
-          const apiRes = await fetch(supplierApiUrl, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(apiPayload),
-            signal: controller.signal,
-          });
-          clearTimeout(timeout);
-
-          sipResult = {
-            success: apiRes.ok,
-            callSid: callSid || generateCallSid(),
-            duration: 0,
-            status: apiRes.ok ? "ANSWERED" : "FAILED",
-            errorMessage: apiRes.ok ? undefined : `API returned ${apiRes.status}`,
-          };
-        } catch (err) {
-          sipResult = {
-            success: false,
-            callSid: callSid || generateCallSid(),
-            duration: 0,
-            status: "FAILED",
-            errorMessage: `External API error: ${(err as Error).message}`,
-          };
-        }
-      }
-      // ── Mode B: Built-in Asterisk AMI or simulation fallback ──
-      else if (activeSip) {
-        try {
-          // Try real Asterisk AMI first
-          sipResult = await amiExecutor.originateCall({
-            destination,
-            callerId: activeSip.callerId || "Net2APP",
-            sipHost: activeSip.sipHost || "",
-            sipPort: activeSip.sipPort || 5060,
-            sipUsername: activeSip.sipUsername || "",
-            sipPassword: activeSip.sipPassword || "",
-            timeout: activeSip.timeout || 30,
-            audioPlaylist: attPlaylist,
-          });
-        } catch {
-          // AMI failed — fall back to simulation
-          const roll = Math.random();
-          sipResult = {
-            success: roll > 0.3,
-            callSid: generateCallSid(),
-            duration: roll > 0.3 ? Math.floor(3 + Math.random() * 22) : 0,
-            status: roll > 0.3 ? "ANSWERED" : (roll > 0.15 ? "NO_ANSWER" : "FAILED"),
-            errorMessage: "AMI unavailable — using simulation fallback",
-          };
-        }
-      } else {
-        // No SIP config — use fallback simulation
-        const roll = Math.random();
-        sipResult = {
-          success: roll > 0.3,
-          callSid: generateCallSid(),
-          duration: roll > 0.3 ? Math.floor(3 + Math.random() * 22) : 0,
-          status: roll > 0.3 ? "ANSWERED" : (roll > 0.15 ? "NO_ANSWER" : "FAILED"),
-          errorMessage: roll > 0.3 ? undefined : "No SIP config — fallback simulation",
-        };
-      }
-
-      const endTime = new Date().toISOString();
-      const attRecord: CallAttempt = {
-        attempt,
-        language: attLanguage,
-        startTime,
-        endTime,
-        duration: sipResult.duration,
-        status: sipResult.status,
-        audioPlaylist: attPlaylist,
-        sipCallId: sipResult.callSid,
-        errorMessage: sipResult.errorMessage || null,
-      };
-      callAttempts.push(attRecord);
-      totalDuration += sipResult.duration || 0;
-
-      if (sipResult.success) {
-        callSuccess = true;
-        break;
-      }
-    }
-
-    // ── 6. Final status update (single UPDATE, no duplicates) ──
-    const finalStatus = callSuccess ? "COMPLETED" : "FAILED";
-    const finalPlaylist = callAttempts[callAttempts.length - 1]?.audioPlaylist || [];
-    dlrStatus = callSuccess ? "DELIVERED" : "FAILED";
-    status = callSuccess ? "DELIVERED" : "FAILED";
-
-    await tenantQuery(
-      tenant.schemaName,
-      `UPDATE voice_otp_call_logs SET status = $1, duration = $2, attempt_count = $3,
-        attempt_log = $4, audio_playlist = $5
-       WHERE call_sid = $6`,
-      [finalStatus, totalDuration, callAttempts.length,
-       JSON.stringify(callAttempts),
-       JSON.stringify(finalPlaylist),
-       callSid]
-    );
   }
 
   let deliveryResult: { success: boolean; supplierMessageId?: string; routeUsed?: RouteInfo; fallbackUsed: boolean; failedRoutes: number; errorMessage?: string } | null = null;
@@ -650,7 +439,8 @@ export async function POST(request: Request) {
         "SELECT config FROM suppliers WHERE id = $1",
         [supplierId]
       );
-      const config = (suppResult.rows[0]?.config as Record<string, unknown>) || {};
+      const rawConfig = suppResult.rows[0]?.config;
+      const config = (typeof rawConfig === 'string' ? JSON.parse(rawConfig) : rawConfig || {}) as Record<string, unknown>;
       const connectorId = config.custom_connector_id as number;
 
       if (connectorId) {
@@ -686,7 +476,7 @@ export async function POST(request: Request) {
 
           const responseBody = await res.text();
           let parsed: Record<string, unknown> = {};
-          try { parsed = JSON.parse(responseBody); } catch { parsed = { raw: responseBody }; }
+          try { parsed = JSON.parse(responseBody); parsed.raw = responseBody; } catch { parsed = { raw: responseBody }; }
 
           customApiSuccess = conn.send_success_condition
             ? evaluateCondition(conn.send_success_condition as string, parsed)
@@ -694,6 +484,15 @@ export async function POST(request: Request) {
 
           if (conn.send_message_id_path) {
             customApiMessageId = String(extractFromResponse(parsed, conn.send_message_id_path as string) || "");
+          }
+          // Fallback: extract transaction_id directly from raw response
+          if (!customApiMessageId) {
+            const txMatch = responseBody.match(/"transaction_id"\s*:\s*"([^"]+)"/);
+            if (txMatch) customApiMessageId = txMatch[1];
+          }
+          // Last resort: try any id field in response
+          if (!customApiMessageId && parsed.transaction_id) {
+            customApiMessageId = String(parsed.transaction_id);
           }
 
           status = customApiSuccess ? "SENT" : "FAILED";
@@ -707,13 +506,22 @@ export async function POST(request: Request) {
     }
   }
 
-  // Look up supplier cost and calculate profit
+  // ── Billing: use client billing_mode to decide submit vs DLR billing ──
   const resolvedSupplierId = deliveryResult?.routeUsed?.supplierId || supplierId;
-  if (resolvedSupplierId && status === "SENT") {
+  const finalSuccess = status === "SENT" || status === "DELIVERED" || (isCustomApi && customApiSuccess) || (isVoiceOtp && callSuccess);
+  if (isDlrBilling) {
+    // DLR-based billing — cost charged in dlr-poller.ts on DELIVERED
+    supplierCost = 0;
+    profit = 0;
+  } else if (resolvedSupplierId && finalSuccess) {
     try {
-      supplierCost = await lookupSupplierCost(destination, resolvedSupplierId as number, tenant.schemaName);
+      supplierCost = await lookupSupplierCost(origDestination, resolvedSupplierId as number, tenant.schemaName);
       profit = ratePerSms - supplierCost;
     } catch { /* use defaults */ }
+  } else if (!finalSuccess) {
+    // FAILED deliveries — don't charge client, don't pay supplier
+    supplierCost = 0;
+    profit = 0;
   }
 
   // ── Force DLR check BEFORE message INSERT — so correct status is stored immediately ──
@@ -756,7 +564,7 @@ export async function POST(request: Request) {
       deliveryResult?.routeUsed?.trunkId || (selectedRoute.trunk_id as number) || null,
       resolvedSupplierId,
       deliveryResult?.routeUsed?.connectionType || (selectedRoute.connection_type as string),
-      ratePerSms, supplierCost, profit,
+      (isDlrBilling ? 0 : finalSuccess ? ratePerSms : 0), supplierCost, profit,
       dlrStatus,
       !isVoiceOtp && dlrStatus !== "PENDING" ? new Date() : null,
       otpCode, language, messageId,
@@ -767,15 +575,13 @@ export async function POST(request: Request) {
     ]
   );
 
-  // Increment tenant SMS counter on success (tenant-level billing)
-  // ── Charge on submit: deduct SMS credit immediately ──
-  if (deliveryResult?.success || isVoiceOtp || (isOttRoute && status === "SENT") || customApiSuccess) {
-    if (tenantData) {
-      await db
-        .update(tenants)
-        .set({ smsCounter: (tenantData.smsCounter || 0) + 1 })
-        .where(eq(tenants.id, tenant.tenantId));
-    }
+  // ── Deduct SMS counter — atomic increment to avoid race conditions ──
+  // Skip for DLR-billed clients (their counter is charged in dlr-poller on DELIVERED)
+  if (tenantData && tenantData.smsLimit && tenantData.smsLimit > 0 && !isDlrBilling) {
+    await db
+      .update(tenants)
+      .set({ smsCounter: sql`sms_counter + 1` })
+      .where(eq(tenants.id, tenant.tenantId));
   }
 
   // ── Force DLR: push immediate DELIVERED callback to external client ──
@@ -797,11 +603,11 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    success: isVoiceOtp ? (callSuccess || dlrStatus === "DELIVERED") : (isOttRoute ? status === "SENT" : (isCustomApi ? customApiSuccess : (deliveryResult?.success ?? false))),
+    success: isVoiceOtp ? (callSuccess || dlrStatus === "DELIVERED") : (isOttRoute || isCustomApi ? status === "SENT" : (deliveryResult?.success ?? false)),
     message: msgResult.rows[0],
     messageId,
     routing: {
-      routePlan: routePlanId,
+      routePlan: routePlanName || routePlanId,
       route: deliveryResult?.routeUsed?.routeName || selectedRoute.route_name || selectedRoute.name,
       trunk: deliveryResult?.routeUsed?.trunkName || selectedRoute.trunk_name,
       supplier: deliveryResult?.routeUsed?.supplierName || selectedRoute.supplier_name,
@@ -809,7 +615,7 @@ export async function POST(request: Request) {
       fallbackUsed: deliveryResult?.fallbackUsed || false,
       failedRoutes: deliveryResult?.failedRoutes || 0,
     },
-    cost: ratePerSms,
+    cost: isDlrBilling ? 0 : (finalSuccess ? ratePerSms : 0),
     supplierCost,
     profit,
     supplierMessageId: deliveryResult?.supplierMessageId || customApiMessageId || null,

@@ -21,12 +21,6 @@ export async function POST(request: Request) {
     [body.clientId, body.amount, body.paymentMethod, body.notes || null]
   );
 
-  // Add to client balance
-  await tenantQuery(
-    tenant.schemaName,
-    `UPDATE clients SET balance = balance + $1 WHERE id = $2`,
-    [body.amount, body.clientId]
-  );
-
+  // Payment recorded — balance tracking removed
   return NextResponse.json({ payment: result.rows[0] }, { status: 201 });
 }

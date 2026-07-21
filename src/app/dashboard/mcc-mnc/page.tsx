@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { padMnc, formatMccMnc } from "@/lib/mcc-lookup-client";
 
 interface MccMnc {
   id: number;
@@ -37,6 +38,10 @@ export default function MccMncPage() {
 
   // Add form
   const [form, setForm] = useState({ mcc: "", mnc: "", countryCode: "", countryName: "", networkName: "", language: "English" });
+
+  // Inline edit
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editValues, setEditValues] = useState({ mcc: "", mnc: "", countryCode: "", countryName: "", networkName: "", language: "English" });
 
   // Import form
   const [importTarget, setImportTarget] = useState<"client_rates" | "supplier_rates">("client_rates");
@@ -92,6 +97,43 @@ export default function MccMncPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [search]);
+
+  // Inline edit handlers
+  const startEdit = (d: MccMnc) => {
+    setEditingId(d.id);
+    setEditValues({ mcc: d.mcc, mnc: d.mnc || "", countryCode: d.countryCode, countryName: d.countryName, networkName: d.networkName || "", language: d.language || "English" });
+  };
+  const cancelEdit = () => { setEditingId(null); };
+  const saveEdit = async (id: number) => {
+    if (!editValues.mcc || !editValues.countryName) {
+      flash("MCC and Country Name are required", true);
+      return;
+    }
+    try {
+      const r = await fetch(`/api/mcc-mnc/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editValues),
+      });
+      if (!r.ok) throw new Error("Update failed");
+      setEditingId(null);
+      load(search);
+      flash("Entry updated");
+    } catch {
+      flash("Failed to update entry", true);
+    }
+  };
+  const handleDelete = async (id: number) => {
+    if (!confirm("Delete this MCC/MNC entry?")) return;
+    try {
+      const r = await fetch(`/api/mcc-mnc/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error("Delete failed");
+      load(search);
+      flash("Entry deleted");
+    } catch {
+      flash("Failed to delete entry", true);
+    }
+  };
 
   const filtered = data;
 
@@ -409,48 +451,55 @@ export default function MccMncPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.slice(0, 500).map(d => (
-                <tr key={d.id} className="border-b hover:bg-slate-50 transition">
-                  <td className="px-5 py-3 font-mono text-xs font-medium">{d.mcc}</td>
-                  <td className="px-5 py-3 font-mono text-xs text-slate-500">{d.mnc || "—"}</td>
-                  <td className="px-5 py-3 font-medium">{d.countryName}</td>
-                  <td className="px-5 py-3 text-slate-600">{d.countryCode}</td>
-                  <td className="px-5 py-3 text-xs text-slate-500 max-w-[200px] truncate" title={d.networkName || ""}>{d.networkName || "—"}</td>
+              {filtered.slice(0, 500).map(d => {
+                const isEditing = editingId === d.id;
+                return (
+                <tr key={d.id} className={`border-b hover:bg-slate-50 transition ${isEditing ? "bg-blue-50" : ""}`}>
+                  <td className="px-5 py-3 font-mono text-xs font-medium">
+                    {isEditing
+                      ? <input value={editValues.mcc} onChange={e => setEditValues({...editValues, mcc: e.target.value})} className="w-16 border border-blue-300 rounded px-1.5 py-0.5 text-xs font-mono" />
+                      : <span className="font-bold text-slate-700">{d.mcc}</span>}
+                  </td>
+                  <td className="px-5 py-3 font-mono text-xs">
+                    {isEditing
+                      ? <input value={editValues.mnc} onChange={e => setEditValues({...editValues, mnc: e.target.value})} className="w-16 border border-blue-300 rounded px-1.5 py-0.5 text-xs font-mono" />
+                      : <span className="text-slate-600">{padMnc(d.mnc)}</span>}
+                  </td>
+                  <td className="px-5 py-3 font-medium">
+                    {isEditing
+                      ? <input value={editValues.countryName} onChange={e => setEditValues({...editValues, countryName: e.target.value})} className="w-32 border border-blue-300 rounded px-1.5 py-0.5 text-xs" />
+                      : d.countryName}
+                  </td>
+                  <td className="px-5 py-3 text-slate-600">
+                    {isEditing
+                      ? <input value={editValues.countryCode} onChange={e => setEditValues({...editValues, countryCode: e.target.value})} className="w-20 border border-blue-300 rounded px-1.5 py-0.5 text-xs" />
+                      : d.countryCode}
+                  </td>
+                  <td className="px-5 py-3 text-xs text-slate-500 max-w-[200px] truncate" title={d.networkName || ""}>
+                    {isEditing
+                      ? <input value={editValues.networkName} onChange={e => setEditValues({...editValues, networkName: e.target.value})} className="w-36 border border-blue-300 rounded px-1.5 py-0.5 text-xs" />
+                      : (d.networkName || "—")}
+                  </td>
                   <td className="px-5 py-3">
-                    <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-medium">{d.language}</span>
+                    {isEditing
+                      ? <input value={editValues.language} onChange={e => setEditValues({...editValues, language: e.target.value})} className="w-20 border border-blue-300 rounded px-1.5 py-0.5 text-xs" />
+                      : <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-medium">{d.language}</span>}
                   </td>
                   <td className="px-5 py-3 text-right">
-                    <button
-                      onClick={async () => {
-                        const code = prompt("Enter country code (e.g., +91):", d.countryCode);
-                        if (!code) return;
-                        const rate = prompt("Enter default rate (e.g., 0.00025):", "0.00025");
-                        if (!rate) return;
-                        try {
-                          await fetch("/api/tenant/client-rates", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                              clientId: clients[0]?.id || 0,
-                              countryCode: code,
-                              mcc: d.mcc,
-                              mnc: d.mnc,
-                              rate: rate,
-                            }),
-                          });
-                          flash(`Rate added for ${d.mcc} (${d.networkName || d.countryName})`);
-                        } catch {
-                          flash("Failed to add rate", true);
-                        }
-                      }}
-                      className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                      title="Quick add to client rates"
-                    >
-                      ➕ Rate
-                    </button>
+                    {isEditing ? (
+                      <div className="flex gap-1 justify-end">
+                        <button onClick={() => saveEdit(d.id)} className="text-green-600 hover:underline text-xs font-medium">✓ Save</button>
+                        <button onClick={cancelEdit} className="text-slate-400 hover:underline text-xs">✕ Cancel</button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2 justify-end">
+                        <button onClick={() => startEdit(d)} className="text-blue-600 hover:underline text-xs font-medium">✏️ Edit</button>
+                        <button onClick={() => handleDelete(d.id)} className="text-red-600 hover:underline text-xs font-medium">🗑️ Delete</button>
+                      </div>
+                    )}
                   </td>
                 </tr>
-              ))}
+              )})}
               {filtered.length === 0 && !loading && (
                 <tr>
                   <td colSpan={7} className="px-5 py-12 text-center text-slate-400">

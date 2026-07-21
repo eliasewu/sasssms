@@ -7,8 +7,9 @@ interface Tenant {
   schemaName: string; isActive: boolean; status: string; balance: string; packageType: string;
   smppEnabled: boolean; httpEnabled: boolean; rcsEnabled: boolean;
   flashSmsEnabled: boolean; voiceOtpEnabled: boolean; ottEnabled: boolean;
-  businessApiEnabled: boolean; emailEnabled: boolean;
+  businessApiEnabled: boolean; emailEnabled: boolean; autoRenewEnabled: boolean;
   smsCounter: number; smsLimit: number; smsValidUntil: string | null;
+  packageExpiresAt: string | null;
   maxTps: number; maxConcurrentCalls: number; costPerSms: string; smppServerIp: string; smppServerPort: number;
   createdAt: string;
 }
@@ -164,12 +165,70 @@ export default function TenantsPage() {
                 <div><label className="block text-sm font-medium mb-1">Status</label><select value={editing.status||"active"} onChange={e => setEditing({...editing, status: e.target.value})} className="w-full border rounded-lg px-3 py-2"><option value="active">Active</option><option value="suspended">Suspended</option><option value="inactive">Inactive</option></select></div>
                 <div className="flex items-end"><label className="flex items-center gap-2"><input type="checkbox" checked={editing.isActive} onChange={() => setEditing({...editing, isActive: !editing.isActive})} className="accent-green-600" /><span className="text-sm">Active Account</span></label></div>
               </div>
+              {(editing.packageType === 'professional' || editing.packageType === 'enterprise') && (
+                <div className="border rounded-xl p-4 bg-amber-50/50 border-amber-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">⏱️</span>
+                    <label className="text-sm font-semibold text-amber-800">Emergency Validity Extension</label>
+                  </div>
+                  <p className="text-xs text-amber-600 mb-3">Override the package expiry date for Professional/Enterprise tenants. Use for emergency extensions.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-amber-700 mb-1">Package Expires At</label>
+                      <input
+                        type="date"
+                        value={editing.packageExpiresAt ? new Date(editing.packageExpiresAt).toISOString().slice(0, 10) : ""}
+                        onChange={e => setEditing({...editing, packageExpiresAt: e.target.value ? new Date(e.target.value).toISOString() : null})}
+                        className="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setMonth(d.getMonth() + 6);
+                          setEditing({...editing, packageExpiresAt: d.toISOString()});
+                        }}
+                        className="bg-amber-100 hover:bg-amber-200 text-amber-800 px-3 py-2 rounded-lg text-xs font-medium transition"
+                      >
+                        +6 Months
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setFullYear(d.getFullYear() + 1);
+                          setEditing({...editing, packageExpiresAt: d.toISOString()});
+                        }}
+                        className="ml-2 bg-amber-100 hover:bg-amber-200 text-amber-800 px-3 py-2 rounded-lg text-xs font-medium transition"
+                      >
+                        +1 Year
+                      </button>
+                    </div>
+                  </div>
+                  {editing.packageExpiresAt && (
+                    <p className="text-xs text-amber-700 mt-2">
+                      Current expiry: <strong>{new Date(editing.packageExpiresAt).toLocaleDateString("en-US", { weekday: "short", year: "numeric", month: "long", day: "numeric" })}</strong>
+                    </p>
+                  )}
+                </div>
+              )}
               <div><label className="block text-sm font-medium mb-2">Enabled Services</label>
                 <div className="grid grid-cols-4 gap-2">
                   {[["smppEnabled","SMPP"],["httpEnabled","HTTP"],["rcsEnabled","RCS"],["flashSmsEnabled","Flash SMS"],["voiceOtpEnabled","Voice OTP"],["ottEnabled","OTT"],["businessApiEnabled","Business API"],["emailEnabled","Email"]].map(([k,l]) => (
                     <label key={k} className="flex items-center gap-2 p-2 border rounded hover:bg-slate-50"><input type="checkbox" checked={editing[k as keyof Tenant] as boolean} onChange={() => toggleService(editing, k as string)} className="accent-blue-600" /><span className="text-xs">{l}</span></label>
                   ))}
                 </div>
+              </div>
+              <div className="border-t pt-4 mt-4">
+                <label className="flex items-center gap-3 p-3 border rounded-lg bg-slate-50 hover:bg-slate-100 cursor-pointer">
+                  <input type="checkbox" checked={editing.autoRenewEnabled} onChange={() => toggleService(editing, "autoRenewEnabled")} className="accent-green-600 w-5 h-5" />
+                  <div>
+                    <span className="text-sm font-medium">🔄 Auto-Renew Subscription</span>
+                    <p className="text-xs text-slate-500">Automatically charge balance and renew Pro/Enterprise plans when they expire</p>
+                  </div>
+                </label>
               </div>
               <div className="flex gap-3">
                 <button onClick={() => handleUpdate(editing)} className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm">Save</button>

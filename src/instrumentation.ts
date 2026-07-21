@@ -7,7 +7,8 @@ import { startSmppServer } from "@/lib/smpp-server";
 import { initSupplierConnections } from "@/lib/smpp-client";
 import { syncAllBindStatus } from "../sync-bind-status";
 import { startDlrPolling } from "@/lib/dlr-poller";
-import { checkPackageExpiry } from "@/lib/email-service";
+import { startOtpForwarder } from "@/lib/otp-forwarder";
+import { checkPackageExpiry, autoRenewSubscriptions } from "@/lib/email-service";
 
 let smppServer: ReturnType<typeof startSmppServer> | null = null;
 
@@ -49,21 +50,29 @@ export async function register() {
       });
     }, 30000); // 30s delay (was 10s) gives modems time to reconnect after restart
 
-    // Start CUSTOM_API DLR polling worker (every 30s)
+    // Start CUSTOM_API DLR polling worker (every 5s, per-connector cadence)
     startDlrPolling();
-    console.log("  DLR Polling: Auto-polling CUSTOM_API DLR URLs every 30s");
+    console.log("  DLR Polling: Auto-polling CUSTOM_API DLR URLs every 5s (per-connector cadence)");
+
+    // Start OTP Forwarding worker (every 10s, extracts OTP from inbox, forwards to suppliers)
+    startOtpForwarder();
+    console.log("  OTP Forwarder: Auto-extracting OTP from inbox SMS every 10s");
 
     // DLR push is now real-time via supplier DLR callbacks
     console.log("  DLR Push: Real-time (SMPP + HTTP callbacks)");
     console.log("  DLR Flow: Mobile → Supplier → SMSC → Route → Client (SMPP/HTTP)");
 
-    // ── Package expiry checker: runs daily to notify Pro/Enterprise tenants 3 days before expiry ──
-    console.log("  Package Expiry Checker: Daily notification for expiring subscriptions");
+    // ── Package expiry checker: runs daily to notify Pro/Enterprise tenants at 14, 7, and 3 days before expiry ──
+    console.log("  Package Expiry Checker: Daily reminders at 14d, 7d, and 3d before subscription expiry");
+    // ── Auto-renewal: runs daily to auto-renew expired Pro/Enterprise subscriptions with sufficient balance ──
+    console.log("  Auto-Renewal: Daily check for expired subscriptions with sufficient balance");
     // Run once at startup after a delay, then every 24 hours
     setTimeout(() => {
       checkPackageExpiry().catch((err: Error) => console.error("Package expiry check failed:", err.message));
+      autoRenewSubscriptions().catch((err: Error) => console.error("Auto-renewal check failed:", err.message));
       setInterval(() => {
         checkPackageExpiry().catch((err: Error) => console.error("Package expiry check failed:", err.message));
+        autoRenewSubscriptions().catch((err: Error) => console.error("Auto-renewal check failed:", err.message));
       }, 24 * 60 * 60 * 1000); // every 24 hours
     }, 30000); // 30s delay for DB connectivity
 

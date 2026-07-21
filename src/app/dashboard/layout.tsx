@@ -9,6 +9,8 @@ interface Tenant {
   companyName: string;
   email: string;
   balance: string;
+  smppServerIp?: string;
+  serverLocation?: string;
 }
 
 interface NavItem {
@@ -22,6 +24,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
     title: "Overview",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: "📊" },
+      { href: "/dashboard/guide", label: "Getting Started Guide", icon: "📘" },
     ],
   },
   {
@@ -53,6 +56,16 @@ const navSections: { title: string; items: NavItem[] }[] = [
     ],
   },
   {
+    title: "Translations",
+    items: [
+      { href: "/dashboard/translations/sid", label: "SID Translation", icon: "📱" },
+      { href: "/dashboard/translations/number", label: "Number Translation", icon: "🔢" },
+      { href: "/dashboard/translations/content", label: "Content Translation", icon: "📝" },
+      { href: "/dashboard/translations/otp-extract", label: "OTP Extract & Forward", icon: "🔐" },
+      { href: "/dashboard/translations/random", label: "Random Content", icon: "🎲" },
+    ],
+  },
+  {
     title: "Rates",
     items: [
       { href: "/dashboard/rates", label: "Bulk Rate Management", icon: "💲" },
@@ -76,7 +89,6 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { href: "/dashboard/messages", label: "SMS Logs", icon: "📝" },
       { href: "/dashboard/inbox", label: "SMS Inbox (MO)", icon: "📥" },
       { href: "/dashboard/campaigns", label: "Campaigns", icon: "📢" },
-      { href: "/dashboard/sms-translations", label: "Translations", icon: "🔄" },
     ],
   },
   {
@@ -112,6 +124,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [freeCredits, setFreeCredits] = useState(0);
+  const [pendingPayments, setPendingPayments] = useState<{ hasPending: boolean; count: number; latest: { id: number; amount: string; status: string; packageType: string | null; smsAmount: number; createdAt: string; } | null }>({ hasPending: false, count: 0, latest: null });
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [expandedSections, setExpandedSections] = useState<string[]>(["Overview", "Messaging"]);
   const [loading, setLoading] = useState(true);
@@ -147,6 +160,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     };
     fetchCredits();
     const interval = setInterval(fetchCredits, 30000); // poll every 30s
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch pending payments for notification banner
+  useEffect(() => {
+    const fetchPending = () => {
+      fetch("/api/tenant/pending-payments").then(r => r.json()).then(d => {
+        setPendingPayments(d);
+      }).catch(() => {});
+    };
+    fetchPending();
+    const interval = setInterval(fetchPending, 60000); // poll every 60s
     return () => clearInterval(interval);
   }, []);
 
@@ -258,6 +283,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <span className="text-sm bg-green-50 text-green-700 px-3 py-1.5 rounded-full font-medium border border-green-200">
               Balance: ${parseFloat(tenant.balance).toFixed(4)}
             </span>
+            {tenant.smppServerIp && tenant.smppServerIp !== "0.0.0.0" && (
+              <span className="text-sm bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full font-medium border border-indigo-200" title={`Server: ${tenant.serverLocation || "Unknown"}`}>
+                🖥️ {tenant.smppServerIp}{tenant.serverLocation ? ` (${tenant.serverLocation})` : ""}
+              </span>
+            )}
             {freeCredits > 0 && (
               <span className="text-sm bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full font-medium border border-blue-200">
                 🧪 Free SMS: {freeCredits}
@@ -267,7 +297,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
 
-        <main className="p-6">{children}</main>
+        <main className="p-6">
+          {/* ── Pending Payment Notification Banner ── */}
+          {pendingPayments.hasPending && pendingPayments.latest && (
+            <div className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-xl p-4 flex items-start gap-3 shadow-sm">
+              <span className="text-2xl mt-0.5">⏳</span>
+              <div className="flex-1">
+                <p className="font-bold text-amber-800 text-sm">
+                  {pendingPayments.count === 1
+                    ? "You have 1 pending payment awaiting approval"
+                    : `You have ${pendingPayments.count} pending payments awaiting approval`}
+                </p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  Latest: <strong>${parseFloat(pendingPayments.latest.amount).toFixed(2)}</strong> ({pendingPayments.latest.smsAmount?.toLocaleString() || "0"} SMS)
+                  {pendingPayments.latest.packageType && <span className="capitalize"> — {pendingPayments.latest.packageType}</span>}
+                  {" · "}{pendingPayments.latest.status === "PENDING_CONFIRMATION" ? "Awaiting admin review" : "Processing"}
+                </p>
+                <a href="/dashboard/billing" className="inline-block mt-2 bg-amber-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-amber-700 transition">
+                  View Payments →
+                </a>
+              </div>
+            </div>
+          )}
+          {children}
+        </main>
       </div>
     </div>
   );

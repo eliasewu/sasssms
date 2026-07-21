@@ -322,6 +322,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           </Script>
         </>
       )}
+
     </html>
   );
 }

@@ -26,6 +26,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   if (body.ottEnabled !== undefined) updateData.ottEnabled = safeBool(body.ottEnabled, true);
   if (body.businessApiEnabled !== undefined) updateData.businessApiEnabled = safeBool(body.businessApiEnabled, true);
   if (body.emailEnabled !== undefined) updateData.emailEnabled = safeBool(body.emailEnabled, true);
+  if (body.autoRenewEnabled !== undefined) updateData.autoRenewEnabled = safeBool(body.autoRenewEnabled, true);
   if (body.packageType !== undefined) updateData.packageType = safeText(body.packageType, 50, "starter");
   if (body.balance !== undefined) updateData.balance = safeDecimal(body.balance, "0");
   if (body.maxTps !== undefined) updateData.maxTps = safeInt(body.maxTps, 0);
@@ -33,6 +34,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   if (body.smsLimit !== undefined) updateData.smsLimit = safeInt(body.smsLimit, 0);
   if (body.smsCounter !== undefined) updateData.smsCounter = safeInt(body.smsCounter, 0);
   if (body.maxConcurrentCalls !== undefined) updateData.maxConcurrentCalls = safeInt(body.maxConcurrentCalls, 10);
+  if (body.packageExpiresAt !== undefined) {
+    updateData.packageExpiresAt = body.packageExpiresAt ? new Date(body.packageExpiresAt) : null;
+  }
 
   // If status is SUSPENDED, also deactivate
   if (updateData.status === "suspended") {

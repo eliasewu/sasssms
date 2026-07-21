@@ -27,6 +27,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     sendSuccessCondition, sendMessageIdPath,
     dlrUrlTemplate, dlrMethod,
     dlrSuccessCondition, dlrStatusPath, dlrDeliveredValue, isActive,
+    dlrPollSeconds, dlrTimeoutSeconds,
   } = body;
 
   const result = await tenantQuery(
@@ -38,14 +39,19 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       send_success_condition=$7, send_message_id_path=$8,
       dlr_url_template=$9, dlr_method=COALESCE($10,dlr_method),
       dlr_success_condition=$11, dlr_status_path=$12, dlr_delivered_value=COALESCE($13,dlr_delivered_value),
-      is_active=COALESCE($14,is_active)
-    WHERE id=$15 RETURNING *`,
+      dlr_poll_seconds=COALESCE($14,dlr_poll_seconds),
+      dlr_timeout_seconds=COALESCE($15,dlr_timeout_seconds),
+      is_active=COALESCE($16,is_active)
+    WHERE id=$17 RETURNING *`,
     [name || null, type || null, sendUrlTemplate || null, sendMethod || null,
      sendHeaders !== undefined ? sendHeaders : undefined, sendBodyTemplate !== undefined ? sendBodyTemplate : undefined,
      sendSuccessCondition !== undefined ? sendSuccessCondition : undefined, sendMessageIdPath !== undefined ? sendMessageIdPath : undefined,
      dlrUrlTemplate !== undefined ? dlrUrlTemplate : undefined, dlrMethod || null,
      dlrSuccessCondition !== undefined ? dlrSuccessCondition : undefined, dlrStatusPath !== undefined ? dlrStatusPath : undefined,
-     dlrDeliveredValue || null, isActive !== undefined ? isActive : undefined,
+     dlrDeliveredValue || null,
+     (() => { const v = parseInt(String(dlrPollSeconds)); return dlrPollSeconds != null && !isNaN(v) ? v : undefined; })(),
+     (() => { const v = parseInt(String(dlrTimeoutSeconds)); return dlrTimeoutSeconds != null && !isNaN(v) ? v : undefined; })(),
+     isActive !== undefined ? isActive : undefined,
      id]
   );
 

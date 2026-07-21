@@ -64,9 +64,15 @@ export default function DashboardPage() {
   const daysLeft = tenant.smsValidUntil ? Math.max(0, Math.ceil((new Date(tenant.smsValidUntil).getTime() - Date.now()) / 86400000)) : 0;
   const isProOrEnt = isPro || isEnt;
   const pkgDaysLeft = tenant.packageExpiresAt ? Math.max(0, Math.ceil((new Date(tenant.packageExpiresAt).getTime() - Date.now()) / 86400000)) : 0;
-  const isPkgExpiringSoon = isProOrEnt && pkgDaysLeft <= 7 && pkgDaysLeft > 3;
   const isPkgExpired = isProOrEnt && pkgDaysLeft <= 0 && tenant.packageExpiresAt !== null;
   const isPkgCriticalExpiry = isProOrEnt && pkgDaysLeft <= 3 && pkgDaysLeft > 0;
+  const isPkgUrgentExpiry = isProOrEnt && pkgDaysLeft <= 7 && pkgDaysLeft > 3;
+  const isPkgWarningExpiry = isProOrEnt && pkgDaysLeft <= 14 && pkgDaysLeft > 7;
+  const isPkgApproachingExpiry = isProOrEnt && pkgDaysLeft <= 30 && pkgDaysLeft > 14;
+  const isPkgExpiringSoon = isProOrEnt && pkgDaysLeft <= 30 && pkgDaysLeft > 0;
+  // For the bottom-right card: only go amber when truly urgent (≤7 days)
+  const isPkgNearExpiry = isPkgCriticalExpiry || isPkgUrgentExpiry;
+  const pkgExpiryPct = isProOrEnt && tenant.packageExpiresAt ? Math.min(100, ((30 - Math.min(pkgDaysLeft, 30)) / 30) * 100) : 0;
   const tenantRate = parseFloat(tenant.costPerSms);
   const currentPlatformRate = parseFloat(platformRate);
 
@@ -104,19 +110,70 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Package Expiry Alert Banner (3-day warning) ── */}
-      {isPkgCriticalExpiry && (
-        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 flex items-start gap-3 animate-pulse">
-          <span className="text-2xl">⏰</span>
+      {/* ── Package Expiry Alert Banners (ascending urgency) ── */}
+      {isPkgApproachingExpiry && (
+        <div className="bg-slate-50 border-2 border-slate-200 rounded-xl p-4 flex items-start gap-3">
+          <span className="text-2xl">📅</span>
+          <div className="flex-1">
+            <p className="font-bold text-slate-700 text-sm">
+              Your {tenant.packageType === "professional" ? "Professional" : "Enterprise"} plan renews in <strong>{pkgDaysLeft} days</strong>
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Next billing date: {tenant.packageExpiresAt ? new Date(tenant.packageExpiresAt).toLocaleDateString() : ""}. Everything is running smoothly.
+            </p>
+            <a href="/dashboard/billing" className="inline-block mt-2 bg-slate-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-slate-700 transition">
+              Manage Subscription →
+            </a>
+          </div>
+        </div>
+      )}
+
+      {isPkgWarningExpiry && (
+        <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 flex items-start gap-3">
+          <span className="text-2xl">📅</span>
+          <div className="flex-1">
+            <p className="font-bold text-blue-800 text-sm">
+              Your {tenant.packageType === "professional" ? "Professional" : "Enterprise"} plan renews in <strong>{pkgDaysLeft} days</strong>
+            </p>
+            <p className="text-xs text-blue-700 mt-0.5">
+              Next billing date: {tenant.packageExpiresAt ? new Date(tenant.packageExpiresAt).toLocaleDateString() : ""}. Everything is running smoothly.
+            </p>
+            <a href="/dashboard/billing" className="inline-block mt-2 bg-blue-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-700 transition">
+              Manage Subscription →
+            </a>
+          </div>
+        </div>
+      )}
+
+      {isPkgUrgentExpiry && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 flex items-start gap-3">
+          <span className="text-2xl">⚠️</span>
           <div className="flex-1">
             <p className="font-bold text-amber-800 text-sm">
-              Your {tenant.packageType === "professional" ? "Professional" : "Enterprise"} plan expires in <span className="text-red-600">{pkgDaysLeft} day{pkgDaysLeft > 1 ? "s" : ""}</span>!
+              Your {tenant.packageType === "professional" ? "Professional" : "Enterprise"} plan expires in <strong>{pkgDaysLeft} days</strong>
             </p>
             <p className="text-xs text-amber-700 mt-0.5">
-              Renew now to avoid service interruption on {tenant.packageExpiresAt ? new Date(tenant.packageExpiresAt).toLocaleDateString() : ""}.
+              Renew before {tenant.packageExpiresAt ? new Date(tenant.packageExpiresAt).toLocaleDateString() : ""} to avoid any service interruption.
             </p>
             <a href="/dashboard/billing" className="inline-block mt-2 bg-amber-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-amber-700 transition">
-              Renew Plan →
+              🔄 Renew Subscription →
+            </a>
+          </div>
+        </div>
+      )}
+
+      {isPkgCriticalExpiry && (
+        <div className="bg-red-50 border-2 border-red-400 rounded-xl p-4 flex items-start gap-3 animate-pulse">
+          <span className="text-2xl">⏰</span>
+          <div className="flex-1">
+            <p className="font-bold text-red-800 text-sm">
+              ⚠️ Only <span className="text-red-600 text-lg">{pkgDaysLeft} day{pkgDaysLeft > 1 ? "s" : ""}</span> left!
+            </p>
+            <p className="text-xs text-red-700 mt-0.5">
+              Your {tenant.packageType === "professional" ? "Professional" : "Enterprise"} plan expires on {tenant.packageExpiresAt ? new Date(tenant.packageExpiresAt).toLocaleDateString() : ""}. Renew immediately to avoid service interruption.
+            </p>
+            <a href="/dashboard/billing" className="inline-block mt-2 bg-red-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-red-700 transition">
+              🔄 Renew Subscription Now →
             </a>
           </div>
         </div>
@@ -133,7 +190,7 @@ export default function DashboardPage() {
               SMS sending is paused. Your data is preserved — renew to reactivate immediately.
             </p>
             <a href="/dashboard/billing" className="inline-block mt-2 bg-red-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-red-700 transition">
-              Renew Now →
+              🔄 Renew Now →
             </a>
           </div>
         </div>
@@ -183,13 +240,30 @@ export default function DashboardPage() {
               {isProOrEnt ? (
                 <div>
                   <p className="text-sm text-slate-500">Subscription</p>
-                  <p className={`text-3xl font-bold ${isPkgExpired ? "text-red-600" : isPkgExpiringSoon ? "text-amber-600" : "text-green-600"}`}>
-                    {tenant.packageExpiresAt ? `${pkgDaysLeft}d` : "Active"}
-                  </p>
+                  <div className="flex items-center gap-3">
+                    <p className={`text-3xl font-bold ${isPkgExpired ? "text-red-600" : isPkgCriticalExpiry ? "text-red-500" : isPkgUrgentExpiry ? "text-amber-600" : "text-green-600"}`}>
+                      {tenant.packageExpiresAt ? `${pkgDaysLeft}d` : "Active"}
+                    </p>
+                    {isPkgExpiringSoon && tenant.packageExpiresAt && (
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${isPkgCriticalExpiry ? "bg-red-100 text-red-700 animate-pulse" : isPkgUrgentExpiry ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
+                        {isPkgCriticalExpiry ? "URGENT" : isPkgUrgentExpiry ? "RENEW SOON" : "RENEWING"}
+                      </span>
+                    )}
+                  </div>
                   {tenant.packageExpiresAt && (
                     <p className="text-xs text-slate-400">
                       {isPkgExpired ? "Expired — Renew now" : `Renews: ${new Date(tenant.packageExpiresAt).toLocaleDateString()}`}
                     </p>
+                  )}
+                  {/* Countdown progress bar */}
+                  {isPkgExpiringSoon && tenant.packageExpiresAt && (
+                    <div className="mt-2 w-full max-w-[200px]">
+                      <div className="w-full bg-slate-200 rounded-full h-2">
+                        <div className={`h-2 rounded-full transition-all ${isPkgCriticalExpiry ? "bg-red-500" : isPkgUrgentExpiry ? "bg-amber-500" : "bg-blue-500"}`}
+                          style={{width: `${pkgExpiryPct}%`}} />
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{30 - pkgDaysLeft} of 30 days elapsed</p>
+                    </div>
                   )}
                 </div>
               ) : (
@@ -217,12 +291,12 @@ export default function DashboardPage() {
 
           {(isPro || isEnt) && (
             <div className="lg:w-64">
-              <div className={`border rounded-lg p-3 text-center ${isPkgExpired ? "bg-red-50 border-red-200" : isPkgExpiringSoon ? "bg-amber-50 border-amber-200" : "bg-blue-50 border-blue-200"}`}>
-                <p className={`text-sm font-medium ${isPkgExpired ? "text-red-700" : isPkgExpiringSoon ? "text-amber-700" : "text-blue-700"}`}>
+              <div className={`border rounded-lg p-3 text-center ${isPkgExpired ? "bg-red-50 border-red-200" : isPkgNearExpiry ? "bg-amber-50 border-amber-200" : "bg-blue-50 border-blue-200"}`}>
+                <p className={`text-sm font-medium ${isPkgExpired ? "text-red-700" : isPkgNearExpiry ? "text-amber-700" : "text-blue-700"}`}>
                   {isPro ? "10M SMS included/mo" : "Unlimited SMS"}
                 </p>
-                <p className={`text-xs mt-1 ${isPkgExpired ? "text-red-600" : isPkgExpiringSoon ? "text-amber-600" : "text-blue-600"}`}>
-                  {isPkgExpired ? "⚠️ Subscription expired — Renew" : isPkgExpiringSoon ? `⚠️ Renews in ${pkgDaysLeft} days` : "Monthly fee covers all SMS"}
+                <p className={`text-xs mt-1 ${isPkgExpired ? "text-red-600" : isPkgNearExpiry ? "text-amber-600" : "text-blue-600"}`}>
+                  {isPkgExpired ? "⚠️ Subscription expired — Renew" : isPkgNearExpiry ? `⚠️ Renews in ${pkgDaysLeft} days` : "Monthly fee covers all SMS"}
                 </p>
                 {tenant.packageExpiresAt && (
                   <p className={`text-xs mt-1 font-medium ${isPkgExpired ? "text-red-500" : "text-slate-500"}`}>
@@ -234,10 +308,28 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="flex gap-3 mt-4 pt-4 border-t">
-          <a href="/dashboard/billing" className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition">
-            💳 {isStarter ? "Top-Up SMS" : "Manage Billing"}
-          </a>
+        <div className="flex gap-3 mt-4 pt-4 border-t flex-wrap">
+          {isPkgCriticalExpiry ? (
+            <a href="/dashboard/billing" className="bg-red-600 text-white px-5 py-2 rounded-lg text-sm font-bold hover:bg-red-700 transition animate-pulse shadow-lg shadow-red-200">
+              ⚠️ Renew Now — {pkgDaysLeft} Day{pkgDaysLeft > 1 ? "s" : ""} Left!
+            </a>
+          ) : isPkgUrgentExpiry ? (
+            <a href="/dashboard/billing" className="bg-amber-600 text-white px-5 py-2 rounded-lg text-sm font-bold hover:bg-amber-700 transition shadow-md">
+              🔄 Renew Subscription — {pkgDaysLeft} Days Left
+            </a>
+          ) : isPkgExpiringSoon ? (
+            <a href="/dashboard/billing" className="border-2 border-blue-500 text-blue-700 bg-blue-50 px-5 py-2 rounded-lg text-sm font-semibold hover:bg-blue-100 transition">
+              🔄 Renew Subscription
+            </a>
+          ) : isPkgExpired ? (
+            <a href="/dashboard/billing" className="bg-red-600 text-white px-5 py-2 rounded-lg text-sm font-bold hover:bg-red-700 transition shadow-lg shadow-red-200">
+              🚫 Reactivate Plan Now
+            </a>
+          ) : (
+            <a href="/dashboard/billing" className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition">
+              💳 {isStarter ? "Top-Up SMS" : "Manage Billing"}
+            </a>
+          )}
           <a href="/dashboard/send-sms" className="border border-slate-300 px-5 py-2 rounded-lg text-sm hover:bg-slate-50 transition">
             📱 Send SMS
           </a>

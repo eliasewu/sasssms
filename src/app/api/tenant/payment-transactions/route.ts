@@ -9,9 +9,7 @@ import { notifyAdminNewPayment } from "@/lib/email-service";
 // ── Determine initial status based on payment method ──
 function getInitialStatus(method: string): string {
   const method_lower = (method || "").toLowerCase();
-  if (method_lower === "stripe" || method_lower.includes("card") || method_lower.includes("visa") || method_lower.includes("mastercard")) {
-    return "PENDING_STRIPE"; // Auto-confirms via Stripe webhook
-  }
+  // Crypto and manual payments require admin approval
   if (["usdt_trc20", "usdt", "btc", "bnb", "usdc", "eth", "crypto", "bitcoin", "tether"].includes(method_lower)) {
     return "PENDING_CONFIRMATION"; // Manual admin approval required
   }
@@ -66,14 +64,7 @@ export async function POST(request: Request) {
 
     const transaction = txnResult.rows[0];
 
-    // If Stripe payment, emit event for webhook processing
-    // (Stripe webhook will update status to COMPLETED)
-    if (initialStatus === "PENDING_STRIPE") {
-      // Stripe will confirm via webhook — no auto-approve
-      console.log(`Stripe payment #${transaction.id} pending webhook confirmation`);
-    }
-
-    // If crypto payment, it stays PENDING_CONFIRMATION until admin approves
+    // Crypto payment stays PENDING_CONFIRMATION until admin approves
     // No SMS credits are added until approval
 
     // Send email notification to super admin
@@ -91,8 +82,6 @@ export async function POST(request: Request) {
       status: initialStatus,
       message: initialStatus === "PENDING_CONFIRMATION"
         ? "Payment submitted. Awaiting admin confirmation."
-        : initialStatus === "PENDING_STRIPE"
-        ? "Payment submitted. Awaiting Stripe confirmation."
         : "Payment submitted for review.",
     }, { status: 201 });
   } finally {

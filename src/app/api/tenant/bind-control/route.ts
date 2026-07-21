@@ -68,6 +68,21 @@ export async function POST(request: Request) {
       );
     } else {
       // ── CLIENT-mode supplier: we connect to them ──
+      // API/HTTP suppliers don't need SMPP binding
+      const connType = (entity.connection_type as string) || "SMPP";
+      if (connType !== "SMPP") {
+        await tenantQuery(
+          tenant.schemaName,
+          "UPDATE suppliers SET bind_status = $1, updated_at = NOW() WHERE id = $2",
+          ["ACTIVE", entityId]
+        );
+        return NextResponse.json({
+          success: true, realBindStatus: "ACTIVE",
+          entity: { id: entityId, name: entity.name, bindStatus: "ACTIVE" },
+          message: `"${entity.name}" is an API supplier — always active.`,
+        });
+      }
+
       const host = entity.host;
       const port = entity.port || 2775;
       const username = entity.username || entity.system_id || "";

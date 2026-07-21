@@ -15,8 +15,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     const { rows } = await client.query(
       `UPDATE mcc_mnc_database
-       SET mcc = $1, mnc = $2, country_code = $3, country_name = $4, network_name = $5
-       WHERE id = $6 RETURNING *`,
+       SET mcc = $1, mnc = $2, country_code = $3, country_name = $4, network_name = $5,
+           mccmnc = $1 || LPAD(COALESCE($2,''), 3, '0')
+       WHERE id = $6
+       RETURNING *`,
       [mcc, mnc || null, countryCode, countryName, networkName || null, parseInt(id)]
     );
 

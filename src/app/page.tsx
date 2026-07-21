@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Script from "next/script";
 
 interface LandingSettings {
   costPerSms: string;
@@ -12,6 +13,38 @@ interface LandingSettings {
     monthlyFee: string; smsCredits: number; freeSmsPerMonth: boolean;
     features: string[]; requiresLicense: boolean; isActive: boolean;
   }>;
+  serverLocations?: Array<{
+    id: string; country: string; city: string; countryCodes: string; ipAddress: string; port: number; isActive: boolean;
+  }>;
+}
+
+// ── Module-level GeoIP helpers ──
+
+/** Generate a flag emoji from a 2-letter country code (e.g. "DE" → 🇩🇪) */
+function countryFlag(countryCode: string): string {
+  const cc = countryCode.trim().toUpperCase();
+  if (cc.length !== 2) return "🌍";
+  return String.fromCodePoint(...[...cc].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
+}
+
+/** Get the best flag for a location — uses first country code or falls back to ID mapping */
+function locationFlag(loc: { id: string; countryCodes?: string }): string {
+  const firstCC = (loc.countryCodes || "").split(",")[0]?.trim().toUpperCase();
+  if (firstCC && firstCC.length === 2) return countryFlag(firstCC);
+  // Fallback: try to guess flag from location ID
+  const ccMap: Record<string, string> = { canada: "CA", poland: "PL", france: "FR", usa: "US", germany: "DE", uk: "GB", singapore: "SG", brazil: "BR", japan: "JP", australia: "AU", india: "IN", uae: "AE" };
+  const cc = ccMap[loc.id];
+  return cc ? countryFlag(cc) : "🌍";
+}
+
+/** Map country codes to closest server location using admin-configured countryCodes */
+function mapCountryToLocation(countryCode: string, locations: Array<{ id: string; countryCodes: string }>): string | null {
+  const cc = countryCode.trim().toUpperCase();
+  for (const loc of locations) {
+    const codes = (loc.countryCodes || "").split(",").map(c => c.trim().toUpperCase());
+    if (codes.includes(cc)) return loc.id;
+  }
+  return null;
 }
 
 
@@ -151,6 +184,8 @@ const jsonLd = {
   ]
 };
 
+const TAWKTO_ID = process.env.NEXT_PUBLIC_TAWKTO_ID || "";
+
 export default function LandingPage() {
   const [mode, setMode] = useState<"landing" | "login" | "register">("landing");
   const [showProducts, setShowProducts] = useState(false);
@@ -162,7 +197,37 @@ export default function LandingPage() {
   const [loading, setLoading] = useState(false);
   const [smsVolume, setSmsVolume] = useState(100000);
   const [settings, setSettings] = useState<LandingSettings>({ costPerSms: "0.00010", packages: [] });
+  const [selectedLocation, setSelectedLocation] = useState("");
+  const [detectingLocation, setDetectingLocation] = useState(false);
+  const [autoDetectedLoc, setAutoDetectedLoc] = useState<{ id: string; country: string; flag: string } | null>(null);
   const router = useRouter();
+
+  // Auto-detect server location via GeoIP when registration form mounts
+  useEffect(() => {
+    if (mode !== "register" || selectedLocation) return;
+    const activeLocs = (settings.serverLocations || []).filter(l => l.isActive && l.ipAddress);
+    if (!activeLocs.length) return;
+    let cancelled = false;
+    setDetectingLocation(true);
+    fetch("https://ipapi.co/json/")
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled) return;
+        if (data?.country_code) {
+          const locId = mapCountryToLocation(data.country_code, activeLocs);
+          if (locId) {
+            const loc = activeLocs.find(l => l.id === locId);
+            if (loc) {
+              setAutoDetectedLoc({ id: loc.id, country: loc.country, flag: locationFlag(loc) });
+              setSelectedLocation(loc.id);
+            }
+          }
+        }
+      })
+      .catch(() => { /* GeoIP unavailable, user picks manually */ })
+      .finally(() => { if (!cancelled) setDetectingLocation(false); });
+    return () => { cancelled = true; };
+  }, [mode, settings.serverLocations, selectedLocation]);
 
   // Fetch dynamic settings from super admin
   useEffect(() => {
@@ -204,9 +269,16 @@ export default function LandingPage() {
     setLoading(true);
     setError("");
     const fd = new FormData(e.currentTarget);
+    const body: Record<string, string> = {
+      companyName: fd.get("companyName") as string,
+      email: fd.get("email") as string,
+      phone: fd.get("phone") as string,
+      password: fd.get("password") as string,
+    };
+    if (selectedLocation) body.serverLocation = selectedLocation;
     const res = await fetch("/api/auth/register", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ companyName: fd.get("companyName"), email: fd.get("email"), phone: fd.get("phone"), password: fd.get("password") }),
+      body: JSON.stringify(body),
       credentials: "include",
     });
     const data = await res.json();
@@ -238,6 +310,31 @@ export default function LandingPage() {
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Email *</label><input name="email" type="email" required className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label><input name="phone" type="tel" required className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Password *</label><input name="password" type="password" required minLength={6} className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition" /></div>
+              {(settings.serverLocations || []).filter(l => l.isActive && l.ipAddress).length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Server Location
+                    {detectingLocation && <span className="ml-2 inline-flex items-center gap-1 text-xs text-blue-500 animate-pulse"><span className="w-2 h-2 bg-blue-500 rounded-full"></span> Detecting your location...</span>}
+                    {autoDetectedLoc && !detectingLocation && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-xs text-green-600">
+                        <span>{autoDetectedLoc.flag}</span> Auto-selected {autoDetectedLoc.country}
+                      </span>
+                    )}
+                  </label>
+                  <select value={selectedLocation} onChange={e => { setSelectedLocation(e.target.value); setAutoDetectedLoc(null); }}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition bg-white">
+                    <option value="">Auto (Default)</option>
+                    {(settings.serverLocations || []).filter(l => l.isActive && l.ipAddress).map(loc => (
+                      <option key={loc.id} value={loc.id}>
+                        {locationFlag(loc)} {loc.country} — {loc.city} ({loc.ipAddress})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {autoDetectedLoc ? "📍 Best server auto-detected from your location. You can change it above." : "Choose your preferred server location. The server IP will be shown in your dashboard."}
+                  </p>
+                </div>
+              )}
               <div className="bg-green-50 border border-green-200 rounded-lg p-3"><p className="text-xs text-green-700">✓ No Setup Fees • ✓ No Hidden Fees • ✓ Pay Only For What You Use</p></div>
               <button disabled={loading} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 rounded-lg font-semibold disabled:opacity-50 shadow-lg">{loading ? "Creating..." : "Create Account →"}</button>
             </form>
@@ -1380,6 +1477,22 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+      {/* Tawk.to Live Chat */}
+      {TAWKTO_ID && (
+        <Script id="tawkto-landing" strategy="afterInteractive">
+          {`
+            var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+            (function(){
+              var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
+              s1.async=true;
+              s1.src='https://embed.tawk.to/${TAWKTO_ID}/default';
+              s1.charset='UTF-8';
+              s1.setAttribute('crossorigin','*');
+              s0.parentNode.insertBefore(s1,s0);
+            })();
+          `}
+        </Script>
+      )}
     </div>
   );
 }

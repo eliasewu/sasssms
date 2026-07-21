@@ -78,18 +78,20 @@ export default function BindStatusPage() {
     }));
 
     setSuppliers((sr.suppliers || []).map((s: Record<string,unknown>) => {
+      const connType = (s.connection_type as string) || "SMPP";
+      const isNonSmpp = connType !== "SMPP";
       const dbBindStatus = (s.bind_status as string) || "UNBOUND";
       const apiRealStatus = supplierRealMap.get(s.id as number);
-      // Trust API if it says BOUND; otherwise fall back to DB (handles Next.js module-isolation edge cases)
-      const realStatus = apiRealStatus === "BOUND" ? "BOUND" : (dbBindStatus === "BOUND" ? "BOUND" : "UNBOUND");
+      // Non-SMPP suppliers (API, HTTP, CUSTOM_API) are always ACTIVE
+      const realStatus = isNonSmpp ? "ACTIVE" : (apiRealStatus === "BOUND" ? "BOUND" : (dbBindStatus === "BOUND" ? "BOUND" : "UNBOUND"));
       return {
         id: s.id as number, name: s.name as string, type: "supplier" as const,
-        systemType: (s.connection_mode as string) === "SERVER" ? "SMSC" : "ESME",
-        host: (s.host as string) || "—",
-        port: (s.port as number) || 2775,
+        systemType: (s.connection_mode as string) === "SERVER" ? "SMSC" : isNonSmpp ? "API" : "ESME",
+        host: (s.host as string) || (isNonSmpp ? "API" : "—"),
+        port: (s.port as number) || (isNonSmpp ? 0 : 2775),
         bindStatus: realStatus,
         lastBindTime: (s.last_bind_time as string) || null,
-        connectionType: (s.connection_type as string) || "SMPP",
+        connectionType: connType,
         smppUsername: (s.username as string) || (s.system_id as string) || "—",
         smppAllowedIp: "—",
         connectionMode: (s.connection_mode as string) || "CLIENT",
@@ -195,6 +197,7 @@ export default function BindStatusPage() {
     BINDING: "bg-blue-100 text-blue-700 border-blue-300",
     UNBOUND: "bg-red-100 text-red-700 border-red-300",
     ERROR: "bg-red-200 text-red-800 border-red-400",
+    ACTIVE: "bg-emerald-100 text-emerald-700 border-emerald-300",
   };
 
   const statusDot: Record<string, string> = {
@@ -202,7 +205,10 @@ export default function BindStatusPage() {
     BINDING: "bg-blue-500 animate-pulse",
     UNBOUND: "bg-red-500",
     ERROR: "bg-red-600",
+    ACTIVE: "bg-emerald-500",
   };
+
+  const isSmppSupplier = (s: BindEntity) => s.connectionType === "SMPP";
 
   return (
     <div className="space-y-6">
@@ -247,7 +253,7 @@ export default function BindStatusPage() {
               <span className="text-red-600 text-lg">⚠️</span>
             </div>
             <div>
-              <p className="text-2xl font-bold text-red-700">{clients.filter(c => c.bindStatus !== "BOUND").length + suppliers.filter(s => s.bindStatus !== "BOUND").length}</p>
+              <p className="text-2xl font-bold text-red-700">{clients.filter(c => c.bindStatus !== "BOUND").length + suppliers.filter(s => isSmppSupplier(s) && s.bindStatus === "UNBOUND").length}</p>
               <p className="text-xs text-slate-500">Total UNBOUND</p>
             </div>
           </div>
@@ -322,19 +328,26 @@ export default function BindStatusPage() {
       <div className="bg-white rounded-xl border shadow-sm">
         <div className="px-6 py-4 border-b flex justify-between items-center">
           <h3 className="font-semibold">🏭 Supplier Binds (ESME/SMSC → External Gateway)</h3>
-          <span className="text-xs text-slate-500">{suppliers.filter(s => s.bindStatus === "BOUND").length}/{suppliers.length} bound</span>
+          <span className="text-xs text-slate-500">{suppliers.filter(s => s.bindStatus === "BOUND").length} bound · {suppliers.filter(s => s.bindStatus === "ACTIVE").length} active</span>
         </div>
         <table className="w-full text-sm">
           <thead className="bg-slate-50">
             <tr><th className="text-left px-5 py-3">Supplier</th><th className="text-left px-5 py-3">Username</th><th className="text-left px-5 py-3">Remote IP:Port</th><th className="text-left px-5 py-3">Mode</th><th className="text-left px-5 py-3">Bind</th><th className="text-left px-5 py-3">Last Bind</th><th className="text-left px-5 py-3">Actions</th></tr>
           </thead>
           <tbody>
-            {suppliers.map(s => (
-              <tr key={s.id} className={`border-b hover:bg-slate-50 transition-colors ${s.bindStatus === "BOUND" ? "border-l-2 border-l-emerald-400" : "border-l-2 border-l-red-400"}`}>
+            {suppliers.map(s => {
+              const isApi = !isSmppSupplier(s);
+              const borderColor = s.bindStatus === "BOUND" || s.bindStatus === "ACTIVE" ? "border-l-emerald-400" : "border-l-red-400";
+              return (
+              <tr key={s.id} className={`border-b hover:bg-slate-50 transition-colors border-l-2 ${borderColor}`}>
                 <td className="px-5 py-3 font-medium">{s.name}</td>
                 <td className="px-5 py-3 font-mono text-xs">{s.smppUsername}</td>
                 <td className="px-5 py-3 font-mono text-xs">{s.host !== "—" ? `${s.host}:${s.port}` : "API"}</td>
-                <td className="px-5 py-3 text-xs"><span className={s.connectionMode === "SERVER" ? "bg-purple-50 text-purple-700 px-2 py-0.5 rounded" : "bg-blue-50 text-blue-700 px-2 py-0.5 rounded"}>{s.connectionMode === "SERVER" ? "SMSC (Server)" : "ESME (Client)"}</span></td>
+                <td className="px-5 py-3 text-xs">
+                  <span className={isApi ? "bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded" : s.connectionMode === "SERVER" ? "bg-purple-50 text-purple-700 px-2 py-0.5 rounded" : "bg-blue-50 text-blue-700 px-2 py-0.5 rounded"}>
+                    {isApi ? "HTTP API" : s.connectionMode === "SERVER" ? "SMSC (Server)" : "ESME (Client)"}
+                  </span>
+                </td>
                 <td className="px-5 py-3">
                   <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${statusColors[s.bindStatus] || statusColors.UNBOUND}`}>
                     <span className={`inline-block w-1.5 h-1.5 rounded-full shadow-sm ${statusDot[s.bindStatus] || statusDot.UNBOUND}`} />
@@ -343,7 +356,9 @@ export default function BindStatusPage() {
                 </td>
                 <td className="px-5 py-3 text-xs text-slate-500">{s.lastBindTime ? new Date(s.lastBindTime).toLocaleString() : "Never"}</td>
                 <td className="px-5 py-3">
-                  {s.bindStatus !== "BOUND" ? (
+                  {isApi ? (
+                    <span className="text-xs text-slate-400">N/A</span>
+                  ) : s.bindStatus !== "BOUND" ? (
                     <button onClick={() => handleBind("suppliers", s.id)} className="bg-green-50 text-green-700 px-3 py-1 rounded text-xs hover:bg-green-100">Bind</button>
                   ) : (
                     <div className="flex items-center gap-1">
@@ -353,7 +368,7 @@ export default function BindStatusPage() {
                   )}
                 </td>
               </tr>
-            ))}
+            )})}
             {suppliers.length === 0 && <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-400">No suppliers configured.</td></tr>}
           </tbody>
         </table>
