@@ -11,7 +11,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // ── Comprehensive MCC → Country + Language Map (220+ entries) ──
-export const MCC_LANGUAGE_DATABASE: Record<string, { country: string; language: string; fallback?: string }> = {
+// Re-exported from client-safe module so dashboard pages can import without server deps
+export { MCC_LANGUAGE_DATABASE } from "@/lib/voice-otp-database";
+
+// Keep the inline map for server-side consumers that need it bundled
+const _MCC_LANGUAGE_DATABASE: Record<string, { country: string; language: string; fallback?: string }> = {
   // ── Asia ──
   "404": { country: "India", language: "Hindi", fallback: "English" },
   "405": { country: "India", language: "Hindi", fallback: "English" },

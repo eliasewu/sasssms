@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { MCC_LANGUAGE_DATABASE } from "@/lib/voice-otp-engine";
+import { MCC_LANGUAGE_DATABASE } from "@/lib/voice-otp-database";
 import { useConfirmModal } from "@/components/confirm-modal";
 
 // Extract unique languages from the 220+ MCC database, sorted alphabetically

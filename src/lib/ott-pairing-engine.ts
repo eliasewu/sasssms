@@ -24,9 +24,21 @@ import makeWASocket, {
   type WASocket,
 } from "@whiskeysockets/baileys";
 import { SocksProxyAgent } from "socks-proxy-agent";
-import { TelegramClient } from "telegram";
-import { StringSession } from "telegram/sessions";
 import qrcode from "qrcode";
+
+// Telegram imports are dynamic (optional dependency — not always installed)
+// Use require-style paths to prevent Turbopack static analysis from failing
+let TelegramClient: any;
+let StringSession: any;
+async function loadTelegram() {
+  if (!TelegramClient) {
+    const pkg1 = "telegram";
+    const pkg2 = "telegram/sessions";
+    const mod = await (Function(`return import("${pkg1}")`)() as Promise<any>);
+    TelegramClient = mod.TelegramClient;
+    StringSession = (await (Function(`return import("${pkg2}")`)() as Promise<any>)).StringSession;
+  }
+}
 
 // ── Types ──
 
@@ -480,6 +492,15 @@ async function startRealTelegramPairing(
   if (!telegramApiId || !telegramApiHash) {
     console.error(`[OTT-ENGINE] Telegram API credentials missing for device #${deviceId}`);
     await markPairingFailed(schemaName, deviceId, "Telegram API ID/Hash not configured — add them in device settings");
+    return;
+  }
+
+  // Load Telegram package dynamically (optional dependency)
+  try {
+    await loadTelegram();
+  } catch {
+    console.error(`[OTT-ENGINE] Telegram package not installed — run: npm install telegram`);
+    await markPairingFailed(schemaName, deviceId, "Telegram package not installed");
     return;
   }
 
