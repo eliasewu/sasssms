@@ -292,7 +292,8 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
 
     await createTable(`CREATE TABLE IF NOT EXISTS translation_pool_items (
       id SERIAL PRIMARY KEY, profile_id INTEGER NOT NULL,
-      replacement_value TEXT NOT NULL)`);
+      replacement_value TEXT NOT NULL,
+      mccmnc VARCHAR(6))`);
 
     await createTable(`CREATE TABLE IF NOT EXISTS translation_assignments (
       id SERIAL PRIMARY KEY, profile_id INTEGER NOT NULL,

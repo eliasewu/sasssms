@@ -25,12 +25,23 @@ export default function RandomTranslationPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  const [clients, setClients] = useState<{id:number;name:string}[]>([]);
+  const [suppliers, setSuppliers] = useState<{id:number;name:string}[]>([]);
+
   const [showForm, setShowForm] = useState(false);
   const [editingRule, setEditingRule] = useState<TranslationRule | null>(null);
-  const [form, setForm] = useState({ matchPattern: ".*", poolText: "" });
+  const [form, setForm] = useState({ ruleName: "", matchPattern: ".*", poolText: "", priority: 1 });
+  const [scope, setScope] = useState<"client"|"supplier"|"both">("supplier");
+  const [entityId, setEntityId] = useState<number | null>(null);
   const [selectedRule, setSelectedRule] = useState<TranslationRule | null>(null);
   const [sampleInput, setSampleInput] = useState("Your code is 123456");
   const [previewResult, setPreviewResult] = useState<string | null>(null);
+
+  // Fetch clients and suppliers for scope picker
+  useEffect(() => {
+    fetch("/api/tenant/clients").then(r => r.json()).then(d => setClients(d.clients || [])).catch(() => {});
+    fetch("/api/tenant/suppliers").then(r => r.json()).then(d => setSuppliers(d.suppliers || [])).catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -60,8 +71,8 @@ export default function RandomTranslationPage() {
       const url = editingRule ? `/api/tenant/sms-translations/${editingRule.id}` : "/api/tenant/sms-translations";
       const method = editingRule ? "PUT" : "POST";
       const body = editingRule
-        ? { matchPattern: form.matchPattern, mcc: selection.mcc, mnc: selection.mnc }
-        : { name: `RANDOM_${selection.label.replace(/[^a-zA-Z0-9]/g, "_")}`, targetField: "BODY", category: "RANDOM_CONTENT", mode: "RANDOM", matchPattern: form.matchPattern, mcc: selection.mcc, mnc: selection.mnc };
+        ? { name: form.ruleName || undefined, matchPattern: form.matchPattern, mcc: selection.mcc, mnc: selection.mnc, scope, entityId, priority: form.priority }
+        : { name: form.ruleName || `RANDOM_${selection.label.replace(/[^a-zA-Z0-9]/g, "_")}`, targetField: "BODY", category: "RANDOM_CONTENT", mode: "RANDOM", matchPattern: form.matchPattern, mcc: selection.mcc, mnc: selection.mnc, scope, entityId, priority: form.priority };
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -72,7 +83,8 @@ export default function RandomTranslationPage() {
       setMsg(editingRule ? "Rule updated!" : "Rule created!");
       setTimeout(() => setMsg(""), 3000);
       setShowForm(false); setEditingRule(null);
-      setForm({ matchPattern: ".*", poolText: "" });
+      setForm({ ruleName: "", matchPattern: ".*", poolText: "", priority: 1 });
+      setScope("supplier"); setEntityId(null);
       load();
     } catch (err) {
       setError("Failed to save rule. " + (err as Error).message);
@@ -93,7 +105,15 @@ export default function RandomTranslationPage() {
     }
   };
 
-  const startEdit = (r: TranslationRule) => { setEditingRule(r); setForm({ matchPattern: r.matchPattern, poolText: (r.poolItems || []).map(i => i.replacementValue).join("\n") }); setShowForm(true); };
+  const startEdit = (r: TranslationRule & { assignments?: Array<{clientId:number|null;supplierId:number|null;priority:number}> }) => {
+    setEditingRule(r);
+    setForm({ ruleName: r.name || "", matchPattern: r.matchPattern, poolText: (r.poolItems || []).map(i => i.replacementValue).join("\n"), priority: (r as any).assignments?.[0]?.priority || 1 });
+    const assign = (r as any).assignments?.[0];
+    if (assign?.clientId) { setScope("client"); setEntityId(assign.clientId); }
+    else if (assign?.supplierId) { setScope("supplier"); setEntityId(assign.supplierId); }
+    else { setScope("supplier"); setEntityId(null); }
+    setShowForm(true);
+  };
 
   const handleDragStart = (idx: number) => setDraggedIdx(idx);
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
@@ -133,7 +153,7 @@ export default function RandomTranslationPage() {
 
       <div className="flex items-center justify-between mb-4">
         <div className="text-xs text-slate-500">Rules for: <strong>{selection.label}</strong> ({rules.length} rules)</div>
-        <button onClick={() => { setEditingRule(null); setForm({ matchPattern: ".*", poolText: "" }); setShowForm(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700">+ Add Rule</button>
+        <button onClick={() => { setEditingRule(null); setForm({ ruleName: "", matchPattern: ".*", poolText: "", priority: 1 }); setScope("supplier"); setEntityId(null); setShowForm(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700">+ Add Rule</button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -162,10 +182,51 @@ export default function RandomTranslationPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowForm(false)}>
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <h3 className="font-semibold text-lg mb-1">{editingRule ? "Edit Rule" : "New Random Content Rule"}</h3>
-            <p className="text-xs text-slate-500 mb-4">For: {selection.label}</p>
+            <p className="text-xs text-slate-500 mb-4">For: {selection.label} | MCC/MNC-based random SID translation</p>
             <div className="space-y-3">
-              <div><label className="block text-xs font-medium text-slate-600 mb-1">Match Pattern</label><input value={form.matchPattern} onChange={e => setForm({...form, matchPattern: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none" /></div>
-              <div><label className="block text-xs font-medium text-slate-600 mb-1">Random Values (one per line)</label><textarea value={form.poolText} onChange={e => setForm({...form, poolText: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm font-mono h-32 focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none" /></div>
+              <div><label className="block text-xs font-medium text-slate-600 mb-1">Rule Name *</label>
+                <input value={form.ruleName} onChange={e => setForm({...form, ruleName: e.target.value})}
+                  placeholder="e.g. Borno VoiceOTP Random SID"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" /></div>
+              <div><label className="block text-xs font-medium text-slate-600 mb-1">Priority *</label>
+                <input type="number" min={1} max={99} value={form.priority} onChange={e => setForm({...form, priority: parseInt(e.target.value) || 1})}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" /></div>
+              <div><label className="block text-xs font-medium text-slate-600 mb-1">Match Pattern (Regex)</label>
+                <input value={form.matchPattern} onChange={e => setForm({...form, matchPattern: e.target.value})}
+                  placeholder=".*"
+                  className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none" /></div>
+              <div><label className="block text-xs font-medium text-slate-600 mb-1">Random Values (one per line)</label>
+                <textarea value={form.poolText} onChange={e => setForm({...form, poolText: e.target.value})}
+                  className="w-full border rounded-lg px-3 py-2 text-sm font-mono h-32 focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none" /></div>
+              {/* Scope selector */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Apply To (Scope)</label>
+                <div className="flex gap-2 mb-2">
+                  {(["both","client","supplier"] as const).map(s => (
+                    <button key={s} type="button" onClick={() => { setScope(s); setEntityId(null); }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                        scope === s ? "bg-blue-600 text-white shadow" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      {s === "both" ? "🌐 Both" : s === "client" ? "👤 Client" : "📦 Supplier"}
+                    </button>
+                  ))}
+                </div>
+                {scope === "client" && (
+                  <select value={entityId || ""} onChange={e => setEntityId(e.target.value ? parseInt(e.target.value) : null)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm">
+                    <option value="">Select client...</option>
+                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                )}
+                {scope === "supplier" && (
+                  <select value={entityId || ""} onChange={e => setEntityId(e.target.value ? parseInt(e.target.value) : null)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm">
+                    <option value="">Select supplier...</option>
+                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                )}
+              </div>
               <div className="flex gap-2 pt-2">
                 <button onClick={saveRule} disabled={saving} className="flex-1 bg-blue-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-50">{saving ? "Saving..." : editingRule ? "Update" : "Create"}</button>
                 <button onClick={() => setShowForm(false)} className="flex-1 border py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50">Cancel</button>

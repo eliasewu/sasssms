@@ -271,8 +271,9 @@ async function forwardOtp(
       await pgClient.query(
         `INSERT INTO messages (client_id, sender, destination, content,
          status, supplier_id, connection_type, cost, supplier_cost, profit,
-         dlr_status, message_id, supplier_message_id, dlr_callback_url)
-         VALUES ($1,$2,$3,$4,'SENT',$5,'CUSTOM_API',0,0,0,'PENDING',$6,$7,NULL)`,
+         dlr_status, message_id, supplier_message_id, dlr_callback_url,
+         original_sender, original_destination, original_content, translation_notes)
+         VALUES ($1,$2,$3,$4,'SENT',$5,'CUSTOM_API',0,0,0,'PENDING',$6,$7,NULL,$2,$3,$4,NULL)`,
         [
           systemClientId,
           sender,

@@ -8,6 +8,8 @@ import { filterRoutesByTrunkMcc } from "@/lib/smpp-client";
 import type { RouteInfo } from "@/lib/smpp-client";
 import { getOnlineOttDevices, sendOttMessage } from "@/lib/ott-pairing-engine";
 import type { OttDeviceType } from "@/lib/ott-pairing-engine";
+import { applyTranslations, applyEntityTranslations } from "@/lib/translation-engine";
+import { lookupClientRate, lookupSupplierCost } from "@/lib/rates";
 
 export const dynamic = "force-dynamic";
 
@@ -63,10 +65,29 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { clientId, sender, destination, content, testRouteId } = body;
+  const { clientId, sender: origSender, destination: origDestination, content: origContent, testRouteId } = body;
+
+  let sender = origSender;
+  let destination = origDestination;
+  let content = origContent;
 
   if (!clientId || !sender || !destination || !content) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+
+  // ── Apply Client-Level Translations ──
+  const appliedTranslations: string[] = [];
+  try {
+    const clientTransResult = await applyTranslations(
+      tenant.schemaName, clientId, null,
+      sender, destination, content
+    );
+    sender = clientTransResult.sender;
+    destination = clientTransResult.destination;
+    content = clientTransResult.content;
+    appliedTranslations.push(...clientTransResult.appliedProfiles);
+  } catch (err) {
+    console.error("[TestSMS] Translation error:", err);
   }
 
   // Get client (must be active)
@@ -82,6 +103,7 @@ export async function POST(request: Request) {
   const client = clientResult.rows[0];
   let routePlanId = client.route_plan_id;
   let selectedRoute: Record<string, unknown> = {};
+  const ratePerSms = await lookupClientRate(origDestination, clientId as number, tenant.schemaName);
 
   // Route selection
   if (testRouteId) {
@@ -140,6 +162,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No routes available for this destination (MCC filtering)" }, { status: 400 });
   }
 
+  // ── Apply Supplier-Level Translations ──
+  const supplierId = (selectedRoute.supplier_id) as number || null;
+  let supplierCost = 0;
+  let profit = 0;
+  if (supplierId) {
+    try {
+      const suppTransResult = await applyEntityTranslations(
+        tenant.schemaName, "supplier", supplierId,
+        sender, destination, content
+      );
+      sender = suppTransResult.sender;
+      destination = suppTransResult.destination;
+      content = suppTransResult.content;
+      appliedTranslations.push(...suppTransResult.appliedNames.map((n: string) => `[Supplier] ${n}`));
+    } catch (err) {
+      console.error("[TestSMS] Supplier translation error:", err);
+    }
+    try {
+      supplierCost = await lookupSupplierCost(origDestination, supplierId, tenant.schemaName);
+      profit = ratePerSms - supplierCost;
+    } catch (err) {
+      console.error("[TestSMS] Supplier cost lookup error:", err);
+    }
+  }
+
   // Simulate delivery for non-OTT routes; OTT routes get real delivery via pairing engine
   const messageId = "TEST_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
   const isOttRoute = selectedRoute.connection_type === "WhatsApp OTT" || selectedRoute.connection_type === "Telegram OTT";
@@ -187,8 +234,9 @@ export async function POST(request: Request) {
     tenant.schemaName,
     `INSERT INTO messages (client_id, sender, destination, content, status,
       route_plan_id, route_id, trunk_id, supplier_id, connection_type,
-      cost, dlr_status, dlr_timestamp, message_id, log_type, dlr_callback_url)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,$11,$12,$13,'test',$14) RETURNING *`,
+      cost, supplier_cost, profit, dlr_status, dlr_timestamp, message_id, log_type, dlr_callback_url,
+      original_sender, original_destination, original_content, translation_notes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,$11,$12,$13,$14,$15,'test',$16,$17,$18,$19,$20) RETURNING *`,
     [
       clientId,
       sender,
@@ -200,10 +248,16 @@ export async function POST(request: Request) {
       selectedRoute.trunk_id || null,
       selectedRoute.supplier_id || null,
       selectedRoute.connection_type || "SMPP",
+      msgStatus === 'FAILED' ? 0 : supplierCost,
+      msgStatus === 'FAILED' ? 0 : profit,
       dlrStatus,
       dlrStatus === "DELIVERED" ? new Date() : null,
       messageId,
       dlrCallbackUrl,
+      origSender,
+      origDestination,
+      origContent,
+      appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null,
     ]
   );
 

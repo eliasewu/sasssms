@@ -63,6 +63,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { href: "/dashboard/translations/content", label: "Content Translation", icon: "📝" },
       { href: "/dashboard/translations/otp-extract", label: "OTP Extract & Forward", icon: "🔐" },
       { href: "/dashboard/translations/random", label: "Random Content", icon: "🎲" },
+      { href: "/dashboard/translations/random-sid", label: "Random SID", icon: "🔀" },
     ],
   },
   {

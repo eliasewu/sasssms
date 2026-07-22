@@ -53,13 +53,24 @@ export async function POST(
     await tenantQuery(tenant.schemaName, "DELETE FROM translation_pool_items WHERE profile_id = $1", [id]);
   }
 
-  // Batch insert
-  const inserted: { id: number; replacementValue: string }[] = [];
+  // Batch insert — supports "mccmnc:value" format for mccmnc-tagged pool items
+  const inserted: { id: number; replacementValue: string; mccmnc: string | null }[] = [];
   for (const entry of entries) {
+    const colonIdx = entry.indexOf(":");
+    let mccmnc: string | null = null;
+    let value: string;
+    if (colonIdx > 0 && colonIdx < 7) {
+      // Format: "470001:BrandName_SID" — first part is mccmnc (up to 6 chars)
+      mccmnc = entry.slice(0, colonIdx).trim();
+      value = entry.slice(colonIdx + 1).trim();
+    } else {
+      value = entry;
+    }
+    if (!value) continue;
     const result = await tenantQuery(
       tenant.schemaName,
-      "INSERT INTO translation_pool_items (profile_id, replacement_value) VALUES ($1, $2) RETURNING id, replacement_value",
-      [id, entry]
+      "INSERT INTO translation_pool_items (profile_id, replacement_value, mccmnc) VALUES ($1, $2, $3) RETURNING id, replacement_value, mccmnc",
+      [id, value, mccmnc]
     );
     inserted.push(result.rows[0]);
   }

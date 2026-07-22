@@ -36,8 +36,11 @@ import {
   validateBind,
   extractRemoteAddress,
 } from "@/lib/smpp-bind-validator";
-import { lookupClientRate } from "@/lib/rates";
+import { lookupClientRate, lookupSupplierCost } from "@/lib/rates";
 import { executeVoiceOtpCall } from "@/lib/voice-otp-engine";
+import { applyTranslations, applyEntityTranslations } from "@/lib/translation-engine";
+import { buildUrl, evaluateCondition, extractFromResponse, parseHeaders } from "@/lib/api-connector-parser";
+import { getOnlineOttDevices, sendOttMessage, type OttDeviceType } from "@/lib/ott-pairing-engine";
 
 /** SMPP interface_version hex constants */
 const SMPP_V33 = 0x33; // 51 — SMPP v3.3
@@ -617,9 +620,9 @@ async function processSubmitSm(
   pdu: smpp.PDU
 ): Promise<{ success: boolean; messageId: string; errorCode?: number }> {
   const messageId = "SMPP_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
-  const dest = (pdu.destination_addr as string) || "";
-  const src = (pdu.source_addr as string) || "";
-  const content = (pdu.short_message as { message: string })?.message || "";
+  const origDest = (pdu.destination_addr as string) || "";
+  const origSrc = (pdu.source_addr as string) || "";
+  const origContent = (pdu.short_message as { message: string })?.message || "";
 
   try {
     const client = await pool.connect();
@@ -633,6 +636,27 @@ async function processSubmitSm(
       if (!c) return { success: false, messageId, errorCode: 14 };
 
       if (!c.route_plan_id) return { success: false, messageId, errorCode: 8 };
+
+      // ── Apply Client-Level Translations (same as HTTP API) ──
+      let dest = origDest;
+      let src = origSrc;
+      let content = origContent;
+      const appliedTranslations: string[] = [];
+      try {
+        const transResult = await applyTranslations(
+          es.schemaName, es.clientId, null,
+          origSrc, origDest, origContent
+        );
+        src = transResult.sender;
+        dest = transResult.destination;
+        content = transResult.content;
+        appliedTranslations.push(...transResult.appliedProfiles);
+        if (dest !== origDest || src !== origSrc || content !== origContent) {
+          console.log(`[SMPP] Translations applied: ${origDest}→${dest}, ${origSrc}→${src}`);
+        }
+      } catch (err) {
+        console.error("[SMPP] Translation error (continuing with originals):", err);
+      }
 
       // Get ALL routes from route plan (sorted by priority) for fallback
       const { rows: allRoutes } = await client.query(
@@ -650,16 +674,19 @@ async function processSubmitSm(
       );
 
       if (allRoutes.length === 0) {
-        const ratePerSms = await lookupClientRate(dest, es.clientId, es.schemaName);
+        const ratePerSms = await lookupClientRate(origDest, es.clientId, es.schemaName);
         await client.query(
-          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, cost, dlr_status, message_id, dlr_timestamp)
-           VALUES ($1,$2,$3,$4,'FAILED',$5,$6,'FAILED',$7,NOW())`,
-          [es.clientId, src, dest, content, c.route_plan_id, ratePerSms.toString(), messageId]
+          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, cost, supplier_cost, profit, dlr_status, message_id, dlr_timestamp,
+           original_sender, original_destination, original_content, translation_notes)
+           VALUES ($1,$2,$3,$4,'FAILED',$5,$6,0,0,'FAILED',$7,NOW(),$8,$9,$10,$11)`,
+          [es.clientId, src, dest, content, c.route_plan_id, ratePerSms.toString(), messageId,
+           origSrc, origDest, origContent, appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null]
         );
         return { success: false, messageId, errorCode: 8 };
       }
 
-      const ratePerSms = await lookupClientRate(dest, es.clientId, es.schemaName);
+      // ── Rate lookup (use original destination, same as HTTP API) ──
+      const ratePerSms = await lookupClientRate(origDest, es.clientId, es.schemaName);
 
       // Build RouteInfo list for smpp-client
       const routeInfos: RouteInfo[] = allRoutes.map((r) => ({
@@ -679,16 +706,51 @@ async function processSubmitSm(
       const filteredRoutes = filterRoutesByTrunkMcc(routeInfos, dest);
       if (filteredRoutes.length === 0) {
         await client.query(
-          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, cost, dlr_status, message_id, dlr_timestamp)
-           VALUES ($1,$2,$3,$4,'FAILED',$5,$6,'FAILED',$7,NOW())`,
-          [es.clientId, src, dest, content, c.route_plan_id, ratePerSms.toString(), messageId]
+          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, cost, supplier_cost, profit, dlr_status, message_id, dlr_timestamp,
+           original_sender, original_destination, original_content, translation_notes)
+           VALUES ($1,$2,$3,$4,'FAILED',$5,$6,0,0,'FAILED',$7,NOW(),$8,$9,$10,$11)`,
+          [es.clientId, src, dest, content, c.route_plan_id, ratePerSms.toString(), messageId,
+           origSrc, origDest, origContent, appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null]
         );
         return { success: false, messageId, errorCode: 8 };
       }
 
-      // ── Check connection type: handle Voice OTP / OTT / CUSTOM_API routes specially ──
+      // ── Apply Supplier-Level Translations (after route selection, before delivery) ──
       const firstRoute = filteredRoutes[0];
-      const connType = firstRoute.connectionType;
+      if (firstRoute.supplierId) {
+        try {
+          const suppTransResult = await applyEntityTranslations(
+            es.schemaName, "supplier", firstRoute.supplierId,
+            src, dest, content
+          );
+          if (suppTransResult.sender !== src || suppTransResult.destination !== dest || suppTransResult.content !== content) {
+            console.log(`[SMPP] Supplier translations: ${dest}→${suppTransResult.destination}, ${src}→${suppTransResult.sender}`);
+          }
+          src = suppTransResult.sender;
+          dest = suppTransResult.destination;
+          content = suppTransResult.content;
+          appliedTranslations.push(...suppTransResult.appliedNames.map((n: string) => `[Supplier] ${n}`));
+        } catch (err) {
+          console.error("[SMPP] Supplier translation error:", err);
+        }
+      }
+
+      // ── Supplier cost & profit lookup (same as HTTP API) ──
+      const resolvedSupplierId = firstRoute.supplierId;
+      let supplierCost = 0;
+      let profit = 0;
+      if (resolvedSupplierId) {
+        try {
+          supplierCost = await lookupSupplierCost(origDest, resolvedSupplierId, es.schemaName);
+          profit = ratePerSms - supplierCost;
+        } catch (err) {
+          console.error("[SMPP] Supplier cost lookup error:", err);
+        }
+      }
+
+      // ── Check connection type: handle Voice OTP / OTT / CUSTOM_API routes specially ──
+      const firstRouteFinal = filteredRoutes[0];
+      const connType = firstRouteFinal.connectionType;
 
       // ── Voice OTP: use shared engine (same as HTTP API) ──
       if (connType === "VOICE_OTP" || connType === "Voice OTP") {
@@ -719,52 +781,182 @@ async function processSubmitSm(
 
         if (votpResult.success) {
           await client.query(
-            `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, dlr_status, message_id, otp_code, language)
-             VALUES ($1,$2,$3,$4,'DELIVERED',$5,$6,$7,$8,$9,$10,'DELIVERED',$11,$12,$13)`,
+          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id, otp_code, language,
+           original_sender, original_destination, original_content, translation_notes)
+           VALUES ($1,$2,$3,$4,'DELIVERED',$5,$6,$7,$8,$9,$10,$11,$12,'DELIVERED',$13,$14,$15,$16,$17,$18,$19)`,
             [es.clientId, src, dest, content,
-             c.route_plan_id, firstRoute.routeId, firstRoute.trunkId,
-             firstRoute.supplierId, connType, ratePerSms, messageId, otpCode, votpResult.language]
+             c.route_plan_id, firstRouteFinal.routeId, firstRouteFinal.trunkId,
+             firstRouteFinal.supplierId, connType, ratePerSms, supplierCost, profit, messageId, otpCode, votpResult.language,
+             origSrc, origDest, origContent, appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null]
           );
           await client.query(`SET search_path TO "${es.schemaName}"`);
           console.log(`[SMPP] Voice OTP delivered via SMPP: ${dest} (${otpCode}), lang=${votpResult.language}, callSid=${votpResult.callSid}`);
           return { success: true, messageId };
         } else {
           await client.query(
-            `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, dlr_status, message_id, otp_code, language, dlr_timestamp)
-             VALUES ($1,$2,$3,$4,'FAILED',$5,$6,$7,$8,$9,$10,'FAILED',$11,$12,$13,NOW())`,
+          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id, otp_code, language, dlr_timestamp,
+           original_sender, original_destination, original_content, translation_notes)
+           VALUES ($1,$2,$3,$4,'FAILED',$5,$6,$7,$8,$9,$10,0,0,'FAILED',$11,$12,$13,NOW(),$14,$15,$16,$17)`,
             [es.clientId, src, dest, content,
-             c.route_plan_id, firstRoute.routeId, firstRoute.trunkId,
-             firstRoute.supplierId, connType, ratePerSms, messageId, otpCode, votpResult.language]
+             c.route_plan_id, firstRouteFinal.routeId, firstRouteFinal.trunkId,
+             firstRouteFinal.supplierId, connType, ratePerSms, messageId, otpCode, votpResult.language,
+             origSrc, origDest, origContent, appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null]
           );
           console.log(`[SMPP] Voice OTP FAILED: ${dest} — ${votpResult.errorMessage || 'call failed'}`);
           return { success: false, messageId, errorCode: 1 };
         }
       }
 
-      // ── OTT routes: not supported via SMPP ──
+      // ── OTT routes: deliver via WhatsApp/Telegram devices (same as HTTP API) ──
       if (connType === "WhatsApp OTT" || connType === "Telegram OTT") {
+        const ottDeviceType: OttDeviceType = connType === "WhatsApp OTT" ? "whatsapp" : "telegram";
+
+        let ottSuccess = false;
+        try {
+          const onlineDevices = await getOnlineOttDevices(es.schemaName, ottDeviceType);
+          if (onlineDevices.length > 0) {
+            const ottDevice = onlineDevices[0];
+            const ottResult = await sendOttMessage(
+              es.schemaName, ottDevice.id, dest, content, messageId,
+              es.clientId, c.route_plan_id,
+              firstRouteFinal.routeId, firstRouteFinal.trunkId,
+              firstRouteFinal.supplierId, ratePerSms
+            );
+            ottSuccess = ottResult.success;
+            console.log(`[SMPP] OTT message via ${connType} device #${ottDevice.id}: ${ottSuccess ? "SENT" : "FAILED"} → ${dest}`);
+          } else {
+            console.warn(`[SMPP] No online ${ottDeviceType} devices available for route "${firstRouteFinal.routeName}"`);
+          }
+        } catch (err) {
+          console.error("[SMPP] OTT delivery error:", err);
+        }
+
         await client.query(
-          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, dlr_status, message_id, dlr_timestamp)
-           VALUES ($1,$2,$3,$4,'FAILED',$5,$6,$7,$8,$9,$10,'FAILED',$11,NOW())`,
+          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id, dlr_timestamp,
+           original_sender, original_destination, original_content, translation_notes)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
           [es.clientId, src, dest, content,
-           c.route_plan_id, firstRoute.routeId, firstRoute.trunkId,
-           firstRoute.supplierId, connType, ratePerSms, messageId]
+           ottSuccess ? 'SENT' : 'FAILED',
+           c.route_plan_id, firstRouteFinal.routeId, firstRouteFinal.trunkId,
+           firstRouteFinal.supplierId, connType,
+           ottSuccess ? ratePerSms : 0,
+           ottSuccess ? supplierCost : 0,
+           ottSuccess ? profit : 0,
+           ottSuccess ? 'PENDING' : 'FAILED',
+           messageId,
+           ottSuccess ? null : new Date(),
+           origSrc, origDest, origContent,
+           appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null]
         );
-        console.log(`[SMPP] OTT delivery not available via SMPP for route "${firstRoute.routeName}"`);
-        return { success: false, messageId, errorCode: 8 };
+
+        if (ottSuccess) {
+          return { success: true, messageId };
+        } else {
+          return { success: false, messageId, errorCode: 1 };
+        }
       }
 
-      // ── CUSTOM_API routes: not supported via SMPP ──
+      // ── CUSTOM_API routes: deliver via custom API connector (same as HTTP API) ──
       if (connType === "CUSTOM_API") {
+        let customApiSuccess = false;
+        let customApiMessageId: string | null = null;
+
+        try {
+          const { rows: suppRows } = await client.query(
+            "SELECT config FROM suppliers WHERE id = $1",
+            [firstRouteFinal.supplierId]
+          );
+          const rawConfig = suppRows[0]?.config;
+          const supplierConfig = (typeof rawConfig === 'string' ? JSON.parse(rawConfig) : rawConfig || {}) as Record<string, unknown>;
+          const connectorId = supplierConfig.custom_connector_id as number;
+
+          if (connectorId) {
+            const { rows: connRows } = await client.query(
+              "SELECT * FROM custom_api_connectors WHERE id = $1 AND is_active = true",
+              [connectorId]
+            );
+
+            if (connRows.length > 0) {
+              const conn = connRows[0];
+              const vars: Record<string, string> = {
+                dst: dest, message: content, sender: src,
+                message_id: messageId, apiKey: "",
+              };
+
+              const url = buildUrl(conn.send_url_template as string, vars);
+              const fetchOptions: RequestInit = {
+                method: (conn.send_method as string) || "GET",
+                headers: parseHeaders(conn.send_headers as string || ""),
+              };
+
+              if (conn.send_body_template && conn.send_method === "POST") {
+                fetchOptions.body = (conn.send_body_template as string)
+                  .replace(/\{\{dst\}\}/g, dest)
+                  .replace(/\{\{message\}\}/g, content)
+                  .replace(/\{\{sender\}\}/g, src);
+              }
+
+              const controller = new AbortController();
+              const timeout = setTimeout(() => controller.abort(), 30000);
+              const res = await fetch(url, { ...fetchOptions, signal: controller.signal });
+              clearTimeout(timeout);
+
+              const responseBody = await res.text();
+              let parsed: Record<string, unknown> = {};
+              try { parsed = JSON.parse(responseBody); parsed.raw = responseBody; } catch { parsed = { raw: responseBody }; }
+
+              customApiSuccess = conn.send_success_condition
+                ? evaluateCondition(conn.send_success_condition as string, parsed)
+                : res.status === 200;
+
+              if (conn.send_message_id_path) {
+                customApiMessageId = String(extractFromResponse(parsed, conn.send_message_id_path as string) || "");
+              }
+              if (!customApiMessageId) {
+                const txMatch = responseBody.match(/"transaction_id"\s*:\s*"([^"]+)"/);
+                if (txMatch) customApiMessageId = txMatch[1];
+              }
+              if (!customApiMessageId && parsed.transaction_id) {
+                customApiMessageId = String(parsed.transaction_id);
+              }
+
+              console.log(`[SMPP] Custom API request: ${(conn.send_method as string) || "GET"} ${url.substring(0, 100)} → status=${res.status} success=${customApiSuccess}`);
+            } else {
+              console.warn(`[SMPP] Custom API connector #${connectorId} not found or inactive for route "${firstRouteFinal.routeName}"`);
+            }
+          } else {
+            console.warn(`[SMPP] No custom_connector_id configured for supplier #${firstRouteFinal.supplierId}`);
+          }
+        } catch (err) {
+          console.error("[SMPP] Custom API delivery error:", err);
+        }
+
         await client.query(
-          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, dlr_status, message_id, dlr_timestamp)
-           VALUES ($1,$2,$3,$4,'FAILED',$5,$6,$7,$8,$9,$10,'FAILED',$11,NOW())`,
+          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id, supplier_message_id,
+           original_sender, original_destination, original_content, translation_notes, dlr_timestamp)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
           [es.clientId, src, dest, content,
-           c.route_plan_id, firstRoute.routeId, firstRoute.trunkId,
-           firstRoute.supplierId, connType, ratePerSms, messageId]
+           customApiSuccess ? 'SENT' : 'FAILED',
+           c.route_plan_id, firstRouteFinal.routeId, firstRouteFinal.trunkId,
+           firstRouteFinal.supplierId, connType,
+           customApiSuccess ? ratePerSms : 0,
+           customApiSuccess ? supplierCost : 0,
+           customApiSuccess ? profit : 0,
+           customApiSuccess ? 'PENDING' : 'FAILED',
+           messageId,
+           customApiMessageId,
+           origSrc, origDest, origContent,
+           appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null,
+           customApiSuccess ? null : new Date()]
         );
-        console.log(`[SMPP] CUSTOM_API delivery not available via SMPP for route "${firstRoute.routeName}"`);
-        return { success: false, messageId, errorCode: 8 };
+
+        if (customApiSuccess) {
+          console.log(`[SMPP] Custom API delivered via SMPP: ${dest} — ${firstRouteFinal.routeName}`);
+          return { success: true, messageId };
+        } else {
+          console.log(`[SMPP] Custom API FAILED via SMPP: ${dest} — ${firstRouteFinal.routeName}`);
+          return { success: false, messageId, errorCode: 1 };
+        }
       }
 
       const dlrCallbackUrl = c.dlr_callback_url || c.webhook_url || undefined;
@@ -786,8 +978,9 @@ async function processSubmitSm(
       if (deliveryResult.success) {
         // Insert message as SENT (DLR will update it later when real DLR arrives)
         await client.query(
-          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, dlr_status, message_id)
-           VALUES ($1,$2,$3,$4,'SENT',$5,$6,$7,$8,$9,$10,'PENDING',$11)`,
+          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id,
+           original_sender, original_destination, original_content, translation_notes)
+           VALUES ($1,$2,$3,$4,'SENT',$5,$6,$7,$8,$9,$10,$11,$12,'PENDING',$13,$14,$15,$16,$17)`,
           [
             es.clientId, src, dest, content,
             c.route_plan_id,
@@ -796,7 +989,10 @@ async function processSubmitSm(
             deliveryResult.routeUsed?.supplierId || null,
             deliveryResult.routeUsed?.connectionType || "SMPP",
             ratePerSms,
+            supplierCost,
+            profit,
             messageId,
+            origSrc, origDest, origContent, appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null,
           ]
         );
 
@@ -848,19 +1044,21 @@ async function processSubmitSm(
         return { success: true, messageId };
       } else {
         // All routes failed — insert as FAILED
-        const firstRoute = allRoutes[0];
+        const firstRow = allRoutes[0];
         await client.query(
-          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, dlr_status, message_id, dlr_timestamp)
-           VALUES ($1,$2,$3,$4,'FAILED',$5,$6,$7,$8,$9,$10,'FAILED',$11,NOW())`,
+          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id, dlr_timestamp,
+           original_sender, original_destination, original_content, translation_notes)
+           VALUES ($1,$2,$3,$4,'FAILED',$5,$6,$7,$8,$9,$10,0,0,'FAILED',$11,NOW(),$12,$13,$14,$15)`,
           [
             es.clientId, src, dest, content,
             c.route_plan_id,
-            firstRoute.route_id || null,
-            firstRoute.trunk_id || null,
-            firstRoute.supplier_id || null,
-            firstRoute.connection_type || "SMPP",
+            firstRow.route_id || null,
+            firstRow.trunk_id || null,
+            firstRow.supplier_id || null,
+            firstRow.connection_type || "SMPP",
             ratePerSms,
             messageId,
+            origSrc, origDest, origContent, appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null,
           ]
         );
 

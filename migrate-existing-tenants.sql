@@ -9,7 +9,7 @@ BEGIN
     LOOP
         EXECUTE format('SET search_path TO %I', tenant.schema_name);
 
-        -- messages: supplier_cost + profit
+        -- messages: translation fields + billing
         BEGIN
             EXECUTE format('ALTER TABLE %I.messages ADD COLUMN IF NOT EXISTS supplier_cost DECIMAL(10,6) DEFAULT 0', tenant.schema_name);
         EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'Skipping supplier_cost for %: %', tenant.schema_name, SQLERRM;
@@ -17,6 +17,22 @@ BEGIN
         BEGIN
             EXECUTE format('ALTER TABLE %I.messages ADD COLUMN IF NOT EXISTS profit DECIMAL(10,6) DEFAULT 0', tenant.schema_name);
         EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'Skipping profit for %: %', tenant.schema_name, SQLERRM;
+        END;
+        BEGIN
+            EXECUTE format('ALTER TABLE %I.messages ADD COLUMN IF NOT EXISTS original_sender VARCHAR(50)', tenant.schema_name);
+        EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'Skipping original_sender for %: %', tenant.schema_name, SQLERRM;
+        END;
+        BEGIN
+            EXECUTE format('ALTER TABLE %I.messages ADD COLUMN IF NOT EXISTS original_destination VARCHAR(50)', tenant.schema_name);
+        EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'Skipping original_destination for %: %', tenant.schema_name, SQLERRM;
+        END;
+        BEGIN
+            EXECUTE format('ALTER TABLE %I.messages ADD COLUMN IF NOT EXISTS original_content TEXT', tenant.schema_name);
+        EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'Skipping original_content for %: %', tenant.schema_name, SQLERRM;
+        END;
+        BEGIN
+            EXECUTE format('ALTER TABLE %I.messages ADD COLUMN IF NOT EXISTS translation_notes TEXT', tenant.schema_name);
+        EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'Skipping translation_notes for %: %', tenant.schema_name, SQLERRM;
         END;
 
         -- suppliers: connection_mode

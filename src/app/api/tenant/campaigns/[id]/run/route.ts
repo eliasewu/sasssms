@@ -5,7 +5,8 @@ import { deliverSmsWithFallback, registerDlrCallback, filterRoutesByTrunkMcc } f
 import type { RouteInfo, DlrPayload } from "@/lib/smpp-client";
 import { getOnlineOttDevices, sendOttMessage } from "@/lib/ott-pairing-engine";
 import type { OttDeviceType } from "@/lib/ott-pairing-engine";
-import { lookupClientRate } from "@/lib/rates";
+import { lookupClientRate, lookupSupplierCost } from "@/lib/rates";
+import { applyTranslations, applyEntityTranslations } from "@/lib/translation-engine";
 
 export const dynamic = "force-dynamic";
 
@@ -88,13 +89,55 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const batchPromises = batch.map(async (dest) => {
       const messageId = generateMessageId();
 
+      // ── Apply Client-Level Translations ──
+      let translatedSender = campaign.sender;
+      let translatedDest = dest;
+      let translatedContent = campaign.content;
+      const appliedTranslations: string[] = [];
+      try {
+        const clientTransResult = await applyTranslations(
+          tenant.schemaName, campaign.client_id, null,
+          translatedSender, translatedDest, translatedContent
+        );
+        translatedSender = clientTransResult.sender;
+        translatedDest = clientTransResult.destination;
+        translatedContent = clientTransResult.content;
+        appliedTranslations.push(...clientTransResult.appliedProfiles);
+      } catch (err) {
+        console.error("[Campaign] Translation error:", err);
+      }
+
       // ── Detect OTT routes ──
-      const filteredRoutes = allRoutes.length > 0 ? filterRoutesByTrunkMcc(allRoutes, dest) : [];
+      const filteredRoutes = allRoutes.length > 0 ? filterRoutesByTrunkMcc(allRoutes, translatedDest) : [];
       const firstRoute = filteredRoutes[0];
       const isOtt = firstRoute?.connectionType === "WhatsApp OTT" || firstRoute?.connectionType === "Telegram OTT";
 
-      // Look up the rate for this specific destination
+      // Look up the rate for this specific destination (use original dest like HTTP API)
       const ratePerSms = await lookupClientRate(dest, campaign.client_id, tenant.schemaName);
+
+      // ── Apply Supplier-Level Translations & Cost Lookup ──
+      let supplierCost = 0;
+      let profit = 0;
+      if (firstRoute?.supplierId) {
+        try {
+          const suppTransResult = await applyEntityTranslations(
+            tenant.schemaName, "supplier", firstRoute.supplierId,
+            translatedSender, translatedDest, translatedContent
+          );
+          translatedSender = suppTransResult.sender;
+          translatedDest = suppTransResult.destination;
+          translatedContent = suppTransResult.content;
+          appliedTranslations.push(...suppTransResult.appliedNames.map((n: string) => `[Supplier] ${n}`));
+        } catch (err) {
+          console.error("[Campaign] Supplier translation error:", err);
+        }
+        try {
+          supplierCost = await lookupSupplierCost(dest, firstRoute.supplierId, tenant.schemaName);
+          profit = ratePerSms - supplierCost;
+        } catch (err) {
+          console.error("[Campaign] Supplier cost lookup error:", err);
+        }
+      }
 
       let isSuccess: boolean;
       let msgStatus: string;
@@ -114,8 +157,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           const ottResult = await sendOttMessage(
             tenant.schemaName,
             onlineDevices[0].id,
-            dest,
-            campaign.content,
+            translatedDest,
+            translatedContent,
             messageId,
             campaign.client_id,
             routePlanId,
@@ -134,9 +177,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           tenant.tenantId,
           tenant.schemaName,
           campaign.client_id,
-          campaign.sender,
-          dest,
-          campaign.content,
+          translatedSender,
+          translatedDest,
+          translatedContent,
           messageId,
           filteredRoutes,
           dlrCallbackUrl || undefined
@@ -156,25 +199,32 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         tenant.schemaName,
         `INSERT INTO messages (client_id, sender, destination, content, status,
           route_plan_id, route_id, trunk_id, supplier_id, connection_type,
-          cost, dlr_status, message_id, campaign_id, log_type, dlr_callback_url)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+          cost, supplier_cost, profit, dlr_status, message_id, campaign_id, log_type, dlr_callback_url,
+          original_sender, original_destination, original_content, translation_notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
         [
           campaign.client_id,
-          campaign.sender,
-          dest,
-          campaign.content,
+          translatedSender,
+          translatedDest,
+          translatedContent,
           msgStatus,
           routePlanId || null,
           deliveryResult?.routeUsed?.routeId || firstRoute?.routeId || null,
           deliveryResult?.routeUsed?.trunkId || firstRoute?.trunkId || null,
           deliveryResult?.routeUsed?.supplierId || firstRoute?.supplierId || null,
           deliveryResult?.routeUsed?.connectionType || firstRoute?.connectionType || "SMPP",
-          ratePerSms,
+          isSuccess ? ratePerSms : 0,
+          isSuccess ? supplierCost : 0,
+          isSuccess ? profit : 0,
           dlrStat,
           messageId,
           id,
           "campaign",
           dlrCallbackUrl,
+          campaign.sender,
+          dest,
+          campaign.content,
+          appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null,
         ]
       );
 

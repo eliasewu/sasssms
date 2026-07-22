@@ -44,6 +44,7 @@ const translationTypes = [
   { href: "/dashboard/translations/number", label: "Number Translation", icon: "🔢", desc: "Transform destination numbers" },
   { href: "/dashboard/translations/content", label: "Content Translation", icon: "📝", desc: "Find & replace in SMS body" },
   { href: "/dashboard/translations/random", label: "Random Content", icon: "🎲", desc: "Randomize content per operator" },
+  { href: "/dashboard/translations/random-sid", label: "Random SID", icon: "🔀", desc: "Randomize sender ID per operator" },
   { href: "/dashboard/translations/otp-extract", label: "OTP Extract & Forward", icon: "🔐", desc: "Extract OTP from inbox, forward to supplier" },
 ];
 
