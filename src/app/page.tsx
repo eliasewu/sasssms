@@ -1552,9 +1552,8 @@ export default function LandingPage() {
       <button
         onClick={() => {
           const Tawk = (window as any).Tawk_API;
-          if (!Tawk || !Tawk.isLoaded) return;
-          Tawk.showWidget();
-          Tawk.maximize?.();
+          if (!Tawk) return;
+          if (Tawk.maximize) { Tawk.maximize(); } else { Tawk.toggle?.(); }
         }}
         className="fixed bottom-24 right-6 z-50 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center group hover:scale-110"
         aria-label="Open live chat"
