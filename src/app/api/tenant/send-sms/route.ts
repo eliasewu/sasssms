@@ -304,6 +304,82 @@ export async function POST(request: Request) {
     }
   }
 
+  // ── NUMBER_BLACKLIST enforcement ──
+  try {
+    const blResult = await tenantQuery(
+      tenant.schemaName,
+      `SELECT tp.name, tp.match_pattern FROM translation_profiles tp
+       JOIN translation_assignments ta ON ta.profile_id = tp.id
+       WHERE tp.category = 'NUMBER_BLACKLIST'
+         AND tp.is_active = true AND ta.is_active = true
+         AND (ta.client_id = $1 OR ta.supplier_id IS NULL ${supplierId ? "OR ta.supplier_id = $2" : ""})
+       ORDER BY ta.priority ASC`,
+      supplierId ? [clientId, supplierId] : [clientId]
+    );
+    for (const row of blResult.rows) {
+      try {
+        if (new RegExp(row.match_pattern as string).test(destination)) {
+          return NextResponse.json({
+            error: `SMS blocked: destination number matches blacklist rule "${row.name}"`,
+            blockedBy: row.name,
+          }, { status: 403 });
+        }
+      } catch { /* invalid regex — skip */ }
+    }
+  } catch (err) {
+    console.error("Number blacklist check error:", err);
+  }
+
+  // ── CONTENT_FILTER enforcement ──
+  try {
+    const cfResult = await tenantQuery(
+      tenant.schemaName,
+      `SELECT tp.name, tp.match_pattern, tp.replacement_fixed as filter_mode
+       FROM translation_profiles tp
+       JOIN translation_assignments ta ON ta.profile_id = tp.id
+       WHERE tp.category = 'CONTENT_FILTER'
+         AND tp.is_active = true AND ta.is_active = true
+         AND (ta.client_id = $1 OR ta.supplier_id IS NULL ${supplierId ? "OR ta.supplier_id = $2" : ""})
+       ORDER BY ta.priority ASC`,
+      supplierId ? [clientId, supplierId] : [clientId]
+    );
+    // Blacklist rules checked first
+    const blacklistRules = cfResult.rows.filter((r: Record<string,unknown>) => (r.filter_mode as string) !== "whitelist");
+    const whitelistRules = cfResult.rows.filter((r: Record<string,unknown>) => (r.filter_mode as string) === "whitelist");
+
+    for (const row of blacklistRules) {
+      try {
+        if (new RegExp(row.match_pattern as string).test(content)) {
+          return NextResponse.json({
+            error: `SMS blocked: content matches blacklist rule "${row.name}"`,
+            blockedBy: row.name,
+          }, { status: 403 });
+        }
+      } catch { /* invalid regex — skip */ }
+    }
+
+    // Whitelist: if any whitelist rules exist, content MUST match at least one
+    if (whitelistRules.length > 0) {
+      let whitelistMatch = false;
+      for (const row of whitelistRules) {
+        try {
+          if (new RegExp(row.match_pattern as string).test(content)) {
+            whitelistMatch = true;
+            break;
+          }
+        } catch { /* invalid regex — skip */ }
+      }
+      if (!whitelistMatch) {
+        return NextResponse.json({
+          error: "SMS blocked: content does not match any whitelist rule",
+          whitelistRules: whitelistRules.map((r: Record<string,unknown>) => r.name),
+        }, { status: 403 });
+      }
+    }
+  } catch (err) {
+    console.error("Content filter check error:", err);
+  }
+
   // ── Voice OTP handling (shared engine-based flow with retry) ──
   if (
     selectedRoute.connection_type === "VOICE_OTP" ||
