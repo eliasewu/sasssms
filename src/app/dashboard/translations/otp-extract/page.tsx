@@ -49,7 +49,7 @@ export default function OtpExtractPage() {
   const [unassignedEntities, setUnassignedEntities] = useState<{ clients: ClientSupplier[]; suppliers: ClientSupplier[] }>({ clients: [], suppliers: [] });
 
   // Quick OTP Extraction Test
-  const [quickTestMessage, setQuickTestMessage] = useState("");
+  const [quickTestMessage, setQuickTestMessage] = useState("Your OTP code is 252525. Valid for 5 min.");
   const [quickTestResult, setQuickTestResult] = useState<{ otp: string | null; matchedRule: string | null; template: string | null } | null>(null);
 
   // Per-row test state
