@@ -364,6 +364,7 @@ export default function OtpExtractPage() {
         </div>
         <div className="mt-5 space-y-4">
           <div className="relative">
+            <label className="text-xs font-medium text-slate-300 mb-1.5 block">Test Message</label>
             <textarea
               value={quickTestMessage}
               onChange={e => { setQuickTestMessage(e.target.value); setQuickTestResult(null); }}
