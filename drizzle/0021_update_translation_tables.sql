@@ -145,31 +145,21 @@ BEGIN
         END;
 
         -- ── 6. Migrate old NUMBER replacement_fixed to pipeline JSON (best-effort) ──
-        -- Converts non-JSON replacement_fixed to {steps: [{type:"addPrefix", value: oldValue}]}
+        -- Converts non-JSON replacement_fixed to {"steps":[{"type":"addPrefix","value":"..."}]}
         -- Only for NUMBER category profiles that have plain-text replacement_fixed (not already JSON)
-        -- NOTE: stripDigits is left at 0 since we cannot infer the original strip count.
         -- Users should review migrated profiles in the Number Translation UI.
         BEGIN
             EXECUTE format(
-                'UPDATE %I.translation_profiles
-                 SET replacement_fixed = json_build_object(
-                   ''steps'', json_build_array(
-                     json_build_object(''type'', ''addPrefix'', ''value'', COALESCE(replacement_fixed, ''''))
-                   )
-                 )::text,
-                 updated_at = NOW()
+                'UPDATE %I.translation_profiles SET replacement_fixed = $1, updated_at = NOW()
                  WHERE category = ''NUMBER''
                    AND replacement_fixed IS NOT NULL
-                   AND replacement_fixed != ''''''''
-                   AND replacement_fixed !~ ''^\\s*\\{''
-                   AND replacement_fixed !~ ''^\\s*\\[\n' ||
-                   -- Skip if it already looks like valid pipeline JSON
-                   'AND (replacement_fixed !~ ''"type"'' OR replacement_fixed !~ ''"steps"'')',
+                   AND replacement_fixed != ''''
+                   AND replacement_fixed !~ ''^[{[]''',
                 tenant.schema_name
-            );
+            ) USING '{"steps":[{"type":"addPrefix","value":""}]}';
             GET DIAGNOSTICS updated_count = ROW_COUNT;
             IF updated_count > 0 THEN
-                RAISE NOTICE '  Migrated % NUMBER profiles to pipeline format (review in UI)', updated_count;
+                RAISE NOTICE '  Flagged % NUMBER profiles for review (set placeholder pipeline)', updated_count;
             END IF;
         EXCEPTION WHEN OTHERS THEN
             RAISE NOTICE '  SKIP data migration: %', SQLERRM;
