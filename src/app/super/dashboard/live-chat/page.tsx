@@ -36,12 +36,46 @@ export default function SuperLiveChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMsgIdRef = useRef(Infinity); // Infinity = no messages seen yet; prevents false sound on first load
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const notifiedMsgIds = useRef<Set<number>>(new Set()); // Track which messages already triggered a notification
 
-  // Clean up AudioContext on unmount
+  // Clean up on unmount
   useEffect(() => {
     return () => {
       audioCtxRef.current?.close();
     };
+  }, []);
+
+  // Request browser notification permission on mount
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Fire a desktop notification for tenant messages
+  const notifyTenantMessage = useCallback((room: ChatRoom, msg: ChatMessage) => {
+    try {
+      if (!("Notification" in window)) return;
+      if (Notification.permission !== "granted") return;
+      // Don't notify if the tab is already focused — admin is watching
+      if (document.visibilityState === "visible") return;
+      // Don't notify the same message twice
+      if (notifiedMsgIds.current.has(msg.id)) return;
+      notifiedMsgIds.current.add(msg.id);
+
+      const n = new Notification(`💬 ${room.tenantName}`, {
+        body: msg.message.slice(0, 160),
+        icon: "/favicon.ico",
+        tag: `live-chat-${room.id}`,
+      });
+      n.onclick = () => {
+        window.focus();
+        n.close();
+      };
+    } catch {
+      // Notifications not supported — silently ignore
+    }
   }, []);
 
   // Play a short notification ping via Web Audio API (no external files needed)
@@ -102,6 +136,7 @@ export default function SuperLiveChatPage() {
   // Load messages when selecting a room
   const selectRoom = async (room: ChatRoom) => {
     setActiveRoom(room);
+    notifiedMsgIds.current.clear(); // Reset notification tracking for new room
     try {
       const res = await fetch(`/api/super/live-chat?roomId=${room.id}`);
       if (!res.ok) return;
@@ -124,11 +159,15 @@ export default function SuperLiveChatPage() {
         if (data.messages?.length) {
           const last = data.messages[data.messages.length - 1];
           if (last.id > lastMsgIdRef.current) {
-            // Play sound if any new message is from the tenant
-            const hasNewTenantMsg = data.messages.some(
+            // Check for new tenant messages — play sound + desktop notification
+            const newTenantMsgs = data.messages.filter(
               (m: ChatMessage) => m.id > lastMsgIdRef.current && m.senderType === "tenant"
             );
-            if (hasNewTenantMsg) playPing();
+            if (newTenantMsgs.length > 0) {
+              playPing();
+              // Fire desktop notification for the latest tenant message
+              notifyTenantMessage(activeRoom, newTenantMsgs[newTenantMsgs.length - 1]);
+            }
             setMessages(data.messages);
             lastMsgIdRef.current = last.id;
           }
