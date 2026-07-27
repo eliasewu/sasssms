@@ -48,9 +48,9 @@ export default function OtpExtractPage() {
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
   const [unassignedEntities, setUnassignedEntities] = useState<{ clients: ClientSupplier[]; suppliers: ClientSupplier[] }>({ clients: [], suppliers: [] });
 
-  // Top preview
-  const [sampleContent, setSampleContent] = useState("Your OTP code is 252525. Valid for 5 min.");
-  const [extractedPreview, setExtractedPreview] = useState<string | null>(null);
+  // Quick OTP Extraction Test
+  const [quickTestMessage, setQuickTestMessage] = useState("");
+  const [quickTestResult, setQuickTestResult] = useState<{ otp: string | null; matchedRule: string | null; template: string | null } | null>(null);
 
   // Per-row test state
   const [testRowIdx, setTestRowIdx] = useState<number | null>(null);
@@ -281,19 +281,24 @@ export default function OtpExtractPage() {
     return null;
   };
 
-  // Top-level preview: runs each active rule in order
-  const runExtract = () => {
+  // Quick OTP Extraction Test — runs all active rules and returns first match
+  const runQuickTest = () => {
+    const msg = quickTestMessage.trim();
+    if (!msg) { setMsg("Paste a message first"); setTimeout(() => setMsg(""), 2000); return; }
+    setQuickTestLoading(true);
     for (const rule of rules) {
       if (!rule.isActive) continue;
       const effectiveRegex = buildEffectiveRegex(rule);
-      const otp = extractOtp(sampleContent, effectiveRegex, rule.otpGroupIndex);
+      const otp = extractOtp(msg, effectiveRegex, rule.otpGroupIndex);
       if (otp) {
         const applied = (rule.forwardTemplate || "{otp}").replace(/\{otp\}/g, otp);
-        setExtractedPreview(applied);
+        setQuickTestResult({ otp, matchedRule: rule.name, template: applied });
+        setQuickTestLoading(false);
         return;
       }
     }
-    setExtractedPreview("(no match)");
+    setQuickTestResult({ otp: null, matchedRule: null, template: null });
+    setQuickTestLoading(false);
   };
 
   // Per-row test
@@ -348,30 +353,98 @@ export default function OtpExtractPage() {
         </div>
       </div>
 
-      {/* Live Preview */}
-      <div className="bg-gradient-to-r from-orange-50 to-rose-50 border border-orange-200 rounded-xl p-4 mb-6">
-        <h4 className="text-sm font-semibold text-orange-800 mb-3">🔍 OTP Extract & Forward Preview</h4>
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-xs text-slate-500">Sample SMS:</span>
-            <input value={sampleContent} onChange={e => setSampleContent(e.target.value)}
-              className="flex-1 min-w-[250px] border rounded-lg px-3 py-2 font-mono text-xs focus:ring-2 focus:ring-orange-500 focus:outline-none bg-white" />
+      {/* Quick OTP Extraction Test — BIG standalone tool */}
+      <div className="bg-gradient-to-br from-slate-800 via-slate-900 to-indigo-950 border border-slate-700 rounded-2xl p-6 mb-6 shadow-lg">
+        <div className="flex items-center gap-3 mb-1">
+          <span className="text-2xl">⚡</span>
+          <div>
+            <h3 className="text-lg font-bold text-white">Quick OTP Extraction Test</h3>
+            <p className="text-xs text-slate-400">Paste any message with an OTP and see what gets extracted</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button onClick={runExtract}
-              className="bg-orange-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-orange-700 transition">
-              Extract & Forward
+        </div>
+        <div className="mt-5 space-y-4">
+          <div className="relative">
+            <textarea
+              value={quickTestMessage}
+              onChange={e => { setQuickTestMessage(e.target.value); setQuickTestResult(null); }}
+              onKeyDown={e => { if (e.key === "Enter" && e.ctrlKey) runQuickTest(); }}
+              placeholder="Paste your test message here... e.g. &#34;Your OTP code is 252525. Valid for 5 min.&#34;"
+              rows={3}
+              className="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-sm font-mono text-white placeholder:text-slate-500 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none resize-none transition"
+            />
+            <span className="absolute bottom-2 right-3 text-[10px] text-slate-500">Ctrl+Enter to extract</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={runQuickTest}
+              disabled={!quickTestMessage.trim()}
+              className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition flex items-center gap-2 shadow-lg shadow-indigo-600/25">
+              🔍 Extract OTP
             </button>
-            {extractedPreview !== null && (
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-slate-400">Result:</span>
-                <code className={`px-3 py-1.5 rounded font-mono font-bold text-xs ${extractedPreview === "(no match)" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-800"}`}>
-                  {extractedPreview}
-                </code>
-              </div>
-            )}
+            <button
+              onClick={() => { setQuickTestMessage(""); setQuickTestResult(null); }}
+              className="text-slate-400 hover:text-slate-200 text-xs transition">Clear</button>
           </div>
-          <p className="text-[10px] text-slate-400">Runs active rules in priority order. First match wins.</p>
+
+          {/* Result display */}
+          {quickTestResult && (
+            <div className={`rounded-xl border p-4 ${quickTestResult.otp ? "bg-emerald-900/30 border-emerald-700/50" : "bg-red-900/20 border-red-700/50"}`}>
+              {quickTestResult.otp ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[11px] font-medium text-emerald-300 uppercase tracking-wider">Extracted OTP</span>
+                    <code className="text-2xl font-mono font-bold text-emerald-200 bg-emerald-900/50 px-4 py-1.5 rounded-lg tracking-wider">
+                      {quickTestResult.otp}
+                    </code>
+                    <span className="text-[10px] bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded font-medium">
+                      via: {quickTestResult.matchedRule}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-emerald-400/70 shrink-0">Forwarded message:</span>
+                    <code className="text-xs font-mono text-slate-200 bg-slate-800/50 px-3 py-1.5 rounded-lg flex-1">
+                      {quickTestResult.template}
+                    </code>
+                  </div>
+                  {(() => {
+                    const matchingRule = rules.find(r => r.name === quickTestResult.matchedRule && r.isActive);
+                    if (matchingRule?.forwardSupplierId) {
+                      return (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-500 shrink-0">Forward to:</span>
+                          <span className="text-[10px] text-slate-400">
+                            📦 {matchingRule.forwardSupplierName || `Supplier #${matchingRule.forwardSupplierId}`}
+                            {matchingRule.forwardSender ? ` (sender: ${matchingRule.forwardSender})` : ""}
+                          </span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
+              ) : (                  <div className="flex items-center gap-3">
+                    <span className="text-lg">❌</span>
+                    <div>
+                      <p className="text-sm font-semibold text-red-300">No OTP found</p>
+                      <p className="text-[10px] text-red-400/70">
+                        {rules.filter(r => r.isActive).length === 0
+                          ? "No active extraction rules configured. Add and activate a rule first."
+                          : `None of the ${rules.filter(r => r.isActive).length} active rules matched. Try adjusting the regex pattern or min/max length.`}
+                      </p>
+                    </div>
+                  </div>
+              )}
+            </div>
+          )}
+
+          {/* Quick stats */}
+          <div className="flex items-center gap-4 text-[10px] text-slate-500">
+            <span>{rules.filter(r => r.isActive).length} active rules</span>
+            <span>•</span>
+            <span>First match wins</span>
+            <span>•</span>
+            <span>Tested in priority order</span>
+          </div>
         </div>
       </div>
 
