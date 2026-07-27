@@ -11,6 +11,7 @@ interface SidRule {
   replacementFixed: string;
   scope: "client" | "supplier" | "both";
   entityId: number | null;
+  entityName: string | null;
   priority: number;
   isActive: boolean;
   mcc: string;
@@ -30,6 +31,7 @@ export default function SidTranslationPage() {
   const [saving, setSaving] = useState(false);
 
   const [rules, setRules] = useState<SidRule[]>([]);
+  const [originalRules, setOriginalRules] = useState<SidRule[]>([]);
   const [clients, setClients] = useState<ClientSupplier[]>([]);
   const [suppliers, setSuppliers] = useState<ClientSupplier[]>([]);
 
@@ -38,17 +40,11 @@ export default function SidTranslationPage() {
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
   const [unassignedEntities, setUnassignedEntities] = useState<{ clients: ClientSupplier[]; suppliers: ClientSupplier[] }>({ clients: [], suppliers: [] });
 
-  // Preview
-  const [sampleSender, setSampleSender] = useState("Borno_TriAngle");
-  const [sampleMatch, setSampleMatch] = useState(".*");
-  const [sampleReplace, setSampleReplace] = useState("MyBrand");
+  // Quick Test
+  const [quickTestSender, setQuickTestSender] = useState("Borno_TriAngle");
+  const [quickTestResult, setQuickTestResult] = useState<{ replacement: string | null; matchedRule: string | null } | null>(null);
 
-  useEffect(() => {
-    fetch("/api/tenant/clients").then(r => r.json()).then(d => setClients(d.clients || [])).catch(() => {});
-    fetch("/api/tenant/suppliers").then(r => r.json()).then(d => setSuppliers(d.suppliers || [])).catch(() => {});
-  }, []);
-
-  const loadRules = useCallback(async () => {
+  const loadRules = useCallback(async (loadedClients: ClientSupplier[], loadedSuppliers: ClientSupplier[]) => {
     try {
       setLoading(true);
       setError(null);
@@ -70,6 +66,7 @@ export default function SidTranslationPage() {
           replacementFixed: p.replacement_fixed || "",
           scope: a?.clientId ? "client" : a?.supplierId ? "supplier" : "both",
           entityId: a?.clientId || a?.supplierId || null,
+          entityName: a?.clientId ? loadedClients.find((c: ClientSupplier) => c.id === a.clientId)?.name || `Client #${a.clientId}` : a?.supplierId ? loadedSuppliers.find((s: ClientSupplier) => s.id === a.supplierId)?.name || `Supplier #${a.supplierId}` : null,
           priority: a?.priority || 1,
           isActive: p.is_active !== false,
           mcc: p.mcc || "",
@@ -77,6 +74,7 @@ export default function SidTranslationPage() {
         };
       });
       setRules(parsed);
+      setOriginalRules(JSON.parse(JSON.stringify(parsed)));
     } catch (err) {
       setError("Failed to load rules. " + (err as Error).message);
     } finally {
@@ -84,9 +82,19 @@ export default function SidTranslationPage() {
     }
   }, [selection]);
 
-  useEffect(() => { loadRules(); }, [loadRules]);
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/tenant/clients").then(r => r.json()).catch(() => ({ clients: [] })),
+      fetch("/api/tenant/suppliers").then(r => r.json()).catch(() => ({ suppliers: [] })),
+    ]).then(([cData, sData]) => {
+      const cls = cData.clients || [];
+      const sups = sData.suppliers || [];
+      setClients(cls);
+      setSuppliers(sups);
+      loadRules(cls, sups);
+    }).catch(() => loadRules([], []));
+  }, [loadRules]);
 
-  // Compute unassigned
   useEffect(() => {
     const assignedClientIds = new Set(rules.filter(r => r.scope === "client" && r.entityId).map(r => r.entityId!));
     const assignedSupplierIds = new Set(rules.filter(r => r.scope === "supplier" && r.entityId).map(r => r.entityId!));
@@ -97,12 +105,14 @@ export default function SidTranslationPage() {
   }, [rules, clients, suppliers]);
 
   const addRule = () => {
-    setRules(prev => [...prev, {
-      ruleId: null, name: `SID Rule ${prev.length + 1}`,
-      matchPattern: ".*", replacementFixed: "",
-      scope: "both", entityId: null, priority: prev.length + 1,
+    const newRule: SidRule = {
+      ruleId: null, name: `SID Rule ${rules.length + 1}`,
+      matchPattern: ".*", replacementFixed: "MyBrand",
+      scope: "both", entityId: null, entityName: null, priority: rules.length + 1,
       isActive: true, mcc: selection.mcc || "", mnc: selection.mnc || "",
-    }]);
+    };
+    setRules(prev => [...prev, newRule]);
+    setOriginalRules(prev => [...prev, JSON.parse(JSON.stringify(newRule))]);
   };
 
   const deleteRule = async (idx: number) => {
@@ -111,18 +121,27 @@ export default function SidTranslationPage() {
       await fetch(`/api/tenant/sms-translations/${rule.ruleId}`, { method: "DELETE" });
     }
     setRules(prev => prev.filter((_, i) => i !== idx));
+    setOriginalRules(prev => prev.filter((_, i) => i !== idx));
     setMsg("Rule deleted");
     setTimeout(() => setMsg(""), 2000);
-    loadRules();
+    loadRules(clients, suppliers);
   };
 
   const updateRule = (idx: number, field: string, value: any) => {
     setRules(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
   };
 
+  const cancelRule = (idx: number) => {
+    const orig = originalRules[idx];
+    if (!orig) return;
+    setRules(prev => prev.map((r, i) => i === idx ? JSON.parse(JSON.stringify(orig)) : r));
+    setMsg(`Reverted "${orig.name}"`);
+    setTimeout(() => setMsg(""), 2000);
+  };
+
   const handleDrop = (idx: number, type: "client" | "supplier" | null, entityId: number | null, entityName: string | null) => {
     if (!type || !entityId) return;
-    setRules(prev => prev.map((r, i) => i === idx ? { ...r, scope: type, entityId } : r));
+    setRules(prev => prev.map((r, i) => i === idx ? { ...r, scope: type, entityId, entityName } : r));
     setDropTargetIdx(null);
     setDragEntity(null);
     setMsg(`Assigned ${entityName} to "${rules[idx]?.name || "rule"}"`);
@@ -130,7 +149,17 @@ export default function SidTranslationPage() {
   };
 
   const clearAssignment = (idx: number) => {
-    setRules(prev => prev.map((r, i) => i === idx ? { ...r, scope: "both", entityId: null } : r));
+    setRules(prev => prev.map((r, i) => i === idx ? { ...r, scope: "both", entityId: null, entityName: null } : r));
+  };
+
+  const handleDragOverRule = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    setDropTargetIdx(idx);
+  };
+
+  const previewTransform = (input: string, match: string, replace: string): string => {
+    try { return input.replace(new RegExp(match, "g"), replace); }
+    catch { return input; }
   };
 
   const saveRuleToApi = async (rule: SidRule): Promise<number | null> => {
@@ -166,7 +195,12 @@ export default function SidTranslationPage() {
     const rule = rules[idx];
     try {
       const newId = await saveRuleToApi(rule);
-      if (newId && !rule.ruleId) updateRule(idx, "ruleId", newId);
+      if (newId && !rule.ruleId) {
+        updateRule(idx, "ruleId", newId);
+        setOriginalRules(prev => prev.map((r, i) => i === idx ? { ...r, ruleId: newId } : r));
+      } else {
+        setOriginalRules(prev => prev.map((r, i) => i === idx ? JSON.parse(JSON.stringify(rule)) : r));
+      }
       setMsg(`"${rule.name}" saved!`);
       setTimeout(() => setMsg(""), 2000);
     } catch (err) {
@@ -183,18 +217,25 @@ export default function SidTranslationPage() {
     setSaving(false);
     setMsg(failed > 0 ? `Saved ${saved}/${rules.length} (${failed} failed)` : `All ${saved} rules saved!`);
     setTimeout(() => setMsg(""), 3000);
-    loadRules();
+    loadRules(clients, suppliers);
   };
 
-  const previewTransform = (input: string, match: string, replace: string): string => {
-    try { return input.replace(new RegExp(match, "g"), replace); }
-    catch { return input; }
+  // Quick test: runs all active rules, first match wins
+  const runQuickTest = () => {
+    for (const rule of rules) {
+      if (!rule.isActive) continue;
+      try {
+        if (new RegExp(rule.matchPattern).test(quickTestSender)) {
+          const replacement = previewTransform(quickTestSender, rule.matchPattern, rule.replacementFixed);
+          setQuickTestResult({ replacement, matchedRule: rule.name });
+          return;
+        }
+      } catch { /* skip */ }
+    }
+    setQuickTestResult({ replacement: null, matchedRule: null });
   };
 
-  const handleDragOverRule = (e: React.DragEvent, idx: number) => {
-    e.preventDefault();
-    setDropTargetIdx(idx);
-  };
+  const assignedRules = rules.filter(r => r.scope !== "both" && r.entityId);
 
   if (loading) return <Spinner />;
 
@@ -212,7 +253,7 @@ export default function SidTranslationPage() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-lg font-bold text-slate-800">Sender ID (SID) Translation</h2>
-          <p className="text-xs text-slate-400">Match sender IDs by pattern and replace them — applied per client or supplier</p>
+          <p className="text-xs text-slate-400">Match sender IDs by pattern and replace them — assigned per client or supplier</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-slate-500">Scope: <strong>{selection.label}</strong></span>
@@ -223,22 +264,60 @@ export default function SidTranslationPage() {
         </div>
       </div>
 
-      {/* Live Preview */}
-      <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl p-4 mb-6">
-        <h4 className="text-sm font-semibold text-purple-800 mb-3">🔬 Preview SID Translation</h4>
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <input value={sampleSender} onChange={e => setSampleSender(e.target.value)}
-            className="w-40 border rounded-lg px-3 py-2 font-mono text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none bg-white" />
-          <span className="text-slate-400">→ match</span>
-          <input value={sampleMatch} onChange={e => setSampleMatch(e.target.value)}
-            className="w-24 border rounded-lg px-2 py-2 font-mono text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none bg-white" />
-          <span className="text-slate-400">→ replace with</span>
-          <input value={sampleReplace} onChange={e => setSampleReplace(e.target.value)}
-            className="w-24 border rounded-lg px-2 py-2 font-mono text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none bg-white" />
-          <span className="text-slate-400">→</span>
-          <code className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded font-mono font-bold text-base">
-            {previewTransform(sampleSender, sampleMatch, sampleReplace)}
-          </code>
+      {/* Quick SID Test */}
+      <div className="bg-gradient-to-br from-slate-800 via-slate-900 to-purple-950 border border-slate-700 rounded-2xl p-6 mb-6 shadow-lg">
+        <div className="flex items-center gap-3 mb-1">
+          <span className="text-2xl">📱</span>
+          <div>
+            <h3 className="text-lg font-bold text-white">Quick SID Translation Test</h3>
+            <p className="text-xs text-slate-400">Paste a sender ID and see how it gets transformed</p>
+          </div>
+        </div>
+        <div className="mt-5 space-y-4">
+          <div>
+            <label className="text-xs font-medium text-slate-300 mb-1.5 block">Test Sender</label>
+            <div className="flex items-center gap-3">
+              <input value={quickTestSender} onChange={e => { setQuickTestSender(e.target.value); setQuickTestResult(null); }}
+                onKeyDown={e => { if (e.key === "Enter") runQuickTest(); }}
+                className="flex-1 bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-sm font-mono text-white placeholder:text-slate-500 focus:ring-2 focus:ring-purple-500 focus:outline-none transition" />
+              <button onClick={runQuickTest} disabled={!quickTestSender.trim()}
+                className="bg-purple-600 hover:bg-purple-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-5 py-3 rounded-xl text-sm font-semibold transition shadow-lg shadow-purple-600/25">
+                🔍 Test
+              </button>
+            </div>
+          </div>
+          {quickTestResult && (
+            <div className={`rounded-xl border p-4 ${quickTestResult.replacement !== null ? "bg-emerald-900/30 border-emerald-700/50" : "bg-red-900/20 border-red-700/50"}`}>
+              {quickTestResult.replacement !== null ? (
+                <div className="flex items-center gap-4">
+                  <span className="text-[11px] font-medium text-emerald-300 uppercase tracking-wider">Transformed</span>
+                  <code className="text-sm font-mono text-slate-300 line-through">{quickTestSender}</code>
+                  <span className="text-emerald-400 text-lg">→</span>
+                  <code className="text-xl font-mono font-bold text-emerald-200 bg-emerald-900/50 px-4 py-1.5 rounded-lg">{quickTestResult.replacement}</code>
+                  <span className="text-[10px] bg-purple-500/30 text-purple-200 px-2 py-0.5 rounded font-medium">
+                    via: {quickTestResult.matchedRule}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <span className="text-lg">❌</span>
+                  <div>
+                    <p className="text-sm font-semibold text-red-300">No match</p>
+                    <p className="text-[10px] text-red-400/70">
+                      {rules.filter(r => r.isActive).length === 0
+                        ? "No active SID rules configured."
+                        : `None of the ${rules.filter(r => r.isActive).length} active rules matched "${quickTestSender}".`}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex items-center gap-4 text-[10px] text-slate-500">
+            <span>{rules.filter(r => r.isActive).length} active rules</span>
+            <span>•</span>
+            <span>First match wins</span>
+          </div>
         </div>
       </div>
 
@@ -281,7 +360,7 @@ export default function SidTranslationPage() {
                 <th className="text-left px-3 py-2.5 font-medium w-16">Priority</th>
                 <th className="text-center px-3 py-2.5 font-medium w-12">Active</th>
                 <th className="text-center px-3 py-2.5 font-medium">Preview</th>
-                <th className="text-right px-4 py-2.5 font-medium w-32">Actions</th>
+                <th className="text-right px-4 py-2.5 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -298,9 +377,12 @@ export default function SidTranslationPage() {
                 const preview = rule.isActive
                   ? previewTransform("Borno_TriAngle", rule.matchPattern, rule.replacementFixed)
                   : "—";
+                const isDirty = originalRules[idx]
+                  ? JSON.stringify(rule) !== JSON.stringify(originalRules[idx])
+                  : false;
                 return (
                   <tr key={idx}
-                    className={`hover:bg-blue-50/40 transition-colors ${!rule.isActive ? "opacity-50" : ""} ${dropTargetIdx === idx ? "bg-indigo-50 ring-2 ring-indigo-200" : ""}`}
+                    className={`hover:bg-blue-50/40 transition-colors ${!rule.isActive ? "opacity-50" : ""} ${dropTargetIdx === idx ? "bg-indigo-50 ring-2 ring-indigo-200" : ""} ${isDirty ? "bg-yellow-50/30" : ""}`}
                     onDragOver={(e) => handleDragOverRule(e, idx)}
                     onDragLeave={() => setDropTargetIdx(null)}
                     onDrop={(e) => {
@@ -308,7 +390,10 @@ export default function SidTranslationPage() {
                       if (dragEntity) handleDrop(idx, dragEntity.type, dragEntity.id, dragEntity.name);
                       setDropTargetIdx(null);
                     }}>
-                    <td className="px-4 py-2 text-slate-400 font-mono">{idx + 1}</td>
+                    <td className="px-4 py-2 text-slate-400 font-mono">
+                      {idx + 1}
+                      {isDirty && <span className="ml-1 text-[8px] text-amber-500 align-top">•</span>}
+                    </td>
                     <td className="px-3 py-2">
                       <input value={rule.name} onChange={e => updateRule(idx, "name", e.target.value)}
                         className="w-full border-0 bg-transparent focus:bg-white focus:border focus:border-blue-300 rounded px-1 py-0.5 text-xs font-medium text-slate-800 focus:outline-none" />
@@ -328,24 +413,30 @@ export default function SidTranslationPage() {
                         <select value={rule.scope} onChange={e => {
                           const v = e.target.value as "client" | "supplier" | "both";
                           updateRule(idx, "scope", v);
-                          if (v === "both") updateRule(idx, "entityId", null);
-                          else if (v === "client" && clients.length > 0) updateRule(idx, "entityId", clients[0].id);
-                          else if (v === "supplier" && suppliers.length > 0) updateRule(idx, "entityId", suppliers[0].id);
+                          if (v === "both") { updateRule(idx, "entityId", null); updateRule(idx, "entityName", null); }
+                          else if (v === "client" && clients.length > 0) { updateRule(idx, "entityId", clients[0].id); updateRule(idx, "entityName", clients[0].name); }
+                          else if (v === "supplier" && suppliers.length > 0) { updateRule(idx, "entityId", suppliers[0].id); updateRule(idx, "entityName", suppliers[0].name); }
                         }} className="border rounded px-1.5 py-1 text-[10px] focus:ring-2 focus:ring-blue-500 focus:outline-none">
                           <option value="both">Global</option>
                           <option value="client">Client</option>
                           <option value="supplier">Supplier</option>
                         </select>
                         {rule.scope === "client" && (
-                          <select value={rule.entityId || ""} onChange={e => updateRule(idx, "entityId", e.target.value ? parseInt(e.target.value) : null)}
-                            className="border rounded px-1.5 py-1 text-[10px] focus:ring-2 focus:ring-blue-500 focus:outline-none min-w-[90px]">
+                          <select value={rule.entityId || ""} onChange={e => {
+                            const cid = e.target.value ? parseInt(e.target.value) : null;
+                            updateRule(idx, "entityId", cid);
+                            updateRule(idx, "entityName", cid ? clients.find(c => c.id === cid)?.name || null : null);
+                          }} className="border rounded px-1.5 py-1 text-[10px] focus:ring-2 focus:ring-blue-500 focus:outline-none min-w-[90px]">
                             <option value="">Select...</option>
                             {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                           </select>
                         )}
                         {rule.scope === "supplier" && (
-                          <select value={rule.entityId || ""} onChange={e => updateRule(idx, "entityId", e.target.value ? parseInt(e.target.value) : null)}
-                            className="border rounded px-1.5 py-1 text-[10px] focus:ring-2 focus:ring-blue-500 focus:outline-none min-w-[90px]">
+                          <select value={rule.entityId || ""} onChange={e => {
+                            const sid = e.target.value ? parseInt(e.target.value) : null;
+                            updateRule(idx, "entityId", sid);
+                            updateRule(idx, "entityName", sid ? suppliers.find(s => s.id === sid)?.name || null : null);
+                          }} className="border rounded px-1.5 py-1 text-[10px] focus:ring-2 focus:ring-blue-500 focus:outline-none min-w-[90px]">
                             <option value="">Select...</option>
                             {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                           </select>
@@ -365,15 +456,19 @@ export default function SidTranslationPage() {
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1">
-                        <code className="text-[10px] text-slate-400 font-mono">Borno_TriAngle</code>
+                        <code className="text-[10px] text-slate-400 font-mono">Borno</code>
                         <span className="text-slate-300">→</span>
                         <code className={`text-[10px] font-mono font-semibold ${rule.isActive ? "text-purple-700" : "text-slate-400"}`}>{preview}</code>
                       </div>
                     </td>
                     <td className="px-4 py-2 text-right">
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-1 flex-wrap">
                         <button onClick={() => saveRule(idx)}
-                          className="bg-green-600 text-white px-2.5 py-1 rounded text-[10px] font-medium hover:bg-green-700 transition">Save</button>
+                          className="bg-green-600 text-white px-2.5 py-1 rounded text-[10px] font-medium hover:bg-green-700 transition">Update</button>
+                        <button onClick={() => cancelRule(idx)}
+                          disabled={!isDirty}
+                          className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 px-2 py-1 rounded text-[10px] font-medium transition disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="Revert unsaved changes">Cancel</button>
                         <button onClick={() => { if (confirm("Delete this rule?")) deleteRule(idx); }}
                           className="text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded text-[10px] font-medium transition">Del</button>
                       </div>
@@ -385,7 +480,6 @@ export default function SidTranslationPage() {
           </table>
         </div>
 
-        {/* Bottom bar */}
         <div className="px-4 py-2 border-t bg-slate-50 flex items-center justify-between">
           <span className="text-[10px] text-slate-400">{rules.filter(r => r.ruleId).length} saved — {rules.filter(r => !r.ruleId).length} draft</span>
           <div className="flex items-center gap-2">
@@ -398,14 +492,53 @@ export default function SidTranslationPage() {
         </div>
       </div>
 
-      {/* Help box */}
+      {/* Applies To Table */}
+      {assignedRules.length > 0 && (
+        <div className="mt-4 bg-white border rounded-xl shadow-sm overflow-hidden">
+          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 px-4 py-2 border-b">
+            <h3 className="text-xs font-semibold text-slate-800">📋 Applies To — Client/Supplier Assignments</h3>
+          </div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider">
+                <th className="text-left px-4 py-2 font-medium">Rule</th>
+                <th className="text-left px-3 py-2 font-medium">Scope</th>
+                <th className="text-left px-3 py-2 font-medium">Entity</th>
+                <th className="text-left px-3 py-2 font-medium">Priority</th>
+                <th className="text-left px-3 py-2 font-medium">Match → Replace</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {assignedRules.map((rule, idx) => (
+                <tr key={idx} className="hover:bg-slate-50">
+                  <td className="px-4 py-2 font-medium text-slate-700">{rule.name}</td>
+                  <td className="px-3 py-2">
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${rule.scope === "client" ? "bg-purple-100 text-purple-700" : "bg-amber-100 text-amber-700"}`}>
+                      {rule.scope === "client" ? "Client" : "Supplier"}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 font-medium text-slate-600">{rule.entityName || `#${rule.entityId}`}</td>
+                  <td className="px-3 py-2 text-slate-500">{rule.priority}</td>
+                  <td className="px-3 py-2 text-slate-500 font-mono text-[10px]">
+                    {rule.matchPattern} → {rule.replacementFixed}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Help */}
       <div className="mt-4 bg-slate-50 border rounded-xl p-4 text-xs text-slate-500">
         <p className="font-medium text-slate-700 mb-2">💡 How SID Translation Works</p>
         <ul className="space-y-1 list-disc list-inside">
           <li><strong>Match Sender:</strong> Regex pattern to match incoming sender IDs. Use <code className="bg-slate-200 px-1 rounded text-[10px]">.*</code> to match all.</li>
-          <li><strong>Replace With:</strong> The new sender ID to use for matched messages.</li>
-          <li><strong>Scope:</strong> Global applies to all. Client/Supplier applies only to messages from that specific entity.</li>
-          <li><strong>Priority:</strong> Lower numbers run first. Drag clients/suppliers from the top bar to assign them.</li>
+          <li><strong>Replace With:</strong> The new sender ID for matched messages.</li>
+          <li><strong>Quick Test:</strong> Type a sender ID at the top and click Test to see which rule matches and what it transforms to.</li>
+          <li><strong>Update / Cancel:</strong> Save or revert changes per rule.</li>
+          <li><strong>Scope:</strong> Drag clients/suppliers from the top bar to assign rules. Check the Applies To table.</li>
+          <li><strong>Priority:</strong> Lower numbers run first.</li>
         </ul>
       </div>
     </div>
