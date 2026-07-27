@@ -392,15 +392,28 @@ export default function OtpExtractPage() {
             <div className={`rounded-xl border p-4 ${quickTestResult.otp ? "bg-emerald-900/30 border-emerald-700/50" : "bg-red-900/20 border-red-700/50"}`}>
               {quickTestResult.otp ? (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-[11px] font-medium text-emerald-300 uppercase tracking-wider">Extracted OTP</span>
-                    <code className="text-2xl font-mono font-bold text-emerald-200 bg-emerald-900/50 px-4 py-1.5 rounded-lg tracking-wider">
+                  {/* BEFORE / AFTER comparison */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-slate-800/50 rounded-lg p-3">
+                      <span className="text-[10px] font-medium text-red-300 uppercase tracking-wider block mb-1">BEFORE</span>
+                      <code className="text-xs font-mono text-slate-300 break-all">{quickTestMessage}</code>
+                    </div>
+                    <div className="bg-emerald-900/40 rounded-lg p-3">
+                      <span className="text-[10px] font-medium text-emerald-300 uppercase tracking-wider block mb-1">AFTER</span>
+                      <code className="text-xl font-mono font-bold text-emerald-200 tracking-wider">{quickTestResult.otp}</code>
+                    </div>
+                  </div>
+                  {/* Extracted OTP detail */}
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="text-[11px] font-medium text-emerald-300 uppercase tracking-wider">OTP Extracted</span>
+                    <code className="text-lg font-mono font-bold text-emerald-200 bg-emerald-900/50 px-3 py-1 rounded-lg tracking-wider">
                       {quickTestResult.otp}
                     </code>
                     <span className="text-[10px] bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded font-medium">
                       via: {quickTestResult.matchedRule}
                     </span>
                   </div>
+                  {/* Forwarded message preview */}
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-emerald-400/70 shrink-0">Forwarded message:</span>
                     <code className="text-xs font-mono text-slate-200 bg-slate-800/50 px-3 py-1.5 rounded-lg flex-1">
@@ -422,6 +435,10 @@ export default function OtpExtractPage() {
                     }
                     return null;
                   })()}
+                  {/* Info note */}
+                  <p className="text-[10px] text-slate-500 italic">
+                    This is what will be forwarded to the supplier. The full message is preserved in SMS logs.
+                  </p>
                 </div>
               ) : (                  <div className="flex items-center gap-3">
                     <span className="text-lg">❌</span>
