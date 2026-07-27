@@ -42,7 +42,9 @@ export function useMccMnc() {
 const translationTypes = [
   { href: "/dashboard/translations/sid", label: "SID Translation", icon: "📱", desc: "Change sender ID per operator" },
   { href: "/dashboard/translations/number", label: "Number Translation", icon: "🔢", desc: "Transform destination numbers" },
+  { href: "/dashboard/translations/number-blacklist", label: "Number Blacklist", icon: "🚫", desc: "Block SMS to specific number series" },
   { href: "/dashboard/translations/content", label: "Content Translation", icon: "📝", desc: "Find & replace in SMS body" },
+  { href: "/dashboard/translations/content-filter", label: "Content Filter", icon: "🛡️", desc: "Blacklist or whitelist SMS by content" },
   { href: "/dashboard/translations/random", label: "Random Content", icon: "🎲", desc: "Randomize content per operator" },
   { href: "/dashboard/translations/sid-alias", label: "SID Alias", icon: "🏷️", desc: "Create friendly aliases for sender IDs" },
   { href: "/dashboard/translations/random-sid", label: "Random SID", icon: "🔀", desc: "Randomize sender ID per operator" },

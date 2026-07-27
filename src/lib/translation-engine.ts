@@ -15,6 +15,7 @@ interface TranslationProfile {
   replacementFixed: string | null;
   mcc: string | null;
   mnc: string | null;
+  category: string | null;
 }
 
 interface PoolItem {
@@ -41,25 +42,55 @@ async function loadProfiles(
   schemaName: string,
   entityType: "client" | "supplier",
   entityId: number,
-  destination: string
+  destination: string,
+  includeGlobal: boolean = true
 ): Promise<TranslationProfile[]> {
   const col = entityType === "client" ? "client_id" : "supplier_id";
-  // Also load globally-assigned profiles (those with NULL client_id AND NULL supplier_id)
+  // When includeGlobal=true: load entity-specific + global (NULL/NULL) profiles.
+  // When includeGlobal=false: load ONLY entity-specific profiles.
+  // This prevents global profiles from being applied TWICE (once at client level
+  // and once at supplier level), which would duplicate transformations.
   const result = await tenantQuery(
     schemaName,
-    `SELECT tp.* FROM translation_profiles tp
-     JOIN translation_assignments ta ON ta.profile_id = tp.id
-     WHERE (ta.${col} = $1 OR (ta.client_id IS NULL AND ta.supplier_id IS NULL))
-       AND ta.is_active = true AND tp.is_active = true
-     ORDER BY ta.priority ASC`,
+    includeGlobal
+      ? `SELECT tp.* FROM translation_profiles tp
+         JOIN translation_assignments ta ON ta.profile_id = tp.id
+         WHERE (ta.${col} = $1 OR (ta.client_id IS NULL AND ta.supplier_id IS NULL))
+           AND ta.is_active = true AND tp.is_active = true
+         ORDER BY ta.priority ASC`
+      : `SELECT tp.* FROM translation_profiles tp
+         JOIN translation_assignments ta ON ta.profile_id = tp.id
+         WHERE ta.${col} = $1
+           AND ta.is_active = true AND tp.is_active = true
+         ORDER BY ta.priority ASC`,
     [entityId]
   );
 
-  const profiles = result.rows as TranslationProfile[];
+  // Map snake_case DB columns to camelCase interface
+  const profiles: TranslationProfile[] = result.rows.map((r: Record<string, unknown>) => ({
+    id: r.id as number,
+    name: r.name as string,
+    targetField: (r.target_field || r.targetField || "SENDER") as "SENDER" | "BODY" | "DESTINATION",
+    mode: (r.mode || "FIXED") as "FIXED" | "RANDOM",
+    matchPattern: (r.match_pattern || r.matchPattern || ".*") as string,
+    replacementFixed: (r.replacement_fixed ?? r.replacementFixed ?? null) as string | null,
+    mcc: (r.mcc || null) as string | null,
+    mnc: (r.mnc || null) as string | null,
+    category: (r.category || null) as string | null,
+  }));
+
+  // Exclude blacklist/filter categories — these are not transformations,
+  // they are enforced separately as blocking rules.
+  const transformationProfiles = profiles.filter(
+    p => p.category !== "NUMBER_BLACKLIST" && p.category !== "CONTENT_FILTER"
+  );
+
+  // If no profiles remain after filtering, return empty
+  if (transformationProfiles.length === 0) return [];
 
   // If no profiles have MCC/MNC set, return all (global rules only)
-  const hasMccMncProfiles = profiles.some(p => p.mcc || p.mnc);
-  if (!hasMccMncProfiles) return profiles;
+  const hasMccMncProfiles = transformationProfiles.some(p => p.mcc || p.mnc);
+  if (!hasMccMncProfiles) return transformationProfiles;
 
   // Resolve destination's MCC/MNC
   let destMcc: string | null = null;
@@ -87,7 +118,7 @@ async function loadProfiles(
   const normalizedDestMnc = norm(destMnc);
 
   // Filter: keep profiles that match the destination's MCC/MNC, OR are global
-  return profiles.filter(p => {
+  return transformationProfiles.filter(p => {
     // Global profile — applies to all destinations
     if (!p.mcc && !p.mnc) return true;
     // MCC must match (or be null = match all MCCs)
@@ -123,7 +154,13 @@ async function loadPoolItems(
   }
   
   const result = await tenantQuery(schemaName, query, params);
-  return result.rows as PoolItem[];
+  // Map snake_case DB columns to camelCase interface
+  return result.rows.map((r: Record<string, unknown>) => ({
+    id: r.id as number,
+    profileId: r.profile_id as number,
+    replacementValue: r.replacement_value as string,
+    mccmnc: (r.mccmnc || null) as string | null,
+  }));
 }
 
 /**
@@ -159,7 +196,7 @@ async function applyProfile(
       console.warn(`Unsafe regex pattern rejected for profile ${profile.name}: ${profile.matchPattern}`);
       return { sender, destination, content, applied: false };
     }
-    regex = new RegExp(profile.matchPattern || ".*", "gm");
+    regex = new RegExp(profile.matchPattern || ".*", "m");
   } catch {
     // Invalid regex, skip this profile
     return { sender, destination, content, applied: false };
@@ -192,8 +229,58 @@ async function applyProfile(
     replacement = profile.replacementFixed ?? input;
   }
 
-  // Perform the replacement (supports $1, $2 capture groups)
-  const newValue = input.replace(regex, replacement);
+  // ── Number Pipeline: check if replacement_fixed is a JSON step definition ──
+  if (target === "DESTINATION") {
+    let pipelineResult = input;
+    let pipelineApplied = false;
+    try {
+      const parsed = JSON.parse(replacement);
+      if (parsed && typeof parsed === "object" && Array.isArray(parsed.steps)) {
+        // Apply the 3-step pipeline in order: stripDigits → removePrefix → addPrefix
+        for (const step of parsed.steps) {
+          if (step.type === "stripDigits") {
+            const n = parseInt(step.value, 10);
+            if (!isNaN(n) && n > 0 && n < pipelineResult.length) {
+              pipelineResult = pipelineResult.slice(n);
+              pipelineApplied = true;
+            }
+          } else if (step.type === "removePrefix") {
+            const prefix = String(step.value || "");
+            if (prefix && pipelineResult.startsWith(prefix)) {
+              pipelineResult = pipelineResult.slice(prefix.length);
+              pipelineApplied = true;
+            }
+          } else if (step.type === "addPrefix") {
+            const prefix = String(step.value || "");
+            if (prefix) {
+              pipelineResult = prefix + pipelineResult;
+              pipelineApplied = true;
+            }
+          }
+        }
+        if (pipelineApplied) {
+          return { sender, destination: pipelineResult, content, applied: true };
+        }
+      }
+    } catch {
+      // Not JSON — fall through to normal regex replacement
+    }
+  }
+
+  // Normal replacement (supports $1, $2 capture groups)
+  let newValue = input.replace(regex, replacement);
+
+  // ── {{OTP}} / {code} placeholder replacement ──
+  // If the template/replacement contains {{OTP}} or {code},
+  // extract OTP digits from the original content and substitute
+  // them into the result so the final message has the real OTP.
+  if (newValue.includes("{{OTP}}") || newValue.includes("{code}")) {
+    const otpMatch = content.match(/\b(\d{4,8})\b/);
+    if (otpMatch && otpMatch[1]) {
+      newValue = newValue.replace(/\{\{OTP\}\}/g, otpMatch[1]);
+      newValue = newValue.replace(/\{code\}/g, otpMatch[1]);
+    }
+  }
 
   switch (target) {
     case "SENDER":
@@ -216,9 +303,10 @@ export async function applyEntityTranslations(
   entityId: number,
   sender: string,
   destination: string,
-  content: string
+  content: string,
+  includeGlobal: boolean = true
 ): Promise<{ sender: string; destination: string; content: string; appliedNames: string[] }> {
-  const profiles = await loadProfiles(schemaName, entityType, entityId, destination);
+  const profiles = await loadProfiles(schemaName, entityType, entityId, destination, includeGlobal);
   let currentSender = sender;
   let currentDest = destination;
   let currentContent = content;
@@ -265,7 +353,9 @@ export async function applyTranslations(
   );
   allApplied.push(...clientResult.appliedNames.map(n => `[Client] ${n}`));
 
-  // Step 2: Supplier-level translations (if supplier assigned)
+  // Step 2: Supplier-level translations (if supplier assigned).
+  // Pass includeGlobal=false so global profiles don't run again (they already
+  // ran at client-level above).
   let finalSender = clientResult.sender;
   let finalDest = clientResult.destination;
   let finalContent = clientResult.content;
@@ -273,7 +363,8 @@ export async function applyTranslations(
   if (supplierId) {
     const supplierResult = await applyEntityTranslations(
       schemaName, "supplier", supplierId,
-      finalSender, finalDest, finalContent
+      finalSender, finalDest, finalContent,
+      false // includeGlobal = false — already applied at client level
     );
     finalSender = supplierResult.sender;
     finalDest = supplierResult.destination;
