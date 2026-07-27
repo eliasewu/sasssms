@@ -9,6 +9,7 @@ interface Admin { id: number; name: string; email: string; }
 const navItems = [
   { href: "/super/dashboard", label: "Dashboard", icon: "📊" },
   { href: "/super/dashboard/tenants", label: "Tenants", icon: "🏢" },
+  { href: "/super/dashboard/users", label: "Users", icon: "👥" },
   { href: "/super/dashboard/packages", label: "Packages", icon: "📦" },
   { href: "/super/dashboard/voice-otp-defaults", label: "Voice OTP Defaults", icon: "🎵" },
   { href: "/super/dashboard/payments", label: "Payment Approvals", icon: "💳" },
@@ -17,6 +18,8 @@ const navItems = [
   { href: "/super/dashboard/mcc-mnc", label: "MCC/MNC Database", icon: "🌍" },
   { href: "/super/dashboard/support-tickets", label: "Support Tickets", icon: "🎫" },
   { href: "/super/dashboard/notifications", label: "Alerts", icon: "🔔" },
+  { href: "/super/dashboard/servers", label: "Servers", icon: "🖥️" },
+  { href: "/super/dashboard/sms-counter-audit", label: "SMS Credit Audit", icon: "🔢" },
   { href: "/super/dashboard/settings", label: "Settings", icon: "⚙️" },
 ];
 
