@@ -34,7 +34,45 @@ export default function SuperLiveChatPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const lastMsgIdRef = useRef(0);
+  const lastMsgIdRef = useRef(Infinity); // Infinity = no messages seen yet; prevents false sound on first load
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  // Clean up AudioContext on unmount
+  useEffect(() => {
+    return () => {
+      audioCtxRef.current?.close();
+    };
+  }, []);
+
+  // Play a short notification ping via Web Audio API (no external files needed)
+  const playPing = useCallback(() => {
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+      // Browsers suspend AudioContext until user interaction — resume if needed
+      if (ctx.state === "suspended") ctx.resume();
+      const now = ctx.currentTime;
+
+      // Two-tone "ding-ding" chime
+      [880, 1100].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, now + i * 0.15);
+        gain.gain.setValueAtTime(0, now + i * 0.15);
+        gain.gain.linearRampToValueAtTime(0.3, now + i * 0.15 + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.15 + 0.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.15);
+        osc.stop(now + i * 0.15 + 0.25);
+      });
+    } catch {
+      // Audio not supported — silently ignore
+    }
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -86,6 +124,11 @@ export default function SuperLiveChatPage() {
         if (data.messages?.length) {
           const last = data.messages[data.messages.length - 1];
           if (last.id > lastMsgIdRef.current) {
+            // Play sound if any new message is from the tenant
+            const hasNewTenantMsg = data.messages.some(
+              (m: ChatMessage) => m.id > lastMsgIdRef.current && m.senderType === "tenant"
+            );
+            if (hasNewTenantMsg) playPing();
             setMessages(data.messages);
             lastMsgIdRef.current = last.id;
           }
@@ -93,7 +136,7 @@ export default function SuperLiveChatPage() {
       } catch {}
     }, POLL_INTERVAL);
     return () => clearInterval(interval);
-  }, [activeRoom]);
+  }, [activeRoom, playPing]);
 
   // Scroll on new messages
   useEffect(() => {
