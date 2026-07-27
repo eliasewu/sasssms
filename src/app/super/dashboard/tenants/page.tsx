@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 
 interface Tenant {
-  id: number; companyName: string; email: string; phone: string;
+  id: number; companyName: string; email: string;
   schemaName: string; isActive: boolean; status: string; balance: string; packageType: string;
   smppEnabled: boolean; httpEnabled: boolean; rcsEnabled: boolean;
   flashSmsEnabled: boolean; voiceOtpEnabled: boolean; ottEnabled: boolean;
@@ -249,7 +249,7 @@ export default function TenantsPage() {
               </div>
               <h3 className="font-semibold text-lg">Deactivate Tenant?</h3>
               <p className="text-sm text-slate-500 mt-1">
-                This will deactivate <strong>{deleteConfirm.companyName}</strong> ({deleteConfirm.email}).
+                This will deactivate <strong>{deleteConfirm.companyName}</strong>.
                 The tenant and all their data will be preserved but they will not be able to log in.
               </p>
             </div>
@@ -275,7 +275,7 @@ export default function TenantsPage() {
               </div>
               <h3 className="font-semibold text-lg">Suspend Tenant?</h3>
               <p className="text-sm text-slate-500 mt-1">
-                This will suspend <strong>{suspendConfirm.companyName}</strong> ({suspendConfirm.email}).
+                This will suspend <strong>{suspendConfirm.companyName}</strong>.
                 They will not be able to log in. You can unsuspend later.
               </p>
             </div>
@@ -301,8 +301,8 @@ export default function TenantsPage() {
               </div>
               <h3 className="font-semibold text-lg">Permanently Delete Tenant?</h3>
               <p className="text-sm text-slate-500 mt-1">
-                This will <strong className="text-red-600">permanently delete</strong> {hardDeleteConfirm.companyName} ({hardDeleteConfirm.email})
-                and all their data including schema "{hardDeleteConfirm.schemaName}".
+                This will <strong className="text-red-600">permanently delete</strong> {hardDeleteConfirm.companyName}
+                and all their data including schema &quot;{hardDeleteConfirm.schemaName}&quot;.
                 This action cannot be undone!
               </p>
             </div>
@@ -322,7 +322,7 @@ export default function TenantsPage() {
       {resetModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setResetModal(null)}>
           <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold text-lg mb-4">Reset Password: {resetModal.email}</h3>
+            <h3 className="font-semibold text-lg mb-4">Reset Password for {resetModal.email}</h3>
             <div className="space-y-4">
               <div><label className="block text-sm font-medium mb-1">New Password</label><input type="text" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full border rounded-lg px-3 py-2" placeholder="Min 6 characters" /></div>
               <div className="flex gap-2"><button onClick={handleResetPassword} className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm">Reset Password</button><button onClick={() => setResetModal(null)} className="border px-6 py-2 rounded-lg text-sm">Cancel</button></div>
@@ -344,7 +344,7 @@ export default function TenantsPage() {
       {/* Tenants Table */}
       <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50"><tr><th className="text-left px-4 py-3">Company</th><th className="text-left px-4 py-3">Email</th><th className="text-left px-4 py-3">Package</th><th className="text-left px-4 py-3">SMS Used</th><th className="text-left px-4 py-3">TPS</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Actions</th></tr></thead>
+          <thead className="bg-slate-50"><tr><th className="text-left px-4 py-3">Company</th><th className="text-left px-4 py-3">Package</th><th className="text-left px-4 py-3">SMS Used</th><th className="text-left px-4 py-3">TPS</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Actions</th></tr></thead>
           <tbody>
             {tenants.map(t => {
               const isSuspended = t.status === "suspended";
@@ -354,7 +354,6 @@ export default function TenantsPage() {
               return (
               <tr key={t.id} className="border-b hover:bg-slate-50">
                 <td className="px-4 py-3 font-medium">{t.companyName}</td>
-                <td className="px-4 py-3 text-xs">{t.email}</td>
                 <td className="px-4 py-3"><span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs capitalize">{t.packageType}</span></td>
                 <td className="px-4 py-3 font-mono text-xs">{t.smsCounter.toLocaleString()}</td>
                 <td className="px-4 py-3 font-mono text-xs">{t.maxTps || "∞"}</td>
