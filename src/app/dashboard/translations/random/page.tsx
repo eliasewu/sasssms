@@ -43,6 +43,7 @@ export default function RandomContentPage() {
   // Quick Test
   const [quickTestMessage, setQuickTestMessage] = useState("Your OTP code is 252525");
   const [quickTestResult, setQuickTestResult] = useState<string | null>(null);
+  const [sampleOtp, setSampleOtp] = useState("252525");
 
   const loadRules = useCallback(async (loadedClients: ClientSupplier[], loadedSuppliers: ClientSupplier[]) => {
     try {
@@ -107,7 +108,12 @@ export default function RandomContentPage() {
   const addRule = () => {
     const newRule: RandomRule = {
       ruleId: null, name: `Random Rule ${rules.length + 1}`,
-      matchPattern: ".*", poolItems: ["Your OTP code is {{OTP}}", "Verification: {{OTP}}"],
+      matchPattern: ".*", poolItems: [
+        "Your OTP code is {{OTP}}. Valid for 5 min.",
+        "Verification code: {{OTP}}",
+        "{{OTP}} is your one-time password",
+        "OTP: {{OTP}}. Do not share.",
+      ],
       scope: "both", entityId: null, entityName: null, priority: rules.length + 1,
       isActive: true, mcc: selection.mcc || "", mnc: selection.mnc || "",
     };
@@ -157,6 +163,31 @@ export default function RandomContentPage() {
       if (i !== idx) return r;
       return { ...r, poolItems: r.poolItems.filter((_, j) => j !== itemIdx) };
     }));
+  };
+
+  // Bulk upload templates from .txt or .csv file
+  const handleBulkUpload = (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (ext !== 'txt' && ext !== 'csv') {
+      setError("Only .txt or .csv files are supported");
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = reader.result as string;
+      const lines = text.split(/[\r\n]+/).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+      if (lines.length === 0) { setMsg("No templates found in file"); setTimeout(() => setMsg(""), 2000); return; }
+      // For CSV, take first column if comma-separated
+      const templates = lines.map(l => l.includes(',') ? l.split(',')[0].trim() : l.trim());
+      setRules(prev => prev.map((r, i) => i === idx ? { ...r, poolItems: templates } : r));
+      setMsg(`Loaded ${templates.length} templates from ${file.name}`);
+      setTimeout(() => setMsg(""), 2500);
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // reset so same file can be re-uploaded
   };
 
   const handleDrop = (idx: number, type: "client" | "supplier" | null, entityId: number | null, entityName: string | null) => {
@@ -249,7 +280,7 @@ export default function RandomContentPage() {
     loadRules(clients, suppliers);
   };
 
-  // Quick test: pick random template from a random active rule
+  // Quick test: pick random template and fill OTP from the test message
   const runQuickTest = () => {
     const activeRules = rules.filter(r => r.isActive && r.poolItems.some(p => p.trim()));
     if (activeRules.length === 0) {
@@ -259,7 +290,8 @@ export default function RandomContentPage() {
     const pick = activeRules[Math.floor(Math.random() * activeRules.length)];
     const tmpl = pick.poolItems.filter(p => p.trim());
     const random = tmpl[Math.floor(Math.random() * tmpl.length)];
-    setQuickTestResult(random);
+    const otp = quickTestMessage.match(/\b(\d{4,8})\b/)?.[1] || sampleOtp;
+    setQuickTestResult(random.replace(/\{\{OTP\}\}/g, otp));
   };
 
   const assignedRules = rules.filter(r => r.scope !== "both" && r.entityId);
@@ -297,22 +329,50 @@ export default function RandomContentPage() {
           <span className="text-2xl">🎲</span>
           <div>
             <h3 className="text-lg font-bold text-white">Quick Random Pick Test</h3>
-            <p className="text-xs text-slate-400">Click to pick a random template from an active rule</p>
+            <p className="text-xs text-slate-400">Extract OTP from original message and fill into random template</p>
           </div>
         </div>
-        <div className="mt-5 flex items-center gap-3">
-          <button onClick={runQuickTest}
-            className="bg-amber-600 hover:bg-amber-500 text-white px-5 py-3 rounded-xl text-sm font-semibold transition shadow-lg shadow-amber-600/25">
-            🎲 Random Pick
-          </button>
+        <div className="mt-5 space-y-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex-1 min-w-[200px]">
+              <label className="text-[10px] font-medium text-slate-400 mb-1 block">Original Message (with OTP)</label>
+              <input value={quickTestMessage} onChange={e => { setQuickTestMessage(e.target.value); setQuickTestResult(null); }}
+                className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-3 py-2 text-xs font-mono text-white placeholder:text-slate-500 focus:ring-2 focus:ring-amber-500 focus:outline-none" />
+            </div>
+            <button onClick={runQuickTest}
+              className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition shadow-lg shadow-amber-600/25 shrink-0">
+              🎲 Random Pick
+            </button>
+          </div>
           {quickTestResult !== null && (
-            <code className={`text-sm font-mono font-bold px-4 py-2 rounded-lg flex-1 ${quickTestResult.startsWith("(no") ? "bg-red-900/30 text-red-300" : "bg-emerald-900/50 text-emerald-200"}`}>
-              {quickTestResult}
-            </code>
+            <div className={`rounded-xl border p-4 ${quickTestResult.startsWith("(no") ? "bg-red-900/20 border-red-700/50" : "bg-emerald-900/30 border-emerald-700/50"}`}>
+              {quickTestResult.startsWith("(no") ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-lg">❌</span>
+                  <p className="text-sm font-semibold text-red-300">{quickTestResult === "(no active rules)" ? "No active rules with templates configured" : "No match"}</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-slate-800/50 rounded-lg p-3">
+                      <span className="text-[10px] font-medium text-red-300 uppercase tracking-wider block mb-1">Message</span>
+                      <code className="text-xs font-mono text-slate-300 break-all">{quickTestMessage}</code>
+                    </div>
+                    <div className="bg-emerald-900/40 rounded-lg p-3">
+                      <span className="text-[10px] font-medium text-emerald-300 uppercase tracking-wider block mb-1">Random Template</span>
+                      <code className="text-sm font-mono font-bold text-emerald-200 break-all">{quickTestResult}</code>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-500 italic">The OTP is extracted from the original message and filled into the template via {"{{OTP}}"} placeholder.</p>
+                </div>
+              )}
+            </div>
           )}
         </div>
-        <div className="mt-3 text-[10px] text-slate-500">
-          {rules.filter(r => r.isActive).length} active rules • {rules.reduce((s, r) => s + r.poolItems.filter(p => p.trim()).length, 0)} total templates
+        <div className="mt-3 flex items-center gap-4 text-[10px] text-slate-500">
+          <span>{rules.filter(r => r.isActive).length} active rules</span>
+          <span>•</span>
+          <span>{rules.reduce((s, r) => s + r.poolItems.filter(p => p.trim()).length, 0)} total templates</span>
         </div>
       </div>
 
@@ -351,6 +411,7 @@ export default function RandomContentPage() {
                 <th className="text-left px-3 py-2.5 font-medium">Rule Name</th>
                 <th className="text-left px-3 py-2.5 font-medium">Match Pattern</th>
                 <th className="text-left px-3 py-2.5 font-medium">Templates</th>
+                <th className="text-center px-3 py-2.5 font-medium w-44">Preview (sample OTP: <input value={sampleOtp} onChange={e => setSampleOtp(e.target.value)} className="w-12 border rounded px-1 py-0.5 text-center font-mono text-[10px] focus:ring-2 focus:ring-amber-500 focus:outline-none" /></th>
                 <th className="text-left px-3 py-2.5 font-medium w-48">Applies To</th>
                 <th className="text-left px-3 py-2.5 font-medium w-16">Priority</th>
                 <th className="text-center px-3 py-2.5 font-medium w-12">Active</th>
@@ -360,7 +421,7 @@ export default function RandomContentPage() {
             <tbody className="divide-y divide-slate-100">
               {rules.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
+                  <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
                     <p className="text-2xl mb-2">🎲</p>
                     <p className="text-sm">No random content rules yet</p>
                     <p className="text-xs mt-1">Click "+ Add Rule" to create your first rule</p>
@@ -408,8 +469,26 @@ export default function RandomContentPage() {
                             )}
                           </div>
                         ))}
-                        <button onClick={() => addPoolItem(idx)}
-                          className="text-[10px] text-amber-600 hover:text-amber-800 font-medium">+ Add template</button>
+                        <div className="flex items-center gap-2 mt-1">
+                          <button onClick={() => addPoolItem(idx)}
+                            className="text-[10px] text-amber-600 hover:text-amber-800 font-medium">+ Add template</button>
+                          <button onClick={() => document.getElementById(`bulk-${idx}`)?.click()}
+                            className="text-[10px] text-amber-600 hover:text-amber-800 font-medium">📁 Bulk upload</button>
+                          <input id={`bulk-${idx}`} type="file" accept=".txt,.csv" onChange={(e) => handleBulkUpload(idx, e)}
+                            className="hidden" />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="space-y-1 max-h-20 overflow-y-auto">
+                        {rule.poolItems.filter(p => p.trim()).map((item, pi) => {
+                          const filled = item.replace(/\{\{OTP\}\}/g, sampleOtp);
+                          return (
+                            <code key={pi} className={`text-[10px] font-mono block truncate max-w-[160px] ${filled !== item ? "text-emerald-700" : "text-slate-400"}`}>
+                              {filled}
+                            </code>
+                          );
+                        })}
                       </div>
                     </td>
                     <td className="px-3 py-2">
@@ -460,6 +539,14 @@ export default function RandomContentPage() {
                     </td>
                     <td className="px-4 py-2 text-right">
                       <div className="flex items-center justify-end gap-1 flex-wrap">
+                        <button onClick={() => {
+                          const active = rule.poolItems.filter(p => p.trim());
+                          if (active.length === 0) { setMsg("No templates to test"); setTimeout(() => setMsg(""), 2000); return; }
+                          const pick = active[Math.floor(Math.random() * active.length)];
+                          const otp = quickTestMessage.match(/\b(\d{4,8})\b/)?.[1] || sampleOtp;
+                          setQuickTestResult(pick.replace(/\{\{OTP\}\}/g, otp));
+                        }}
+                          className="bg-purple-600 text-white px-2 py-1 rounded text-[10px] font-medium hover:bg-purple-700 transition">Test</button>
                         <button onClick={() => saveRule(idx)}
                           className="bg-green-600 text-white px-2.5 py-1 rounded text-[10px] font-medium hover:bg-green-700 transition">Update</button>
                         <button onClick={() => cancelRule(idx)}
@@ -529,8 +616,10 @@ export default function RandomContentPage() {
         <p className="font-medium text-slate-700 mb-2">💡 How Random Content Works</p>
         <ul className="space-y-1 list-disc list-inside">
           <li><strong>Match Pattern:</strong> Regex to match incoming SMS content. Use <code className="bg-slate-200 px-1 rounded text-[10px]">.*</code> to match all.</li>
-          <li><strong>Pool:</strong> Templates picked randomly when content matches. Use <code className="bg-slate-200 px-1 rounded text-[10px]">{`{{OTP}}`}</code> to fill extracted codes.</li>
-          <li><strong>Quick Test:</strong> Click Random Pick at the top to see a random template selected from an active rule.</li>
+          <li><strong>Templates:</strong> Each line is one template. Use <code className="bg-slate-200 px-1 rounded text-[10px]">{"{{OTP}}"}</code> as placeholder — the OTP is extracted from the original message and substituted.</li>
+          <li><strong>Bulk Upload:</strong> Click 📁 to load templates from a .txt or .csv file (one template per line).</li>
+          <li><strong>Preview:</strong> See how each template renders with the sample OTP at the top of the column.</li>
+          <li><strong>Test:</strong> Per-row Test button picks a random template and fills the OTP from the Quick Test message.</li>
           <li><strong>Update / Cancel:</strong> Save or revert changes per rule.</li>
           <li><strong>Scope:</strong> Drag clients/suppliers from the top bar. Check the Applies To table.</li>
         </ul>
