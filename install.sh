@@ -133,6 +133,7 @@ DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/app_db
 JWT_SECRET=net2app-production-change-me-2024
 NODE_ENV=production
 PORT=5555
+NEXT_PUBLIC_TAWKTO_ID=646f1d5874285f0ec46d8d19
 EOF
 
 npm install

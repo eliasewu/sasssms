@@ -79,6 +79,27 @@ if [ "$QUICK_DEPLOY" = true ]; then
     warn "App port $APP_PORT: NOT listening yet — check 'pm2 logs net2app'"
   fi
 
+  # ── Post-deploy Voice OTP E2E smoke test ──
+  echo ""
+  echo "  Running Voice OTP E2E smoke test..."
+  set +e
+  cd "$APP_DIR"
+  TMPLOG=$(mktemp)
+  BASE_URL="http://localhost:$APP_PORT" \
+    DATABASE_URL="$DB_URL" \
+    npx tsx scripts/test-voice-otp-e2e.ts > "$TMPLOG" 2>&1
+  E2E_EXIT=$?
+  tail -20 "$TMPLOG"
+  if [ $E2E_EXIT -eq 0 ]; then
+    ok "Voice OTP E2E: all tests passed"
+  else
+    warn "Voice OTP E2E: some tests failed (exit=$E2E_EXIT)"
+    echo "  Failures:"
+    grep '❌' "$TMPLOG" || true
+  fi
+  rm -f "$TMPLOG"
+  set -e
+
   echo ""
   echo -e "${GREEN}  ✅ Quick deploy complete${NC}"
   exit 0
@@ -153,6 +174,7 @@ JWT_SECRET=net2app-prod-$(date +%s)-$(openssl rand -hex 16)
 NODE_ENV=production
 PORT=$APP_PORT
 SMPP_PORT=$SMPP_PORT
+NEXT_PUBLIC_TAWKTO_ID=646f1d5874285f0ec46d8d19
 EOF
 chmod 600 "$APP_DIR/.env"
 ok ".env created"

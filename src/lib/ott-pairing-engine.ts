@@ -127,7 +127,7 @@ interface PairingConnection {
   schemaName: string;
   deviceId: number;
   deviceType: OttDeviceType;
-  client: WASocket | TelegramClient;
+  client: WASocket | typeof TelegramClient;
 }
 
 const pairingConnections = new Map<string, PairingConnection>();
@@ -965,7 +965,7 @@ async function disconnectPairingClient(conn: PairingConnection): Promise<void> {
       (conn.client as WASocket).ev.removeAllListeners();
       (conn.client as WASocket).ws?.close();
     } else {
-      await (conn.client as TelegramClient).disconnect();
+      await (conn.client as any).disconnect();
     }
   } catch {
     // Best effort cleanup

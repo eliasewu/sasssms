@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import Script from "next/script";
+import StatusBadge from "@/components/StatusBadge";
+
+export const dynamic = "force-dynamic";
 
 interface LandingSettings {
   costPerSms: string;
@@ -184,8 +186,6 @@ const jsonLd = {
   ]
 };
 
-const TAWKTO_ID = process.env.NEXT_PUBLIC_TAWKTO_ID || "";
-
 export default function LandingPage() {
   const [mode, setMode] = useState<"landing" | "login" | "register">("landing");
   const [showProducts, setShowProducts] = useState(false);
@@ -310,31 +310,68 @@ export default function LandingPage() {
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Email *</label><input name="email" type="email" required className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label><input name="phone" type="tel" required className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Password *</label><input name="password" type="password" required minLength={6} className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition" /></div>
-              {(settings.serverLocations || []).filter(l => l.isActive && l.ipAddress).length > 0 && (
+              {(settings.serverLocations || []).filter(l => l.isActive && l.ipAddress).length > 0 && (() => {
+                const activeLocs = (settings.serverLocations || []).filter(l => l.isActive && l.ipAddress);
+                return (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Server Location
-                    {detectingLocation && <span className="ml-2 inline-flex items-center gap-1 text-xs text-blue-500 animate-pulse"><span className="w-2 h-2 bg-blue-500 rounded-full"></span> Detecting your location...</span>}
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    🌍 Choose Your Server Location
+                    {detectingLocation && <span className="ml-2 inline-flex items-center gap-1 text-xs text-blue-500 animate-pulse"><span className="w-2 h-2 bg-blue-500 rounded-full"></span> Detecting...</span>}
                     {autoDetectedLoc && !detectingLocation && (
                       <span className="ml-2 inline-flex items-center gap-1 text-xs text-green-600">
-                        <span>{autoDetectedLoc.flag}</span> Auto-selected {autoDetectedLoc.country}
+                        <span>{autoDetectedLoc.flag}</span> Auto-detected: {autoDetectedLoc.country}
                       </span>
                     )}
                   </label>
-                  <select value={selectedLocation} onChange={e => { setSelectedLocation(e.target.value); setAutoDetectedLoc(null); }}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition bg-white">
-                    <option value="">Auto (Default)</option>
-                    {(settings.serverLocations || []).filter(l => l.isActive && l.ipAddress).map(loc => (
-                      <option key={loc.id} value={loc.id}>
-                        {locationFlag(loc)} {loc.country} — {loc.city} ({loc.ipAddress})
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-400 mt-1">
-                    {autoDetectedLoc ? "📍 Best server auto-detected from your location. You can change it above." : "Choose your preferred server location. The server IP will be shown in your dashboard."}
+                  <div role="radiogroup" aria-label="Server location" className="grid grid-cols-2 gap-2 max-h-[260px] overflow-y-auto pr-1">
+                    {activeLocs.map(loc => {
+                      const isSelected = selectedLocation === loc.id;
+                      const isRecommended = autoDetectedLoc?.id === loc.id;
+                      return (
+                        <button
+                          key={loc.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={isSelected}
+                          onClick={() => { setSelectedLocation(loc.id); setAutoDetectedLoc(null); }}
+                          className={`relative text-left p-3 rounded-xl border-2 transition-all duration-200 ${
+                            isSelected
+                              ? "border-blue-500 bg-blue-50 shadow-md"
+                              : isRecommended
+                              ? "border-green-300 bg-green-50 shadow-sm"
+                              : "border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50/50"
+                          }`}
+                        >
+                          {isRecommended && (
+                            <span className="absolute -top-2 -right-2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow" aria-label="Recommended">
+                              ★ Best
+                            </span>
+                          )}
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-xl">{locationFlag(loc)}</span>
+                            <div className="min-w-0">
+                              <p className={`text-sm font-semibold truncate ${isSelected ? "text-blue-700" : "text-gray-800"}`}>
+                                {loc.country}
+                              </p>
+                              <p className="text-[11px] text-gray-400 truncate">{loc.city}</p>
+                            </div>
+                          </div>
+                          <div className={`flex items-center gap-1 text-[11px] font-mono ${isSelected ? "text-blue-600" : "text-gray-500"}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-blue-500" : "bg-green-400"}`}></span>
+                            {loc.ipAddress}:{loc.port}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">
+                    {autoDetectedLoc
+                      ? "📍 Best server auto-detected from your location. Tap a card to change."
+                      : "Choose your nearest server for lowest latency. Your SMPP IP will be shown in the dashboard."}
                   </p>
                 </div>
-              )}
+                );
+              })()}
               <div className="bg-green-50 border border-green-200 rounded-lg p-3"><p className="text-xs text-green-700">✓ No Setup Fees • ✓ No Hidden Fees • ✓ Pay Only For What You Use</p></div>
               <button disabled={loading} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 rounded-lg font-semibold disabled:opacity-50 shadow-lg">{loading ? "Creating..." : "Create Account →"}</button>
             </form>
@@ -625,6 +662,158 @@ export default function LandingPage() {
                 <p className="text-gray-700 font-medium text-sm">Data Isolation</p>
                 <p className="text-gray-500 text-xs mt-1">Per-tenant PostgreSQL schema</p>
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Multi-Service Platform Showcase */}
+      <section className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-6 lg:px-12">
+          <div className="text-center mb-14">
+            <div className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-full px-4 py-1.5 mb-4">
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+              <span className="text-blue-700 text-sm font-medium">All Available Solutions</span>
+            </div>
+            <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">Complete Communication Platform Suite</h2>
+            <p className="text-gray-500 text-lg max-w-3xl mx-auto">From bulk SMS to VoIP softswitch, VPN services, and VOS3000 hosting — deploy any solution on your own infrastructure with zero setup fees</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* SMS Platform */}
+            <div className="group bg-white rounded-2xl border-2 border-blue-100 hover:border-blue-400 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden">
+              <div className="bg-gradient-to-br from-blue-500 to-blue-700 p-6">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-4xl">📨</span>
+                  <span className="bg-white/20 text-white text-xs font-bold px-3 py-1 rounded-full">Most Popular</span>
+                </div>
+                <h3 className="text-2xl font-bold text-white">SMS Platform</h3>
+                <p className="text-blue-100 text-sm mt-1">Multi-Tenant SMS Gateway</p>
+              </div>
+              <div className="p-6">
+                <p className="text-gray-600 text-sm leading-relaxed mb-4">Deploy your own white-label SMS gateway with SMPP v3.4, HTTP API, Voice OTP, RCS, WhatsApp & Telegram. Complete CPaaS with tenant isolation, intelligent routing, and real-time DLR.</p>
+                <div className="space-y-2 mb-5">
+                  {["SMPP v3.4 Gateway", "HTTP REST API", "Voice OTP (220+ countries)", "WhatsApp & Telegram OTT", "4-Layer SMS Routing", "Multi-Tenant Architecture"].map(f => (
+                    <div key={f} className="flex items-center gap-2 text-xs text-gray-500"><span className="text-green-500">✓</span> {f}</div>
+                  ))}
+                </div>
+                <button onClick={() => setMode("register")} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-sm font-semibold transition">Get Started →</button>
+              </div>
+            </div>
+
+            {/* VoIP Softswitch */}
+            <div className="group bg-white rounded-2xl border-2 border-purple-100 hover:border-purple-400 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden">
+              <div className="bg-gradient-to-br from-purple-500 to-purple-700 p-6">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-4xl">📞</span>
+                  <span className="bg-white/20 text-white text-xs font-bold px-3 py-1 rounded-full">VoIP</span>
+                </div>
+                <h3 className="text-2xl font-bold text-white">VoIP Softswitch</h3>
+                <p className="text-purple-100 text-sm mt-1">Class 4 & Class 5 Switching</p>
+              </div>
+              <div className="p-6">
+                <p className="text-gray-600 text-sm leading-relaxed mb-4">Complete VoIP softswitch solution with SIP signaling, RTP media relay, transcoding, billing, and multi-tenant support. Built for carriers and service providers.</p>
+                <div className="space-y-2 mb-5">
+                  {["SIP Signaling (TLS/SIPS)", "RTP Media Relay", "SRTP Encryption", "Multi-Tenant Billing", "Asterisk 20 Integration", "Class 4 & 5 Routing"].map(f => (
+                    <div key={f} className="flex items-center gap-2 text-xs text-gray-500"><span className="text-purple-500">✓</span> {f}</div>
+                  ))}
+                </div>
+                <Link href="/contact" className="block w-full text-center bg-purple-600 hover:bg-purple-700 text-white py-2.5 rounded-xl text-sm font-semibold transition">Contact Sales →</Link>
+              </div>
+            </div>
+
+            {/* VOS3000 Hosting */}
+            <div className="group bg-white rounded-2xl border-2 border-amber-100 hover:border-amber-400 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden">
+              <div className="bg-gradient-to-br from-amber-500 to-amber-700 p-6">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-4xl">🖥️</span>
+                  <span className="bg-white/20 text-white text-xs font-bold px-3 py-1 rounded-full">Hosting</span>
+                </div>
+                <h3 className="text-2xl font-bold text-white">VOS3000 Hosting</h3>
+                <p className="text-amber-100 text-sm mt-1">Managed Softswitch Infrastructure</p>
+              </div>
+              <div className="p-6">
+                <p className="text-gray-600 text-sm leading-relaxed mb-4">Fully managed VOS3000 hosting on dedicated servers. Includes installation, configuration, monitoring, DDoS protection, and 24/7 support. Deploy in Canada, France, Poland, or USA.</p>
+                <div className="space-y-2 mb-5">
+                  {["Dedicated Server Hosting", "VOS3000 Installation", "DDoS Protection", "24/7 Monitoring", "Automated Backups", "Multi-Location Deploy"].map(f => (
+                    <div key={f} className="flex items-center gap-2 text-xs text-gray-500"><span className="text-amber-500">✓</span> {f}</div>
+                  ))}
+                </div>
+                <Link href="/contact" className="block w-full text-center bg-amber-600 hover:bg-amber-700 text-white py-2.5 rounded-xl text-sm font-semibold transition">Contact Sales →</Link>
+              </div>
+            </div>
+
+            {/* VPN for GSM Gateway */}
+            <div className="group bg-white rounded-2xl border-2 border-green-100 hover:border-green-400 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden">
+              <div className="bg-gradient-to-br from-green-500 to-green-700 p-6">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-4xl">🔐</span>
+                  <span className="bg-white/20 text-white text-xs font-bold px-3 py-1 rounded-full">VPN</span>
+                </div>
+                <h3 className="text-2xl font-bold text-white">VPN for GSM Gateway</h3>
+                <p className="text-green-100 text-sm mt-1">Secure Tunnel for GSM Modems</p>
+              </div>
+              <div className="p-6">
+                <p className="text-gray-600 text-sm leading-relaxed mb-4">Secure VPN tunnels for GSM modem/gateway connectivity. Connect your remote GSM hardware directly to our SMPP servers with encrypted, low-latency tunnels.</p>
+                <div className="space-y-2 mb-5">
+                  {["Encrypted VPN Tunnel", "Static IP Assignment", "Low Latency Routing", "GSM Modem Compatible", "Auto-Reconnect", "Bandwidth Monitoring"].map(f => (
+                    <div key={f} className="flex items-center gap-2 text-xs text-gray-500"><span className="text-green-500">✓</span> {f}</div>
+                  ))}
+                </div>
+                <Link href="/contact" className="block w-full text-center bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-sm font-semibold transition">Contact Sales →</Link>
+              </div>
+            </div>
+
+            {/* VOS3000 Mobile Billing */}
+            <div className="group bg-white rounded-2xl border-2 border-rose-100 hover:border-rose-400 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden">
+              <div className="bg-gradient-to-br from-rose-500 to-rose-700 p-6">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-4xl">📱</span>
+                  <span className="bg-white/20 text-white text-xs font-bold px-3 py-1 rounded-full">Mobile</span>
+                </div>
+                <h3 className="text-2xl font-bold text-white">VOS3000 Mobile Billing</h3>
+                <p className="text-rose-100 text-sm mt-1">Customized Billing Platform</p>
+              </div>
+              <div className="p-6">
+                <p className="text-gray-600 text-sm leading-relaxed mb-4">Customized VOS3000 mobile billing solution with prepaid/postpaid support, real-time CDR processing, multi-currency, and white-label customer portal for resellers.</p>
+                <div className="space-y-2 mb-5">
+                  {["Prepaid & Postpaid Billing", "Real-Time CDR Processing", "Multi-Currency Support", "White-Label Portal", "Reseller Management", "API Integration"].map(f => (
+                    <div key={f} className="flex items-center gap-2 text-xs text-gray-500"><span className="text-rose-500">✓</span> {f}</div>
+                  ))}
+                </div>
+                <Link href="/contact" className="block w-full text-center bg-rose-600 hover:bg-rose-700 text-white py-2.5 rounded-xl text-sm font-semibold transition">Contact Sales →</Link>
+              </div>
+            </div>
+
+            {/* VPN for Android */}
+            <div className="group bg-white rounded-2xl border-2 border-teal-100 hover:border-teal-400 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden">
+              <div className="bg-gradient-to-br from-teal-500 to-teal-700 p-6">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-4xl">🤖</span>
+                  <span className="bg-white/20 text-white text-xs font-bold px-3 py-1 rounded-full">Android</span>
+                </div>
+                <h3 className="text-2xl font-bold text-white">VPN for Android</h3>
+                <p className="text-teal-100 text-sm mt-1">Mobile VPN Service</p>
+              </div>
+              <div className="p-6">
+                <p className="text-gray-600 text-sm leading-relaxed mb-4">Dedicated VPN service for Android devices used as SMS gateways. Secure, always-on connection with automatic failover and remote management dashboard.</p>
+                <div className="space-y-2 mb-5">
+                  {["Always-On VPN", "Auto Failover", "Remote Management", "Bandwidth Control", "Multiple Protocols", "Device Dashboard"].map(f => (
+                    <div key={f} className="flex items-center gap-2 text-xs text-gray-500"><span className="text-teal-500">✓</span> {f}</div>
+                  ))}
+                </div>
+                <Link href="/contact" className="block w-full text-center bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-xl text-sm font-semibold transition">Contact Sales →</Link>
+              </div>
+            </div>
+          </div>
+
+          {/* CTA Banner */}
+          <div className="mt-14 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-2xl p-8 text-center shadow-xl">
+            <h3 className="text-2xl font-bold text-white mb-2">Ready to deploy your communication platform?</h3>
+            <p className="text-blue-100 mb-6 max-w-2xl mx-auto">Choose any solution, select your server location, and get deployed in under 60 seconds. Zero setup fees, pay-as-you-go pricing.</p>
+            <div className="flex flex-wrap justify-center gap-3">
+              <button onClick={() => setMode("register")} className="px-8 py-3 bg-white text-blue-700 rounded-xl hover:bg-blue-50 transition font-bold shadow-lg">Start Free →</button>
+              <Link href="/contact" className="px-8 py-3 border-2 border-white/30 text-white rounded-xl hover:bg-white/10 transition font-bold">Talk to Sales</Link>
             </div>
           </div>
         </div>
@@ -1467,32 +1656,32 @@ export default function LandingPage() {
           </div>
           <div className="pt-8 border-t border-gray-800 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-gray-500 text-sm">© {new Date().getFullYear()} Tri Angle Trade Centre FZE LLC. All Rights Reserved.</p>
-            <div className="flex items-center gap-4">
-              <Link href="/blog" className="text-gray-500 hover:text-gray-300 text-sm transition">Blog</Link>
-              <Link href="/pricing" className="text-gray-500 hover:text-gray-300 text-sm transition">Pricing</Link>
-              <Link href="/case-studies" className="text-gray-500 hover:text-gray-300 text-sm transition">Case Studies</Link>
-              <Link href="/contact" className="text-gray-500 hover:text-gray-300 text-sm transition">Contact</Link>
-              <a href="/super" className="text-gray-600 hover:text-gray-400 text-sm transition">Admin</a>
+            <div className="flex items-center gap-6">
+              <StatusBadge />
+              <div className="flex items-center gap-4">
+                <Link href="/blog" className="text-gray-500 hover:text-gray-300 text-sm transition">Blog</Link>
+                <Link href="/pricing" className="text-gray-500 hover:text-gray-300 text-sm transition">Pricing</Link>
+                <Link href="/case-studies" className="text-gray-500 hover:text-gray-300 text-sm transition">Case Studies</Link>
+                <Link href="/contact" className="text-gray-500 hover:text-gray-300 text-sm transition">Contact</Link>
+                <a href="/super" className="text-gray-600 hover:text-gray-400 text-sm transition">Admin</a>
+              </div>
             </div>
           </div>
         </div>
       </footer>
-      {/* Tawk.to Live Chat */}
-      {TAWKTO_ID && (
-        <Script id="tawkto-landing" strategy="afterInteractive">
-          {`
-            var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
-            (function(){
-              var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
-              s1.async=true;
-              s1.src='https://embed.tawk.to/${TAWKTO_ID}/default';
-              s1.charset='UTF-8';
-              s1.setAttribute('crossorigin','*');
-              s0.parentNode.insertBefore(s1,s0);
-            })();
-          `}
-        </Script>
-      )}
+
+      {/* ── Tawk.to Chat Button ── */}
+      <button
+        onClick={() => { (window as any).Tawk_API?.toggle(); }}
+        className="fixed bottom-24 right-6 z-50 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center group hover:scale-110"
+        aria-label="Open live chat"
+        title="Chat with us"
+      >
+        <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+        </svg>
+        <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white animate-pulse"></span>
+      </button>
     </div>
   );
 }
