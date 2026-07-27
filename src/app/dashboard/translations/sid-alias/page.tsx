@@ -265,34 +265,46 @@ export default function SidAliasPage() {
         <div className="flex items-center gap-3 mb-1">
           <span className="text-2xl">🏷️</span>
           <div>
-            <h3 className="text-lg font-bold text-white">Quick Alias Lookup</h3>
-            <p className="text-xs text-slate-400">Type a sender ID and see which alias it maps to</p>
+            <h3 className="text-lg font-bold text-white">Sender ID</h3>
+            <p className="text-xs text-slate-400">transformed</p>
           </div>
         </div>
         <div className="mt-5 space-y-4">
           <div>
-            <label className="text-xs font-medium text-slate-300 mb-1.5 block">Sender ID</label>
+            <label className="text-xs font-medium text-slate-300 mb-1.5 block">Enter sender ID to test</label>
             <div className="flex items-center gap-3">
               <input value={quickTestSender} onChange={e => { setQuickTestSender(e.target.value); setQuickTestResult(null); }}
                 onKeyDown={e => { if (e.key === "Enter") runQuickTest(); }}
                 className="flex-1 bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-sm font-mono text-white placeholder:text-slate-500 focus:ring-2 focus:ring-violet-500 focus:outline-none transition" />
               <button onClick={runQuickTest} disabled={!quickTestSender.trim()}
                 className="bg-violet-600 hover:bg-violet-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-5 py-3 rounded-xl text-sm font-semibold transition shadow-lg shadow-violet-600/25">
-                🔍 Lookup
+                🔍 Transform
               </button>
             </div>
           </div>
           {quickTestResult && (
             <div className={`rounded-xl border p-4 ${quickTestResult.matchedAlias !== null ? "bg-emerald-900/30 border-emerald-700/50" : "bg-red-900/20 border-red-700/50"}`}>
               {quickTestResult.matchedAlias !== null ? (
-                <div className="flex items-center gap-4 flex-wrap">
-                  <span className="text-[11px] font-medium text-emerald-300 uppercase tracking-wider">Alias Found</span>
-                  <code className="text-sm font-mono text-slate-400">{quickTestSender}</code>
-                  <span className="text-emerald-400 text-lg">→</span>
-                  <code className="text-xl font-mono font-bold text-emerald-200 bg-emerald-900/50 px-4 py-1.5 rounded-lg">{quickTestResult.matchedAlias}</code>
-                  <span className="text-[10px] bg-violet-500/30 text-violet-200 px-2 py-0.5 rounded font-medium">
-                    alias
-                  </span>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-slate-800/50 rounded-lg p-3">
+                      <span className="text-[10px] font-medium text-red-300 uppercase tracking-wider block mb-1">BEFORE</span>
+                      <code className="text-sm font-mono text-slate-300 break-all">{quickTestSender}</code>
+                    </div>
+                    <div className="bg-emerald-900/40 rounded-lg p-3">
+                      <span className="text-[10px] font-medium text-emerald-300 uppercase tracking-wider block mb-1">AFTER</span>
+                      <code className="text-xl font-mono font-bold text-emerald-200 tracking-wider">{quickTestResult.matchedAlias}</code>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="text-[11px] font-medium text-emerald-300 uppercase tracking-wider">Sender ID matched</span>
+                    <code className="text-lg font-mono font-bold text-emerald-200 bg-emerald-900/50 px-3 py-1 rounded-lg tracking-wider">
+                      {quickTestResult.matchedAlias}
+                    </code>
+                  </div>
+                  <p className="text-[10px] text-slate-500 italic">
+                    The sender ID will be replaced with this alias when SMS is received from this sender.
+                  </p>
                 </div>
               ) : (
                 <div className="flex items-center gap-3">
@@ -526,7 +538,7 @@ export default function SidAliasPage() {
         <ul className="space-y-1 list-disc list-inside">
           <li><strong>Alias Name:</strong> A friendly, human-readable name like &quot;Borno Support&quot; or &quot;OTP Service&quot;.</li>
           <li><strong>Match Pattern:</strong> Regex pattern to match incoming sender IDs. When a sender ID matches, it&apos;s replaced with the alias name.</li>
-          <li><strong>Quick Lookup:</strong> Type a sender ID at the top and click Lookup to see which alias it maps to.</li>
+          <li><strong>Quick Transform:</strong> Type a sender ID at the top and click Transform to see the BEFORE/AFTER result.</li>
           <li><strong>Update / Cancel:</strong> Save or revert changes per alias.</li>
           <li><strong>Scope:</strong> Drag clients/suppliers from the top bar to assign aliases. Check the Applies To table.</li>
           <li><strong>Priority:</strong> Lower numbers run first.</li>
