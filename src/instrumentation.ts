@@ -62,16 +62,18 @@ export async function register() {
       console.error("  Failed to initialize outbound connections:", err.message);
     });
 
-    // Sync bind_status across ALL tenants (existing + new) on startup.
-    // Runs after a 30s delay so CLIENT-mode suppliers have time to auto-connect
-    // and SERVER-mode modems have time to notice the dropped connection and re-bind.
-    // NOTE: syncAllBindStatus skips SERVER-mode suppliers during the first 2 minutes
-    // after startup to preserve their existing BOUND status in the DB.
-    setTimeout(() => {
+    // Sync bind_status across ALL tenants every 30 seconds.
+    // First sync runs after a 30s delay so CLIENT-mode suppliers have time
+    // to auto-connect and SERVER-mode modems can re-bind after restart.
+    const runBindSync = () => {
       syncAllBindStatus().catch((err: Error) => {
         console.error("  Bind status sync failed:", err.message);
       });
-    }, 30000); // 30s delay (was 10s) gives modems time to reconnect after restart
+    };
+    setTimeout(() => {
+      runBindSync();
+      setInterval(runBindSync, 30000); // every 30s
+    }, 30000);
 
     // Start CUSTOM_API DLR polling worker (every 5s, per-connector cadence)
     startDlrPolling();

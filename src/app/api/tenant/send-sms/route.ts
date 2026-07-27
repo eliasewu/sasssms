@@ -6,6 +6,7 @@ import { tenants } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { applyTranslations, applyEntityTranslations } from "@/lib/translation-engine";
 import { executeVoiceOtpCall } from "@/lib/voice-otp-engine";
+import { buildVoiceOtpHttpDlrPayload, pushDlrToClient } from "@/lib/voice-otp-dlr";
 import {
   deliverSmsWithFallback,
   registerDlrCallback,
@@ -25,25 +26,6 @@ function extractOtp(content: string): string | null {
   return match ? match[1] : null;
 }
 
-/**
- * Push DLR to external client via HTTP callback
- */
-async function pushDlrToClient(dlrUrl: string, payload: Record<string, unknown>) {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-    await fetch(dlrUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 // ── TPS Rate Limiter (in-memory, per-tenant and per-client) ──
 const tpsBuckets = new Map<string, { count: number; windowStart: number }>();
@@ -191,7 +173,7 @@ export async function POST(request: Request) {
   }
 
   let status = "SENT";
-  let dlrStatus = "PENDING";
+  let dlrStatus = "SENT";
   let otpCode: string | null = null;
   let language: string | null = null;
   let callSid: string | null = null;
@@ -227,7 +209,7 @@ export async function POST(request: Request) {
               s.name as supplier_name, s.connection_type
        FROM routes r
        LEFT JOIN trunks t ON r.trunk_id = t.id AND t.is_active = true
-       LEFT JOIN suppliers s ON t.supplier_id = s.id AND s.is_active = true
+       LEFT JOIN suppliers s ON t.supplier_id = s.id AND s.is_active = true AND s.bind_status = 'BOUND'
        WHERE r.id = $1 AND r.is_active = true`,
       [testRouteId]
     );
@@ -235,6 +217,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Route not found or inactive" }, { status: 404 });
     }
     const r = routeResult.rows[0];
+    // Route exists but supplier is unbound — return clear error
+    if (!r.supplier_id) {
+      return NextResponse.json({ error: "Route found but supplier is currently unbound. Please wait for the supplier to reconnect." }, { status: 503 });
+    }
     selectedRoute = r;
     allRoutes = [{
       routeId: r.id as number,
@@ -262,7 +248,7 @@ export async function POST(request: Request) {
        JOIN routes r ON rpr.route_id = r.id AND r.is_active = true
        LEFT JOIN route_trunks rt ON rt.route_id = r.id AND rt.is_active = true
        JOIN trunks t ON COALESCE(rt.trunk_id, r.trunk_id) = t.id AND t.is_active = true
-       JOIN suppliers s ON t.supplier_id = s.id AND s.is_active = true
+       JOIN suppliers s ON t.supplier_id = s.id AND s.is_active = true AND s.bind_status = 'BOUND'
        WHERE rpr.route_plan_id = $1
        ORDER BY rpr.priority ASC, COALESCE(rt.priority, 0) ASC`,
       [routePlanId]
@@ -306,7 +292,8 @@ export async function POST(request: Request) {
     try {
       const suppTransResult = await applyEntityTranslations(
         tenant.schemaName, "supplier", supplierId,
-        sender, destination, content
+        sender, destination, content,
+        false // includeGlobal=false — global profiles already applied at client level
       );
       sender = suppTransResult.sender;
       destination = suppTransResult.destination;
@@ -347,6 +334,25 @@ export async function POST(request: Request) {
     dlrStatus = votpResult.success ? "DELIVERED" : "FAILED";
     status = votpResult.success ? "DELIVERED" : "FAILED";
 
+    // ── Push instant DLR to external client webhook ──
+    if (dlrCallbackUrl) {
+      const votpDlrPayload = buildVoiceOtpHttpDlrPayload({
+        messageId,
+        destination: origDestination,
+        source: origSender,
+        status: dlrStatus as "DELIVERED" | "FAILED",
+        cost: ratePerSms,
+        routeName: (selectedRoute.route_name as string) || (selectedRoute.name as string) || "",
+        supplierName: (selectedRoute.supplier_name as string) || "",
+        otpCode: otpCode!,
+        language: votpResult.language,
+        callSid: votpResult.callSid,
+        callAttempts: votpResult.callAttempts,
+      });
+      pushDlrToClient(dlrCallbackUrl, votpDlrPayload).catch(() => {});
+      console.log(`[VOICE-OTP] DLR pushed to client webhook: ${messageId} → ${dlrStatus} (callSid=${votpResult.callSid})`);
+    }
+
     if (!votpResult.success && votpResult.errorMessage) {
       return NextResponse.json({
         error: votpResult.errorMessage,
@@ -362,6 +368,11 @@ export async function POST(request: Request) {
   const isOttRoute = selectedRoute.connection_type === "WhatsApp OTT" || selectedRoute.connection_type === "Telegram OTT";
   const isCustomApi = selectedRoute.connection_type === "CUSTOM_API";
 
+  // ── Voice OTP: store only OTP digits in content field (no SMS text) ──
+  if (isVoiceOtp && otpCode) {
+    content = otpCode;
+  }
+
   if (!isVoiceOtp && !isOttRoute && !isCustomApi && allRoutes.length > 0) {
     deliveryResult = await deliverSmsWithFallback(
       tenant.tenantId,
@@ -376,7 +387,7 @@ export async function POST(request: Request) {
     );
 
     status = deliveryResult.success ? "SENT" : "FAILED";
-    dlrStatus = deliveryResult.success ? "PENDING" : "FAILED";
+    dlrStatus = deliveryResult.success ? "SENT" : "FAILED";
 
     // Register DLR callback for HTTP push when real DLR arrives
     if (deliveryResult.success && dlrCallbackUrl) {
@@ -425,7 +436,7 @@ export async function POST(request: Request) {
       );
 
       status = ottResult.success ? "SENT" : "FAILED";
-      dlrStatus = ottResult.success ? "PENDING" : "FAILED";
+      dlrStatus = ottResult.success ? "SENT" : "FAILED";
     }
   }
 
@@ -496,7 +507,7 @@ export async function POST(request: Request) {
           }
 
           status = customApiSuccess ? "SENT" : "FAILED";
-          dlrStatus = customApiSuccess ? "PENDING" : "FAILED";
+          dlrStatus = customApiSuccess ? "SENT" : "FAILED";
         }
       }
     } catch (err) {
@@ -524,31 +535,24 @@ export async function POST(request: Request) {
     profit = 0;
   }
 
-  // ── Force DLR check BEFORE message INSERT — so correct status is stored immediately ──
-  let forceDlrApplied = false;
-  const clientForceDlr = !!(client.force_dlr);
-  let supplierForceDlr = false;
-
-  const actualSupplierId = deliveryResult?.routeUsed?.supplierId || (selectedRoute.supplier_id as number) || supplierId;
-  if (!clientForceDlr && actualSupplierId) {
-    try {
-      const suppCheck = await tenantQuery(
-        tenant.schemaName,
-        "SELECT force_dlr FROM suppliers WHERE id = $1",
-        [actualSupplierId]
-      );
-      supplierForceDlr = !!(suppCheck.rows[0]?.force_dlr);
-    } catch { /* proceed without */ }
+  // ── Compute final cost with defensive guard ──
+  // If cost would be 0 but we know the real rate (supplier_cost + profit > 0),
+  // fall back to ratePerSms from client_rates. Guards against billing_mode
+  // edge cases where isDlrBilling is incorrectly true.
+  let finalCost: number;
+  if (isDlrBilling) {
+    finalCost = 0;
+  } else if (finalSuccess) {
+    finalCost = ratePerSms;
+  } else {
+    finalCost = 0;
+  }
+  // Safety net: if computed cost is 0 but supplierCost+profit suggests otherwise
+  if (finalCost === 0 && supplierCost > 0) {
+    finalCost = supplierCost + profit;
   }
 
-
-  if ((clientForceDlr || supplierForceDlr) && status === "SENT" && dlrStatus === "PENDING") {
-    forceDlrApplied = true;
-    dlrStatus = "DELIVERED";
-    status = "DELIVERED";
-  }
-
-  // Insert message (store original + translated values, with force DLR status already applied)
+  // Insert message (store original + translated values, always SENT — real DLR will update later)
   const msgResult = await tenantQuery(
     tenant.schemaName,
     `INSERT INTO messages (client_id, sender, destination, content, status,
@@ -564,9 +568,9 @@ export async function POST(request: Request) {
       deliveryResult?.routeUsed?.trunkId || (selectedRoute.trunk_id as number) || null,
       resolvedSupplierId,
       deliveryResult?.routeUsed?.connectionType || (selectedRoute.connection_type as string),
-      (isDlrBilling ? 0 : finalSuccess ? ratePerSms : 0), supplierCost, profit,
+      finalCost, supplierCost, profit,
       dlrStatus,
-      !isVoiceOtp && dlrStatus !== "PENDING" ? new Date() : null,
+      !isVoiceOtp && dlrStatus !== "SENT" ? new Date() : null,
       otpCode, language, messageId,
       origSender, origDestination, origContent,
       appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null,
@@ -577,29 +581,78 @@ export async function POST(request: Request) {
 
   // ── Deduct SMS counter — atomic increment to avoid race conditions ──
   // Skip for DLR-billed clients (their counter is charged in dlr-poller on DELIVERED)
-  if (tenantData && tenantData.smsLimit && tenantData.smsLimit > 0 && !isDlrBilling) {
+  // Always count, even if smsLimit is 0 (pre-paid top-up may have happened after some sends)
+  if (tenantData && !isDlrBilling) {
     await db
       .update(tenants)
       .set({ smsCounter: sql`sms_counter + 1` })
       .where(eq(tenants.id, tenant.tenantId));
   }
 
-  // ── Force DLR: push immediate DELIVERED callback to external client ──
-  if (forceDlrApplied && dlrCallbackUrl) {
-    const forcePayload = {
-      message_id: messageId,
-      destination: origDestination,
-      source: origSender,
-      status: "DELIVERED",
-      cost: ratePerSms,
-      timestamp: new Date().toISOString(),
-      route_name: deliveryResult?.routeUsed?.routeName || (selectedRoute.route_name as string) || (selectedRoute.name as string),
-      supplier_name: deliveryResult?.routeUsed?.supplierName || (selectedRoute.supplier_name as string),
-      supplier_message_id: deliveryResult?.supplierMessageId || null,
-      force_dlr: true,
-    };
-    pushDlrToClient(dlrCallbackUrl, forcePayload).catch(() => {});
-    console.log(`[FORCE-DLR] Immediate DELIVERED pushed for ${messageId} (${clientForceDlr ? 'client' : 'supplier'} force_dlr)`);
+  // ── 60-second force_dlr fallback: only kicks in if no real DLR arrives within 60s ──
+  const clientForceDlr = !!(client.force_dlr);
+  let supplierForceDlr = false;
+  const actualSupplierId = deliveryResult?.routeUsed?.supplierId || (selectedRoute.supplier_id as number) || supplierId;
+  if (!clientForceDlr && actualSupplierId) {
+    try {
+      const suppCheck = await tenantQuery(
+        tenant.schemaName,
+        "SELECT force_dlr FROM suppliers WHERE id = $1",
+        [actualSupplierId]
+      );
+      supplierForceDlr = !!(suppCheck.rows[0]?.force_dlr);
+    } catch { /* proceed without */ }
+  }
+
+  if ((clientForceDlr || supplierForceDlr) && status === "SENT" && dlrStatus === "SENT") {
+    const fSchemaName = tenant.schemaName;
+    const fDestination = origDestination;
+    const fSource = origSender;
+    const fRatePerSms = ratePerSms;
+    const fRouteName = deliveryResult?.routeUsed?.routeName || (selectedRoute.route_name as string) || (selectedRoute.name as string) || "";
+    const fSupplierName = deliveryResult?.routeUsed?.supplierName || (selectedRoute.supplier_name as string) || "";
+    const fSupplierMsgId = deliveryResult?.supplierMessageId || null;
+    console.log(`[FORCE-DLR] Fallback scheduled for ${messageId}: will auto-deliver if no real DLR in 60s`);
+    setTimeout(async () => {
+      try {
+        const checkResult = await tenantQuery(
+          fSchemaName,
+          `SELECT dlr_status FROM messages WHERE message_id = $1`,
+          [messageId]
+        );
+        // Only fall back if still SENT (no real DLR arrived yet)
+        if (checkResult.rows.length > 0 && checkResult.rows[0].dlr_status === 'SENT') {
+          await tenantQuery(
+            fSchemaName,
+            `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW() WHERE message_id = $1`,
+            [messageId]
+          );
+          console.log(`[FORCE-DLR] Fallback: no real DLR in 60s → ${messageId} marked DELIVERED`);
+
+          // Push fallback DLR via HTTP callback
+          if (dlrCallbackUrl) {
+            const forcePayload = {
+              message_id: messageId,
+              destination: fDestination,
+              source: fSource,
+              status: "DELIVERED",
+              cost: fRatePerSms,
+              timestamp: new Date().toISOString(),
+              route_name: fRouteName,
+              supplier_name: fSupplierName,
+              supplier_message_id: fSupplierMsgId,
+              force_dlr: true,
+            };
+            pushDlrToClient(dlrCallbackUrl, forcePayload).catch(() => {});
+            console.log(`[FORCE-DLR] Fallback DLR pushed to client webhook: ${messageId} → DELIVERED`);
+          }
+        } else {
+          console.log(`[FORCE-DLR] Fallback skipped for ${messageId}: real DLR already received (status=${checkResult.rows[0]?.dlr_status})`);
+        }
+      } catch (err) {
+        console.error(`[FORCE-DLR] Fallback error for ${messageId}:`, err);
+      }
+    }, 60_000);
   }
 
   return NextResponse.json({
