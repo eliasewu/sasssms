@@ -16,7 +16,7 @@ const securityHeaders = [
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       "connect-src 'self' https://ipapi.co https://*.tawk.to wss://*.tawk.to",
-      "frame-src 'self' https://embed.tawk.to",
+      "frame-src 'self' https://embed.tawk.to https://tawk.to https://*.tawk.to",
       "media-src 'self'",
       "object-src 'none'",
       "base-uri 'self'",
