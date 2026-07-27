@@ -61,8 +61,8 @@ async function loadPeakSettings(): Promise<void> {
       if (r.key === "peak_hours_start") peakStart = r.value || DEFAULT_PEAK_START;
       if (r.key === "peak_hours_end") peakEnd = r.value || DEFAULT_PEAK_END;
     }
-    peakSettingsLoaded = true;
   } catch { /* use defaults */ }
+  peakSettingsLoaded = true; // always mark as loaded to prevent repeated DB queries on failure
 }
 
 /** Check if current UTC time falls within peak hours */
@@ -91,9 +91,20 @@ function isPeakHours(): boolean {
  * Called once from instrumentation.ts at startup.
  */
 export function startSupplierUnbindAlerts(): void {
-  // Load peak settings on first event (async, non-blocking)
+  // Ensure peak settings are loaded before handling any event
   bindEventBus.onBindEvent((event: BindEvent) => {
-    if (!peakSettingsLoaded) loadPeakSettings().catch(() => {});
+    if (!peakSettingsLoaded) {
+      loadPeakSettings()
+        .catch(() => {}) // swallow error, use defaults
+        .finally(() => {
+          if (event.type === "supplier" && event.status === "UNBOUND") {
+            handleSupplierUnbound(event).catch((err) => {
+              console.error("[UnbindAlert] Error processing alert:", err);
+            });
+          }
+        });
+      return; // Wait for peak settings to load before processing
+    }
 
     // Only alert on supplier UNBOUND events (not BOUND, not clients)
     if (event.type !== "supplier" || event.status !== "UNBOUND") return;
