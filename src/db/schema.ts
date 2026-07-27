@@ -551,6 +551,7 @@ export const liveChatRooms = pgTable("live_chat_rooms", {
   tenantEmail: varchar("tenant_email", { length: 255 }).notNull(),
   subject: varchar("subject", { length: 255 }).default("Support Chat"),
   status: varchar("status", { length: 20 }).default("OPEN").notNull(), // OPEN, CLOSED
+  assignedTo: integer("assigned_to"), // super admin id — null = unassigned
   lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
   unreadTenant: integer("unread_tenant").default(0),
   unreadSuper: integer("unread_super").default(0),
@@ -564,5 +565,15 @@ export const liveChatMessages = pgTable("live_chat_messages", {
   senderId: integer("sender_id"),
   senderName: varchar("sender_name", { length: 255 }).notNull(),
   message: text("message").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ── Live Chat Internal Notes — visible only to super admins ──
+export const liveChatNotes = pgTable("live_chat_notes", {
+  id: serial("id").primaryKey(),
+  roomId: integer("room_id").notNull(),
+  adminId: integer("admin_id").notNull(),
+  adminName: varchar("admin_name", { length: 255 }).notNull(),
+  note: text("note").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

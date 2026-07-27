@@ -2,6 +2,12 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 
+interface SuperAdmin {
+  id: number;
+  name: string;
+  email: string;
+}
+
 interface ChatRoom {
   id: number;
   tenantId: number;
@@ -9,6 +15,7 @@ interface ChatRoom {
   tenantEmail: string;
   subject: string;
   status: string;
+  assignedTo: number | null;
   lastMessageAt: string;
   unreadTenant: number;
   unreadSuper: number;
@@ -24,19 +31,33 @@ interface ChatMessage {
   createdAt: string;
 }
 
+interface ChatNote {
+  id: number;
+  roomId: number;
+  adminId: number;
+  adminName: string;
+  note: string;
+  createdAt: string;
+}
+
 const POLL_INTERVAL = 2000;
 
 export default function SuperLiveChatPage() {
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
+  const [admins, setAdmins] = useState<SuperAdmin[]>([]);
   const [activeRoom, setActiveRoom] = useState<ChatRoom | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [notes, setNotes] = useState<ChatNote[]>([]);
   const [input, setInput] = useState("");
+  const [noteInput, setNoteInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [addingNote, setAddingNote] = useState(false);
+  const [transferring, setTransferring] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const lastMsgIdRef = useRef(Infinity); // Infinity = no messages seen yet; prevents false sound on first load
+  const lastMsgIdRef = useRef(Infinity);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const notifiedMsgIds = useRef<Set<number>>(new Set()); // Track which messages already triggered a notification
+  const notifiedMsgIds = useRef<Set<number>>(new Set());
 
   // Clean up on unmount
   useEffect(() => {
@@ -53,14 +74,20 @@ export default function SuperLiveChatPage() {
     }
   }, []);
 
+  // Fetch admin list for transfer dropdown
+  useEffect(() => {
+    fetch("/api/super/live-chat?list=admins")
+      .then((r) => r.json())
+      .then((d) => setAdmins(d.admins || []))
+      .catch(() => {});
+  }, []);
+
   // Fire a desktop notification for tenant messages
   const notifyTenantMessage = useCallback((room: ChatRoom, msg: ChatMessage) => {
     try {
       if (!("Notification" in window)) return;
       if (Notification.permission !== "granted") return;
-      // Don't notify if the tab is already focused — admin is watching
       if (document.visibilityState === "visible") return;
-      // Don't notify the same message twice
       if (notifiedMsgIds.current.has(msg.id)) return;
       notifiedMsgIds.current.add(msg.id);
 
@@ -73,23 +100,19 @@ export default function SuperLiveChatPage() {
         window.focus();
         n.close();
       };
-    } catch {
-      // Notifications not supported — silently ignore
-    }
+    } catch {}
   }, []);
 
-  // Play a short notification ping via Web Audio API (no external files needed)
+  // Play a short notification ping via Web Audio API
   const playPing = useCallback(() => {
     try {
       if (!audioCtxRef.current) {
         audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
       const ctx = audioCtxRef.current;
-      // Browsers suspend AudioContext until user interaction — resume if needed
       if (ctx.state === "suspended") ctx.resume();
       const now = ctx.currentTime;
 
-      // Two-tone "ding-ding" chime
       [880, 1100].forEach((freq, i) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -103,9 +126,7 @@ export default function SuperLiveChatPage() {
         osc.start(now + i * 0.15);
         osc.stop(now + i * 0.15 + 0.25);
       });
-    } catch {
-      // Audio not supported — silently ignore
-    }
+    } catch {}
   }, []);
 
   const scrollToBottom = () => {
@@ -133,15 +154,16 @@ export default function SuperLiveChatPage() {
     return () => clearInterval(interval);
   }, [fetchRooms]);
 
-  // Load messages when selecting a room
+  // Load messages + notes when selecting a room
   const selectRoom = async (room: ChatRoom) => {
     setActiveRoom(room);
-    notifiedMsgIds.current.clear(); // Reset notification tracking for new room
+    notifiedMsgIds.current.clear();
     try {
       const res = await fetch(`/api/super/live-chat?roomId=${room.id}`);
       if (!res.ok) return;
       const data = await res.json();
       setMessages(data.messages || []);
+      setNotes(data.notes || []);
       if (data.messages?.length) {
         lastMsgIdRef.current = data.messages[data.messages.length - 1]?.id || 0;
       }
@@ -159,23 +181,23 @@ export default function SuperLiveChatPage() {
         if (data.messages?.length) {
           const last = data.messages[data.messages.length - 1];
           if (last.id > lastMsgIdRef.current) {
-            // Check for new tenant messages — play sound + desktop notification
             const newTenantMsgs = data.messages.filter(
               (m: ChatMessage) => m.id > lastMsgIdRef.current && m.senderType === "tenant"
             );
             if (newTenantMsgs.length > 0) {
               playPing();
-              // Fire desktop notification for the latest tenant message
               notifyTenantMessage(activeRoom, newTenantMsgs[newTenantMsgs.length - 1]);
             }
             setMessages(data.messages);
             lastMsgIdRef.current = last.id;
           }
         }
+        // Also update notes in case another admin added one
+        if (data.notes) setNotes(data.notes);
       } catch {}
     }, POLL_INTERVAL);
     return () => clearInterval(interval);
-  }, [activeRoom, playPing]);
+  }, [activeRoom, playPing, notifyTenantMessage]);
 
   // Scroll on new messages
   useEffect(() => {
@@ -199,6 +221,53 @@ export default function SuperLiveChatPage() {
     }
   };
 
+  const addNote = async () => {
+    if (!noteInput.trim() || !activeRoom || addingNote) return;
+    setAddingNote(true);
+    const note = noteInput.trim();
+    setNoteInput("");
+    try {
+      const res = await fetch("/api/super/live-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomId: activeRoom.id, action: "add_note", note }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.note) {
+          setNotes((prev) => [...prev, data.note]);
+        }
+      }
+    } catch {} finally {
+      setAddingNote(false);
+    }
+  };
+
+  const transferRoom = async (toAdminId: number | null) => {
+    if (!activeRoom || transferring) return;
+    setTransferring(true);
+    try {
+      const res = await fetch("/api/super/live-chat", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomId: activeRoom.id, action: "transfer", assignedTo: toAdminId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setActiveRoom((prev) => prev ? { ...prev, assignedTo: data.assignedTo } : null);
+        fetchRooms();
+        // Refresh notes to see the transfer note
+        const notesRes = await fetch(`/api/super/live-chat?roomId=${activeRoom.id}`);
+        if (notesRes.ok) {
+          const notesData = await notesRes.json();
+          if (notesData.notes) setNotes(notesData.notes);
+        }
+      }
+    } catch {} finally {
+      setTransferring(false);
+    }
+  };
+
   const closeRoom = async () => {
     if (!activeRoom) return;
     await fetch("/api/super/live-chat", {
@@ -208,6 +277,12 @@ export default function SuperLiveChatPage() {
     });
     setActiveRoom((prev) => prev ? { ...prev, status: "CLOSED" } : null);
     fetchRooms();
+  };
+
+  const getAssignedName = (adminId: number | null) => {
+    if (!adminId) return "Unassigned";
+    const a = admins.find((ad) => ad.id === adminId);
+    return a ? a.name : `Admin #${adminId}`;
   };
 
   if (loading) {
@@ -258,6 +333,11 @@ export default function SuperLiveChatPage() {
                   }`}>
                     {room.status}
                   </span>
+                  {room.assignedTo && (
+                    <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-full font-medium">
+                      {getAssignedName(room.assignedTo)}
+                    </span>
+                  )}
                   <span className="text-[10px] text-gray-400">
                     {new Date(room.lastMessageAt).toLocaleDateString()}
                   </span>
@@ -282,52 +362,133 @@ export default function SuperLiveChatPage() {
         ) : (
           <>
             {/* Chat header */}
-            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-              <div>
-                <h2 className="font-semibold text-gray-900">{activeRoom.tenantName}</h2>
-                <p className="text-xs text-gray-500">{activeRoom.tenantEmail}</p>
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2">
+              <div className="min-w-0">
+                <h2 className="font-semibold text-gray-900 truncate">{activeRoom.tenantName}</h2>
+                <p className="text-xs text-gray-500 truncate">{activeRoom.tenantEmail}</p>
               </div>
-              {activeRoom.status === "OPEN" && (
-                <button
-                  onClick={closeRoom}
-                  className="text-xs text-red-600 hover:text-red-700 font-medium px-3 py-1.5 border border-red-200 rounded-lg hover:bg-red-50 transition"
-                >
-                  Close Chat
-                </button>
-              )}
-            </div>
-
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto bg-gray-50 p-4 space-y-3">
-              {messages.length === 0 && (
-                <p className="text-center text-gray-400 text-sm py-8">No messages yet</p>
-              )}
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex ${msg.senderType === "super" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${
-                      msg.senderType === "super"
-                        ? "bg-blue-600 text-white rounded-br-md"
-                        : "bg-white border border-gray-200 text-gray-900 rounded-bl-md shadow-sm"
-                    }`}
-                  >
-                    {msg.senderType === "tenant" && (
-                      <p className="text-xs font-medium text-blue-600 mb-0.5">{msg.senderName}</p>
-                    )}
-                    <p className="whitespace-pre-wrap break-words">{msg.message}</p>
-                    <p className={`text-[10px] mt-1 ${msg.senderType === "super" ? "text-blue-200" : "text-gray-400"}`}>
-                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Transfer dropdown */}
+                {activeRoom.status === "OPEN" && admins.length > 0 && (
+                  <div className="relative group">
+                    <select
+                      value={activeRoom.assignedTo ?? ""}
+                      onChange={(e) => transferRoom(e.target.value ? parseInt(e.target.value) : null)}
+                      disabled={transferring}
+                      className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:ring-2 focus:ring-purple-500 outline-none disabled:opacity-50 appearance-none pr-6"
+                    >
+                      <option value="">Unassigned</option>
+                      {admins.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                    <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
                   </div>
-                </div>
-              ))}
-              <div ref={messagesEndRef} />
+                )}
+                {activeRoom.status === "OPEN" && (
+                  <button
+                    onClick={closeRoom}
+                    className="text-xs text-red-600 hover:text-red-700 font-medium px-3 py-1.5 border border-red-200 rounded-lg hover:bg-red-50 transition"
+                  >
+                    Close Chat
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Input */}
+            {/* Messages + Notes split */}
+            <div className="flex-1 flex flex-col min-h-0">
+              {/* Messages area */}
+              <div className="flex-1 overflow-y-auto bg-gray-50 p-4 space-y-3">
+                {messages.length === 0 && notes.length === 0 && (
+                  <p className="text-center text-gray-400 text-sm py-8">No messages yet</p>
+                )}
+                {messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${msg.senderType === "super" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${
+                        msg.senderType === "super"
+                          ? "bg-blue-600 text-white rounded-br-md"
+                          : "bg-white border border-gray-200 text-gray-900 rounded-bl-md shadow-sm"
+                      }`}
+                    >
+                      {msg.senderType === "tenant" && (
+                        <p className="text-xs font-medium text-blue-600 mb-0.5">{msg.senderName}</p>
+                      )}
+                      <p className="whitespace-pre-wrap break-words">{msg.message}</p>
+                      <p className={`text-[10px] mt-1 ${msg.senderType === "super" ? "text-blue-200" : "text-gray-400"}`}>
+                        {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Internal Notes */}
+                {notes.length > 0 && (
+                  <div className="pt-3 mt-3 border-t-2 border-dashed border-amber-200">
+                    <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider mb-2 px-4">
+                      🔒 Internal Notes
+                    </p>
+                    {notes.map((nt) => (
+                      <div key={nt.id} className="flex justify-center mb-2">
+                        <div className="max-w-[85%] bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-amber-900">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-semibold text-amber-700">{nt.adminName}</span>
+                            <span className="text-[10px] text-amber-400">
+                              {new Date(nt.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                          <p className="whitespace-pre-wrap break-words">{nt.note}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Note input (always visible) */}
+              {activeRoom.status === "OPEN" && (
+                <div className="border-t border-amber-200 bg-amber-50/50 px-4 py-2">
+                  <form
+                    onSubmit={(e) => { e.preventDefault(); addNote(); }}
+                    className="flex gap-2"
+                  >
+                    <input
+                      type="text"
+                      value={noteInput}
+                      onChange={(e) => setNoteInput(e.target.value)}
+                      placeholder="Add an internal note (only visible to admins)..."
+                      className="flex-1 border border-amber-300 rounded-lg px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-amber-400 outline-none placeholder-amber-400"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!noteInput.trim() || addingNote}
+                      className="bg-amber-500 hover:bg-amber-600 text-white text-xs px-3 py-2 rounded-lg font-medium disabled:opacity-50 transition flex items-center gap-1"
+                    >
+                      {addingNote ? (
+                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                        </svg>
+                      )}
+                      Note
+                    </button>
+                  </form>
+                </div>
+              )}
+            </div>
+
+            {/* Message input */}
             {activeRoom.status === "OPEN" ? (
               <form onSubmit={sendMessage} className="p-4 border-t border-gray-200 flex gap-2">
                 <input
