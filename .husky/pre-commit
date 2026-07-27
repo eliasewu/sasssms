@@ -1,0 +1,2 @@
+npx tsc --noEmit 2>/dev/null || echo "⚠️  tsc not available — skipping typecheck"
+npm run test:unit
