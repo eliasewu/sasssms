@@ -15,39 +15,9 @@ interface LandingSettings {
     monthlyFee: string; smsCredits: number; freeSmsPerMonth: boolean;
     features: string[]; requiresLicense: boolean; isActive: boolean;
   }>;
-  serverLocations?: Array<{
-    id: string; country: string; city: string; countryCodes: string; ipAddress: string; port: number; isActive: boolean;
-  }>;
 }
 
-// ── Module-level GeoIP helpers ──
 
-/** Generate a flag emoji from a 2-letter country code (e.g. "DE" → 🇩🇪) */
-function countryFlag(countryCode: string): string {
-  const cc = countryCode.trim().toUpperCase();
-  if (cc.length !== 2) return "🌍";
-  return String.fromCodePoint(...[...cc].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
-}
-
-/** Get the best flag for a location — uses first country code or falls back to ID mapping */
-function locationFlag(loc: { id: string; countryCodes?: string }): string {
-  const firstCC = (loc.countryCodes || "").split(",")[0]?.trim().toUpperCase();
-  if (firstCC && firstCC.length === 2) return countryFlag(firstCC);
-  // Fallback: try to guess flag from location ID
-  const ccMap: Record<string, string> = { canada: "CA", poland: "PL", france: "FR", usa: "US", germany: "DE", uk: "GB", singapore: "SG", brazil: "BR", japan: "JP", australia: "AU", india: "IN", uae: "AE" };
-  const cc = ccMap[loc.id];
-  return cc ? countryFlag(cc) : "🌍";
-}
-
-/** Map country codes to closest server location using admin-configured countryCodes */
-function mapCountryToLocation(countryCode: string, locations: Array<{ id: string; countryCodes: string }>): string | null {
-  const cc = countryCode.trim().toUpperCase();
-  for (const loc of locations) {
-    const codes = (loc.countryCodes || "").split(",").map(c => c.trim().toUpperCase());
-    if (codes.includes(cc)) return loc.id;
-  }
-  return null;
-}
 
 
 
@@ -197,37 +167,7 @@ export default function LandingPage() {
   const [loading, setLoading] = useState(false);
   const [smsVolume, setSmsVolume] = useState(100000);
   const [settings, setSettings] = useState<LandingSettings>({ costPerSms: "0.00010", packages: [] });
-  const [selectedLocation, setSelectedLocation] = useState("");
-  const [detectingLocation, setDetectingLocation] = useState(false);
-  const [autoDetectedLoc, setAutoDetectedLoc] = useState<{ id: string; country: string; flag: string } | null>(null);
   const router = useRouter();
-
-  // Auto-detect server location via GeoIP when registration form mounts
-  useEffect(() => {
-    if (mode !== "register" || selectedLocation) return;
-    const activeLocs = (settings.serverLocations || []).filter(l => l.isActive && l.ipAddress);
-    if (!activeLocs.length) return;
-    let cancelled = false;
-    setDetectingLocation(true);
-    fetch("https://ipapi.co/json/")
-      .then(r => r.json())
-      .then(data => {
-        if (cancelled) return;
-        if (data?.country_code) {
-          const locId = mapCountryToLocation(data.country_code, activeLocs);
-          if (locId) {
-            const loc = activeLocs.find(l => l.id === locId);
-            if (loc) {
-              setAutoDetectedLoc({ id: loc.id, country: loc.country, flag: locationFlag(loc) });
-              setSelectedLocation(loc.id);
-            }
-          }
-        }
-      })
-      .catch(() => { /* GeoIP unavailable, user picks manually */ })
-      .finally(() => { if (!cancelled) setDetectingLocation(false); });
-    return () => { cancelled = true; };
-  }, [mode, settings.serverLocations, selectedLocation]);
 
   // Fetch dynamic settings from super admin
   useEffect(() => {
@@ -275,7 +215,6 @@ export default function LandingPage() {
       phone: fd.get("phone") as string,
       password: fd.get("password") as string,
     };
-    if (selectedLocation) body.serverLocation = selectedLocation;
     const res = await fetch("/api/auth/register", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -310,68 +249,7 @@ export default function LandingPage() {
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Email *</label><input name="email" type="email" required className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label><input name="phone" type="tel" required className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Password *</label><input name="password" type="password" required minLength={6} className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition" /></div>
-              {(settings.serverLocations || []).filter(l => l.isActive && l.ipAddress).length > 0 && (() => {
-                const activeLocs = (settings.serverLocations || []).filter(l => l.isActive && l.ipAddress);
-                return (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">
-                    🌍 Choose Your Server Location
-                    {detectingLocation && <span className="ml-2 inline-flex items-center gap-1 text-xs text-blue-500 animate-pulse"><span className="w-2 h-2 bg-blue-500 rounded-full"></span> Detecting...</span>}
-                    {autoDetectedLoc && !detectingLocation && (
-                      <span className="ml-2 inline-flex items-center gap-1 text-xs text-green-600">
-                        <span>{autoDetectedLoc.flag}</span> Auto-detected: {autoDetectedLoc.country}
-                      </span>
-                    )}
-                  </label>
-                  <div role="radiogroup" aria-label="Server location" className="grid grid-cols-2 gap-2 max-h-[260px] overflow-y-auto pr-1">
-                    {activeLocs.map(loc => {
-                      const isSelected = selectedLocation === loc.id;
-                      const isRecommended = autoDetectedLoc?.id === loc.id;
-                      return (
-                        <button
-                          key={loc.id}
-                          type="button"
-                          role="radio"
-                          aria-checked={isSelected}
-                          onClick={() => { setSelectedLocation(loc.id); setAutoDetectedLoc(null); }}
-                          className={`relative text-left p-3 rounded-xl border-2 transition-all duration-200 ${
-                            isSelected
-                              ? "border-blue-500 bg-blue-50 shadow-md"
-                              : isRecommended
-                              ? "border-green-300 bg-green-50 shadow-sm"
-                              : "border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50/50"
-                          }`}
-                        >
-                          {isRecommended && (
-                            <span className="absolute -top-2 -right-2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow" aria-label="Recommended">
-                              ★ Best
-                            </span>
-                          )}
-                          <div className="flex items-center gap-2 mb-1.5">
-                            <span className="text-xl">{locationFlag(loc)}</span>
-                            <div className="min-w-0">
-                              <p className={`text-sm font-semibold truncate ${isSelected ? "text-blue-700" : "text-gray-800"}`}>
-                                {loc.country}
-                              </p>
-                              <p className="text-[11px] text-gray-400 truncate">{loc.city}</p>
-                            </div>
-                          </div>
-                          <div className={`flex items-center gap-1 text-[11px] font-mono ${isSelected ? "text-blue-600" : "text-gray-500"}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-blue-500" : "bg-green-400"}`}></span>
-                            {loc.ipAddress}:{loc.port}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="text-xs text-gray-400 mt-2">
-                    {autoDetectedLoc
-                      ? "📍 Best server auto-detected from your location. Tap a card to change."
-                      : "Choose your nearest server for lowest latency. Your SMPP IP will be shown in the dashboard."}
-                  </p>
-                </div>
-                );
-              })()}
+
               <div className="bg-green-50 border border-green-200 rounded-lg p-3"><p className="text-xs text-green-700">✓ No Setup Fees • ✓ No Hidden Fees • ✓ Pay Only For What You Use</p></div>
               <button disabled={loading} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 rounded-lg font-semibold disabled:opacity-50 shadow-lg">{loading ? "Creating..." : "Create Account →"}</button>
             </form>
@@ -810,7 +688,7 @@ export default function LandingPage() {
           {/* CTA Banner */}
           <div className="mt-14 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-2xl p-8 text-center shadow-xl">
             <h3 className="text-2xl font-bold text-white mb-2">Ready to deploy your communication platform?</h3>
-            <p className="text-blue-100 mb-6 max-w-2xl mx-auto">Choose any solution, select your server location, and get deployed in under 60 seconds. Zero setup fees, pay-as-you-go pricing.</p>
+            <p className="text-blue-100 mb-6 max-w-2xl mx-auto">Choose any solution and get deployed in under 60 seconds. Zero setup fees, pay-as-you-go pricing.</p>
             <div className="flex flex-wrap justify-center gap-3">
               <button onClick={() => setMode("register")} className="px-8 py-3 bg-white text-blue-700 rounded-xl hover:bg-blue-50 transition font-bold shadow-lg">Start Free →</button>
               <Link href="/contact" className="px-8 py-3 border-2 border-white/30 text-white rounded-xl hover:bg-white/10 transition font-bold">Talk to Sales</Link>

@@ -35,9 +35,8 @@ export async function GET() {
           features: (() => { try { return JSON.parse(p.features || "[]"); } catch { return []; } })(),
           requiresLicense: p.requires_license, isActive: p.is_active,
         })),
-        serverLocations: (() => {
-          try { return JSON.parse(obj.server_locations || "[]"); } catch { return []; }
-        })(),
+        // serverLocations intentionally removed from public API —
+        // server IPs are assigned automatically during registration
       });
     } finally {
       client.release();

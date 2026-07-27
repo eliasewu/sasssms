@@ -5,6 +5,8 @@ import { hashPassword, createToken } from "@/lib/auth";
 import { createTenantSchema, seedMccMncRates } from "@/lib/tenant-schema";
 import { eq } from "drizzle-orm";
 import { safeInt, safeDecimal, safeText } from "@/lib/validation";
+import { ALL_SERVER_IPS, getSelfIp } from "@/lib/server-ips";
+import { registerLimiter, getClientIp } from "@/lib/rate-limit";
 
 async function getSignupBonus(): Promise<number> {
   try {
@@ -16,7 +18,16 @@ async function getSignupBonus(): Promise<number> {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { companyName, email, phone, password, serverLocation } = body;
+    const { companyName, email, phone, password } = body;
+    // Auto-assign a random active server — server IPs are never exposed to users
+    let resolvedLocation = "";
+    let assignedServerIp = "0.0.0.0";
+
+    // Rate limit: max 3 registrations per IP per hour
+    const clientIp = getClientIp(request);
+    if (registerLimiter.check(clientIp)) {
+      return NextResponse.json({ error: "Too many registration attempts. Please try again later." }, { status: 429 });
+    }
 
     if (!companyName || !email || !phone || !password) {
       return NextResponse.json({ error: "All fields are required" }, { status: 400 });
@@ -56,31 +67,29 @@ export async function POST(request: Request) {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
-    // ── Get server IP for chosen location ──
-    // Priority: 1) matched location's IP, 2) global smppServerIp from platform settings, 3) "0.0.0.0"
-    let assignedServerIp = "0.0.0.0";
-    
-    // First, get global default IP from platform settings as fallback
+    // ── Auto-assign server: pick a random active location from platform_settings ──
     try {
-      const globalIpResult = await pool.query("SELECT value FROM platform_settings WHERE key = 'smppServerIp'");
-      if (globalIpResult.rows.length > 0 && globalIpResult.rows[0].value && globalIpResult.rows[0].value !== "0.0.0.0") {
-        assignedServerIp = globalIpResult.rows[0].value;
-      }
-    } catch { /* use hardcoded fallback */ }
-    
-    // Then try to match the chosen server location (overrides global default if found)
-    if (serverLocation) {
-      try {
-        const locResult = await pool.query("SELECT value FROM platform_settings WHERE key = 'server_locations'");
-        if (locResult.rows.length > 0) {
-          const locations = JSON.parse(locResult.rows[0].value || "[]");
-          const matched = locations.find((l: any) => l.id === serverLocation || l.country === serverLocation);
-          if (matched && matched.ipAddress && matched.ipAddress !== "0.0.0.0" && matched.ipAddress !== "") {
-            assignedServerIp = matched.ipAddress;
-          }
+      const locResult = await pool.query("SELECT value FROM platform_settings WHERE key = 'server_locations'");
+      if (locResult.rows.length > 0) {
+        const locations: Array<{ id: string; ipAddress: string; isActive: boolean }> = JSON.parse(locResult.rows[0].value || "[]");
+        const active = locations.filter(l => l.isActive && l.ipAddress && l.ipAddress !== "0.0.0.0");
+        if (active.length > 0) {
+          const pick = active[Math.floor(Math.random() * active.length)];
+          resolvedLocation = pick.id;
+          assignedServerIp = pick.ipAddress;
         }
-      } catch (e) { console.error("Server location lookup failed:", e); }
+      }
+    } catch (e) { console.error("Server location lookup failed:", e); }
+    // Fall back to global smppServerIp if no active locations found
+    if (!assignedServerIp || assignedServerIp === "0.0.0.0") {
+      try {
+        const globalIpResult = await pool.query("SELECT value FROM platform_settings WHERE key = 'smppServerIp'");
+        if (globalIpResult.rows.length > 0 && globalIpResult.rows[0].value && globalIpResult.rows[0].value !== "0.0.0.0") {
+          assignedServerIp = globalIpResult.rows[0].value;
+        }
+      } catch { /* use hardcoded fallback */ }
     }
+    if (!resolvedLocation) resolvedLocation = "auto";
     // ────────────────────────────────────────────
 
     const [tenant] = await db.insert(tenants).values({
@@ -91,7 +100,7 @@ export async function POST(request: Request) {
       schemaName,
       smppServerIp: assignedServerIp,
       smppServerPort: 2775,
-      serverLocation: serverLocation ? safeText(serverLocation, 50) : null,
+      serverLocation: safeText(resolvedLocation, 50),
       costPerSms: safeDecimal(platformRate, "0.00025"),      // ← uses current platform rate
       smsLimit: await getSignupBonus(),                           // ← configurable signup bonus from platform_settings
       accountExpiresAt: expiresAt,
@@ -157,6 +166,27 @@ export async function POST(request: Request) {
       token,
     });
 
+    // ── Replicate tenant to ALL other servers (fire-and-forget) ──
+    const tenantData = {
+      companyName: tenant.companyName,
+      email: tenant.email,
+      phone: safeText(phone, 50),
+      passwordHash: tenant.passwordHash,
+      schemaName: tenant.schemaName,
+      smppServerIp: assignedServerIp,
+      serverLocation: resolvedLocation,
+      costPerSms: platformRate,
+      smsLimit: tenant.smsLimit,
+    };
+    const SYNC_SECRET = process.env.INTERNAL_SYNC_SECRET || "net2app-internal-sync-2024";
+    const selfIp = await getSelfIp();
+    ALL_SERVER_IPS.filter((ip: string) => ip !== selfIp && ip !== "127.0.0.1").forEach(ip => {
+      fetch(`http://${ip}:5555/api/internal/sync-tenant`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SYNC_SECRET}` },
+        body: JSON.stringify(tenantData),
+      }).catch(e => console.error(`[Replicate] Failed to sync tenant to ${ip}:`, e.message));
+    });
     // ── Notify admin of new registration (best-effort, non-blocking) ──
     const signupBonusSms = tenant.smsLimit; // reuse already-fetched value
     (async () => {
