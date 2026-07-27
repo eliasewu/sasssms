@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID || "";
-const TAWKTO_ID = process.env.NEXT_PUBLIC_TAWKTO_ID || "";
 
 const SITE_URL = "https://net2app.com";
 const SITE_NAME = "Net2APP";
@@ -305,13 +304,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
         {children}
-        {TAWKTO_ID && (
-          <script
-            dangerouslySetInnerHTML={{
-              __html: `var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date(); (function(){var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];s1.async=true;s1.src='https://embed.tawk.to/${TAWKTO_ID}/default';s1.charset='UTF-8';s1.setAttribute('crossorigin','*');s0.parentNode.insertBefore(s1,s0);})();`,
-            }}
-          />
-        )}
         {GA_ID && (
           <>
             <script async src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} />
