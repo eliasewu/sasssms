@@ -40,9 +40,6 @@ export default function RandomContentPage() {
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
   const [unassignedEntities, setUnassignedEntities] = useState<{ clients: ClientSupplier[]; suppliers: ClientSupplier[] }>({ clients: [], suppliers: [] });
 
-  // Expanded rule for pool editing
-  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
-
   // Quick Test
   const [quickTestMessage, setQuickTestMessage] = useState("Your OTP code is 252525");
   const [quickTestResult, setQuickTestResult] = useState<string | null>(null);
@@ -353,7 +350,7 @@ export default function RandomContentPage() {
                 <th className="text-left px-4 py-2.5 font-medium w-8">#</th>
                 <th className="text-left px-3 py-2.5 font-medium">Rule Name</th>
                 <th className="text-left px-3 py-2.5 font-medium">Match Pattern</th>
-                <th className="text-left px-3 py-2.5 font-medium">Pool</th>
+                <th className="text-left px-3 py-2.5 font-medium">Templates</th>
                 <th className="text-left px-3 py-2.5 font-medium w-48">Applies To</th>
                 <th className="text-left px-3 py-2.5 font-medium w-16">Priority</th>
                 <th className="text-center px-3 py-2.5 font-medium w-12">Active</th>
@@ -397,29 +394,23 @@ export default function RandomContentPage() {
                         placeholder=".*"
                         className="w-28 border rounded px-2 py-1 font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                     </td>
-                    <td className="px-3 py-2">
-                      <button onClick={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
-                        className="text-blue-600 hover:text-blue-800 text-[10px] font-medium flex items-center gap-1">
-                        {rule.poolItems.filter(p => p.trim()).length} templates {expandedIdx === idx ? "▲" : "▼"}
-                      </button>
-                      {expandedIdx === idx && (
-                        <div className="mt-1.5 space-y-1">
-                          {rule.poolItems.map((item, pi) => (
-                            <div key={pi} className="flex items-center gap-1">
-                              <span className="text-[10px] text-slate-400 w-4">{pi + 1}.</span>
-                              <input value={item} onChange={e => updatePoolItem(idx, pi, e.target.value)}
-                                placeholder="Template with {{OTP}}"
-                                className="flex-1 border rounded px-2 py-1 text-[10px] font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none" />
-                              {rule.poolItems.length > 1 && (
-                                <button onClick={() => removePoolItem(idx, pi)}
-                                  className="text-red-400 hover:text-red-600 text-[10px] px-0.5">✕</button>
-                              )}
-                            </div>
-                          ))}
-                          <button onClick={() => addPoolItem(idx)}
-                            className="text-[10px] text-blue-500 hover:text-blue-700 font-medium">+ Add template</button>
-                        </div>
-                      )}
+                    <td className="px-3 py-2 min-w-[220px]">
+                      <div className="space-y-1">
+                        {rule.poolItems.map((item, pi) => (
+                          <div key={pi} className="flex items-center gap-1">
+                            <span className="text-[10px] text-slate-400 w-4 shrink-0">{pi + 1}.</span>
+                            <input value={item} onChange={e => updatePoolItem(idx, pi, e.target.value)}
+                              placeholder="Template {{OTP}}"
+                              className="flex-1 border rounded px-2 py-1 text-[10px] font-mono focus:ring-2 focus:ring-amber-500 focus:outline-none" />
+                            {rule.poolItems.length > 1 && (
+                              <button onClick={() => removePoolItem(idx, pi)}
+                                className="text-red-400 hover:text-red-600 text-[10px] px-0.5 shrink-0">✕</button>
+                            )}
+                          </div>
+                        ))}
+                        <button onClick={() => addPoolItem(idx)}
+                          className="text-[10px] text-amber-600 hover:text-amber-800 font-medium">+ Add template</button>
+                      </div>
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1">
