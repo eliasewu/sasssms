@@ -527,3 +527,18 @@ export const supportTicketAttachments = pgTable("support_ticket_attachments", {
   mimeType: varchar("mime_type", { length: 100 }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// ── Tawk.to Chat Messages (public schema, saved from JS API hooks) ──
+export const tawkChatMessages = pgTable("tawk_chat_messages", {
+  id: serial("id").primaryKey(),
+  propertyId: varchar("property_id", { length: 50 }).notNull(),
+  chatId: varchar("chat_id", { length: 100 }),
+  senderType: varchar("sender_type", { length: 20 }).notNull(), // 'visitor' | 'agent'
+  senderName: varchar("sender_name", { length: 255 }),
+  message: text("message").notNull(),
+  messageTimestamp: timestamp("message_timestamp"),
+  visitorName: varchar("visitor_name", { length: 255 }),
+  visitorEmail: varchar("visitor_email", { length: 255 }),
+  isRead: boolean("is_read").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});

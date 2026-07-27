@@ -1550,11 +1550,68 @@ export default function LandingPage() {
         </div>
       </footer>
 
-      {/* ── Tawk.to Chat Button ── */}
+      {/* ── Tawk.to Chat Script with message persistence ── */}
       {TAWKTO_ID && (
         <script
           dangerouslySetInnerHTML={{
-            __html: `var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date(); (function(){var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];s1.async=true;s1.src='https://embed.tawk.to/${TAWKTO_ID}/default';s1.charset='UTF-8';s1.setAttribute('crossorigin','*');s0.parentNode.insertBefore(s1,s0);})();`,
+            __html: `
+var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+
+// ── Hook into Tawk.to JS API to persist chat messages ──
+var _tawkSave = function(data) {
+  try {
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/public/tawk-chat', true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.send(JSON.stringify(data));
+  } catch(e) {}
+};
+
+Tawk_API.onChatStarted = function(chat) {
+  _tawkSave({
+    propertyId: '${TAWKTO_ID}',
+    chatId: chat.id || '',
+    senderType: 'visitor',
+    senderName: (chat.visitor||{}).name || 'Visitor',
+    message: 'Chat started',
+    messageTimestamp: new Date().toISOString(),
+    visitorName: (chat.visitor||{}).name || '',
+    visitorEmail: (chat.visitor||{}).email || ''
+  });
+};
+
+Tawk_API.onChatMessageVisitor = function(msg) {
+  _tawkSave({
+    propertyId: '${TAWKTO_ID}',
+    chatId: msg.chatId || '',
+    senderType: 'visitor',
+    senderName: (msg.sender||{}).name || 'Visitor',
+    message: msg.message || '',
+    messageTimestamp: msg.time ? new Date(msg.time).toISOString() : new Date().toISOString()
+  });
+};
+
+Tawk_API.onChatMessageAgent = function(msg) {
+  _tawkSave({
+    propertyId: '${TAWKTO_ID}',
+    chatId: msg.chatId || '',
+    senderType: 'agent',
+    senderName: (msg.sender||{}).name || 'Agent',
+    message: msg.message || '',
+    messageTimestamp: msg.time ? new Date(msg.time).toISOString() : new Date().toISOString()
+  });
+};
+
+// ── Load the widget ──
+(function(){
+  var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
+  s1.async=true;
+  s1.src='https://embed.tawk.to/${TAWKTO_ID}/default';
+  s1.charset='UTF-8';
+  s1.setAttribute('crossorigin','*');
+  s0.parentNode.insertBefore(s1,s0);
+})();
+`,
           }}
         />
       )}
