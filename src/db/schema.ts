@@ -542,3 +542,27 @@ export const tawkChatMessages = pgTable("tawk_chat_messages", {
   isRead: boolean("is_read").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// ── Live Chat — self-hosted real-time support chat (public schema) ──
+export const liveChatRooms = pgTable("live_chat_rooms", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull(),
+  tenantName: varchar("tenant_name", { length: 255 }).notNull(),
+  tenantEmail: varchar("tenant_email", { length: 255 }).notNull(),
+  subject: varchar("subject", { length: 255 }).default("Support Chat"),
+  status: varchar("status", { length: 20 }).default("OPEN").notNull(), // OPEN, CLOSED
+  lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
+  unreadTenant: integer("unread_tenant").default(0),
+  unreadSuper: integer("unread_super").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const liveChatMessages = pgTable("live_chat_messages", {
+  id: serial("id").primaryKey(),
+  roomId: integer("room_id").notNull(),
+  senderType: varchar("sender_type", { length: 20 }).notNull(), // 'tenant' | 'super'
+  senderId: integer("sender_id"),
+  senderName: varchar("sender_name", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});

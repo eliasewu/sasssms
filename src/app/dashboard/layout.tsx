@@ -25,6 +25,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
     items: [
       { href: "/dashboard", label: "Dashboard", icon: "📊" },
       { href: "/dashboard/guide", label: "Getting Started Guide", icon: "📘" },
+      { href: "/dashboard/wizard", label: "Quick Setup Wizard", icon: "⚡" },
     ],
   },
   {
@@ -116,6 +117,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { href: "/dashboard/users", label: "Users", icon: "👤" },
       { href: "/dashboard/roles", label: "Roles", icon: "🔐" },
       { href: "/dashboard/api-settings", label: "API Settings", icon: "📡" },
+      { href: "/dashboard/live-chat", label: "Live Chat", icon: "💬" },
       { href: "/dashboard/support-tickets", label: "Support Tickets", icon: "🎫" },
       { href: "/dashboard/notifications", label: "Notifications", icon: "🔔" },
     ],
