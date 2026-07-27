@@ -11,6 +11,8 @@ interface ContentRule {
   replacementFixed: string;
   otpMinLength: number;
   otpMaxLength: number;
+  customRegex: string;            // optional — overrides min/max with capture groups like (\d+)
+  showCustomRegex: boolean;       // toggle to show/hide the custom regex field
   scope: "client" | "supplier" | "both";
   entityId: number | null;
   entityName: string | null;
@@ -33,6 +35,7 @@ export default function ContentTranslationPage() {
   const [saving, setSaving] = useState(false);
 
   const [rules, setRules] = useState<ContentRule[]>([]);
+  const [originalRules, setOriginalRules] = useState<ContentRule[]>([]); // snapshot for Cancel
   const [clients, setClients] = useState<ClientSupplier[]>([]);
   const [suppliers, setSuppliers] = useState<ClientSupplier[]>([]);
 
@@ -41,7 +44,12 @@ export default function ContentTranslationPage() {
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
   const [unassignedEntities, setUnassignedEntities] = useState<{ clients: ClientSupplier[]; suppliers: ClientSupplier[] }>({ clients: [], suppliers: [] });
 
-  // Preview
+  // Per-row test state
+  const [testRowIdx, setTestRowIdx] = useState<number | null>(null);
+  const [testSample, setTestSample] = useState("");
+  const [testResult, setTestResult] = useState<{ transformed: string; otp: string | null } | null>(null);
+
+  // Top preview
   const [sampleContent, setSampleContent] = useState("Your OTP code is 252525. Valid for 5 min.");
   const [sampleMatch, setSampleMatch] = useState("facebook|FB|OTP");
   const [sampleReplace, setSampleReplace] = useState("Your verification code is {{OTP}}");
@@ -68,6 +76,7 @@ export default function ContentTranslationPage() {
         // Parse replacement JSON from stored value
         let replacement = "";
         let otpMin = 4, otpMax = 8;
+        let customRegex = "";
         const raw = p.replacement_fixed || "";
         if (raw.startsWith("{")) {
           try {
@@ -75,6 +84,7 @@ export default function ContentTranslationPage() {
             if (meta.replacement) replacement = meta.replacement;
             if (meta.otpMinLength) otpMin = meta.otpMinLength;
             if (meta.otpMaxLength) otpMax = meta.otpMaxLength;
+            if (meta.customRegex) customRegex = meta.customRegex;
           } catch { replacement = raw; }
         } else {
           replacement = raw;
@@ -86,6 +96,8 @@ export default function ContentTranslationPage() {
           replacementFixed: replacement,
           otpMinLength: otpMin,
           otpMaxLength: otpMax,
+          customRegex,
+          showCustomRegex: !!customRegex,
           scope: a?.clientId ? "client" : a?.supplierId ? "supplier" : "both",
           entityId: a?.clientId || a?.supplierId || null,
           entityName: a?.clientId ? loadedClients.find((c: ClientSupplier) => c.id === a.clientId)?.name || `Client #${a.clientId}` : a?.supplierId ? loadedSuppliers.find((s: ClientSupplier) => s.id === a.supplierId)?.name || `Supplier #${a.supplierId}` : null,
@@ -96,6 +108,7 @@ export default function ContentTranslationPage() {
         };
       });
       setRules(parsed);
+      setOriginalRules(JSON.parse(JSON.stringify(parsed))); // deep clone for Cancel
     } catch (err) {
       setError("Failed to load rules. " + (err as Error).message);
     } finally {
@@ -129,14 +142,16 @@ export default function ContentTranslationPage() {
   }, [rules, clients, suppliers]);
 
   const addRule = () => {
-    setRules(prev => [...prev, {
-      ruleId: null, name: `OTP Forward ${prev.length + 1}`,
+    const newRule: ContentRule = {
+      ruleId: null, name: `OTP Forward ${rules.length + 1}`,
       matchPattern: "facebook|FB|OTP", replacementFixed: "Your verification code is {{OTP}}",
-      otpMinLength: 4, otpMaxLength: 8,
+      otpMinLength: 4, otpMaxLength: 8, customRegex: "", showCustomRegex: false,
       scope: "both", entityId: null, entityName: null,
-      priority: prev.length + 1,
+      priority: rules.length + 1,
       isActive: true, mcc: selection.mcc || "", mnc: selection.mnc || "",
-    }]);
+    };
+    setRules(prev => [...prev, newRule]);
+    setOriginalRules(prev => [...prev, JSON.parse(JSON.stringify(newRule))]);
   };
 
   const deleteRule = async (idx: number) => {
@@ -145,6 +160,7 @@ export default function ContentTranslationPage() {
       await fetch(`/api/tenant/sms-translations/${rule.ruleId}`, { method: "DELETE" });
     }
     setRules(prev => prev.filter((_, i) => i !== idx));
+    setOriginalRules(prev => prev.filter((_, i) => i !== idx));
     setMsg("Rule deleted");
     setTimeout(() => setMsg(""), 2000);
     loadRules(clients, suppliers);
@@ -152,6 +168,40 @@ export default function ContentTranslationPage() {
 
   const updateRule = (idx: number, field: string, value: any) => {
     setRules(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+  };
+
+  // Cancel: revert a single row to its original (loaded) state
+  const cancelRule = (idx: number) => {
+    const orig = originalRules[idx];
+    if (!orig) return;
+    setRules(prev => prev.map((r, i) => i === idx ? JSON.parse(JSON.stringify(orig)) : r));
+    setMsg(`Reverted "${orig.name}"`);
+    setTimeout(() => setMsg(""), 2000);
+  };
+
+  // Test a single rule with sample input
+  const testRule = (idx: number) => {
+    const rule = rules[idx];
+    if (!rule.isActive) {
+      setMsg("Rule is inactive — activate it first");
+      setTimeout(() => setMsg(""), 2000);
+      return;
+    }
+    const sample = testSample || "Your OTP code is 252525. Valid for 5 min.";
+    const otp = extractOtpWithCustom(sample, rule.customRegex, rule.otpMinLength, rule.otpMaxLength);
+    let transformed = sample;
+    try {
+      transformed = transformed.replace(new RegExp(rule.matchPattern, "gm"), rule.replacementFixed);
+      if (otp) transformed = transformed.replace(/\{\{OTP\}\}/g, otp);
+    } catch { /* skip */ }
+    setTestRowIdx(idx);
+    setTestSample(sample);
+    setTestResult({ transformed, otp });
+  };
+
+  const closeTest = () => {
+    setTestRowIdx(null);
+    setTestResult(null);
   };
 
   const handleDrop = (idx: number, type: "client" | "supplier" | null, entityId: number | null, entityName: string | null) => {
@@ -168,22 +218,25 @@ export default function ContentTranslationPage() {
   };
 
   const buildReplacementJson = (rule: ContentRule): string => {
-    return JSON.stringify({
+    const obj: any = {
       replacement: rule.replacementFixed,
       otpMinLength: rule.otpMinLength,
       otpMaxLength: rule.otpMaxLength,
-    });
+    };
+    if (rule.customRegex) obj.customRegex = rule.customRegex;
+    return JSON.stringify(obj);
   };
 
   const saveRuleToApi = async (rule: ContentRule): Promise<number | null> => {
     const jsonReplacement = buildReplacementJson(rule);
-    const otpRegex = `(\\\\d{${rule.otpMinLength},${rule.otpMaxLength}})`;
+    // Use length-based regex as matchPattern fallback (NOT customRegex — that's for extraction only)
+    const lengthRegex = `(\\d{${rule.otpMinLength},${rule.otpMaxLength}})`;
     if (rule.ruleId) {
       const res = await fetch(`/api/tenant/sms-translations/${rule.ruleId}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: rule.name,
-          matchPattern: rule.matchPattern || otpRegex,
+          matchPattern: rule.matchPattern || lengthRegex,
           replacementFixed: jsonReplacement,
           mcc: rule.mcc || null, mnc: rule.mnc || null,
           scope: rule.scope, entityId: rule.entityId, priority: rule.priority,
@@ -197,7 +250,7 @@ export default function ContentTranslationPage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: rule.name, targetField: "BODY", category: "CONTENT", mode: "FIXED",
-          matchPattern: rule.matchPattern || otpRegex,
+          matchPattern: rule.matchPattern || lengthRegex,
           replacementFixed: jsonReplacement,
           mcc: rule.mcc || null, mnc: rule.mnc || null,
           scope: rule.scope, entityId: rule.entityId, priority: rule.priority,
@@ -213,7 +266,13 @@ export default function ContentTranslationPage() {
     const rule = rules[idx];
     try {
       const newId = await saveRuleToApi(rule);
-      if (newId && !rule.ruleId) updateRule(idx, "ruleId", newId);
+      if (newId && !rule.ruleId) {
+        updateRule(idx, "ruleId", newId);
+        setOriginalRules(prev => prev.map((r, i) => i === idx ? { ...r, ruleId: newId } : r));
+      } else {
+        // Update original snapshot for saved rule
+        setOriginalRules(prev => prev.map((r, i) => i === idx ? JSON.parse(JSON.stringify(rule)) : r));
+      }
       setMsg(`"${rule.name}" saved!`);
       setTimeout(() => setMsg(""), 2000);
     } catch (err) {
@@ -233,6 +292,22 @@ export default function ContentTranslationPage() {
     loadRules(clients, suppliers);
   };
 
+  // Extract OTP using custom regex first, fall back to length-based
+  const extractOtpWithCustom = (content: string, customRegex: string, minLen: number, maxLen: number): string | null => {
+    if (customRegex) {
+      try {
+        const regex = new RegExp(customRegex);
+        const m = content.match(regex);
+        // Return capture group 1 if present, else full match. Return null on no match — no fallback.
+        return m ? (m[1] || m[0]) : null;
+      } catch { /* fall through to length-based */ }
+    }
+    // Length-based extraction (only when no custom regex)
+    const regex = new RegExp(`\\b(\\d{${minLen},${maxLen}})\\b`);
+    const m = content.match(regex);
+    return m ? m[1] : null;
+  };
+
   const extractOtp = (content: string, minLen: number, maxLen: number): string | null => {
     const regex = new RegExp(`\\b(\\d{${minLen},${maxLen}})\\b`);
     const m = content.match(regex);
@@ -250,10 +325,10 @@ export default function ContentTranslationPage() {
     setPreviewResult(result);
   };
 
-  const previewTransform = (content: string, match: string, replace: string, minOtp: number, maxOtp: number): string => {
+  const previewTransform = (content: string, match: string, replace: string, minOtp: number, maxOtp: number, customRegex?: string): string => {
     try {
       let result = content.replace(new RegExp(match, "gm"), replace);
-      const otp = extractOtp(content, minOtp, maxOtp);
+      const otp = extractOtpWithCustom(content, customRegex || "", minOtp, maxOtp);
       if (otp) result = result.replace(/\{\{OTP\}\}/g, otp);
       return result;
     } catch { return content; }
@@ -386,12 +461,12 @@ export default function ContentTranslationPage() {
                 <th className="text-left px-3 py-2.5 font-medium">Rule Name</th>
                 <th className="text-left px-3 py-2.5 font-medium">Match Content</th>
                 <th className="text-left px-3 py-2.5 font-medium">Replace With</th>
-                <th className="text-left px-3 py-2.5 font-medium w-24">OTP Length</th>
+                <th className="text-left px-3 py-2.5 font-medium">OTP / Regex</th>
                 <th className="text-left px-3 py-2.5 font-medium w-48">Applies To</th>
                 <th className="text-left px-3 py-2.5 font-medium w-16">Priority</th>
                 <th className="text-center px-3 py-2.5 font-medium w-12">Active</th>
                 <th className="text-center px-3 py-2.5 font-medium">Preview</th>
-                <th className="text-right px-4 py-2.5 font-medium w-32">Actions</th>
+                <th className="text-right px-4 py-2.5 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -406,11 +481,14 @@ export default function ContentTranslationPage() {
               )}
               {rules.map((rule, idx) => {
                 const preview = rule.isActive
-                  ? previewTransform("Your OTP code is 252525", rule.matchPattern, rule.replacementFixed, rule.otpMinLength, rule.otpMaxLength)
+                  ? previewTransform("Your OTP code is 252525", rule.matchPattern, rule.replacementFixed, rule.otpMinLength, rule.otpMaxLength, rule.customRegex)
                   : "—";
+                const isDirty = originalRules[idx]
+                  ? JSON.stringify({ ...rule, showCustomRegex: undefined }) !== JSON.stringify({ ...originalRules[idx], showCustomRegex: undefined })
+                  : false;
                 return (
                   <tr key={idx}
-                    className={`hover:bg-blue-50/40 transition-colors ${!rule.isActive ? "opacity-50" : ""} ${dropTargetIdx === idx ? "bg-indigo-50 ring-2 ring-indigo-200" : ""}`}
+                    className={`hover:bg-blue-50/40 transition-colors ${!rule.isActive ? "opacity-50" : ""} ${dropTargetIdx === idx ? "bg-indigo-50 ring-2 ring-indigo-200" : ""} ${isDirty ? "bg-yellow-50/30" : ""}`}
                     onDragOver={(e) => handleDragOverRule(e, idx)}
                     onDragLeave={() => setDropTargetIdx(null)}
                     onDrop={(e) => {
@@ -418,7 +496,10 @@ export default function ContentTranslationPage() {
                       if (dragEntity) handleDrop(idx, dragEntity.type, dragEntity.id, dragEntity.name);
                       setDropTargetIdx(null);
                     }}>
-                    <td className="px-4 py-2 text-slate-400 font-mono">{idx + 1}</td>
+                    <td className="px-4 py-2 text-slate-400 font-mono">
+                      {idx + 1}
+                      {isDirty && <span className="ml-1 text-[8px] text-amber-500 align-top">•</span>}
+                    </td>
                     <td className="px-3 py-2">
                       <input value={rule.name} onChange={e => updateRule(idx, "name", e.target.value)}
                         placeholder="OTP Forward"
@@ -440,16 +521,33 @@ export default function ContentTranslationPage() {
                       </div>
                     </td>
                     <td className="px-3 py-2">
-                      <div className="flex items-center gap-1">
-                        <input type="number" min={2} max={20} value={rule.otpMinLength}
-                          onChange={e => updateRule(idx, "otpMinLength", parseInt(e.target.value) || 4)}
-                          className="w-10 border rounded px-1 py-1 text-center font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
-                        <span className="text-[9px] text-slate-400">-</span>
-                        <input type="number" min={2} max={20} value={rule.otpMaxLength}
-                          onChange={e => updateRule(idx, "otpMaxLength", parseInt(e.target.value) || 8)}
-                          className="w-10 border rounded px-1 py-1 text-center font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
-                        <span className="text-[9px] text-slate-400">dig</span>
-                      </div>
+                      {/* OTP Length inputs + Custom Regex toggle */}
+                      {!rule.showCustomRegex ? (
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <input type="number" min={2} max={20} value={rule.otpMinLength}
+                            onChange={e => updateRule(idx, "otpMinLength", parseInt(e.target.value) || 4)}
+                            className="w-10 border rounded px-1 py-1 text-center font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                          <span className="text-[9px] text-slate-400">-</span>
+                          <input type="number" min={2} max={20} value={rule.otpMaxLength}
+                            onChange={e => updateRule(idx, "otpMaxLength", parseInt(e.target.value) || 8)}
+                            className="w-10 border rounded px-1 py-1 text-center font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                          <span className="text-[9px] text-slate-400">dig</span>
+                          <button
+                            onClick={() => { updateRule(idx, "showCustomRegex", true); updateRule(idx, "customRegex", rule.customRegex || `(\\d{${rule.otpMinLength},${rule.otpMaxLength}})`); }}
+                            className="text-[9px] text-blue-500 hover:text-blue-700 underline ml-1"
+                            title="Use custom regex instead">regex</button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <input value={rule.customRegex} onChange={e => updateRule(idx, "customRegex", e.target.value)}
+                            placeholder={`(\\d{${rule.otpMinLength},${rule.otpMaxLength}})`}
+                            className="w-44 border rounded px-2 py-1 font-mono text-[10px] focus:ring-2 focus:ring-blue-500 focus:outline-none bg-purple-50" />
+                          <button
+                            onClick={() => { updateRule(idx, "showCustomRegex", false); updateRule(idx, "customRegex", ""); }}
+                            className="text-[9px] text-red-400 hover:text-red-600 underline"
+                            title="Switch back to min/max length">min/max</button>
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1">
@@ -505,9 +603,16 @@ export default function ContentTranslationPage() {
                       </div>
                     </td>
                     <td className="px-4 py-2 text-right">
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-1 flex-wrap">
+                        <button onClick={() => testRule(idx)}
+                          className="bg-purple-500 text-white px-2 py-1 rounded text-[10px] font-medium hover:bg-purple-600 transition"
+                          title="Test this rule with sample content">Test</button>
                         <button onClick={() => saveRule(idx)}
-                          className="bg-green-600 text-white px-2.5 py-1 rounded text-[10px] font-medium hover:bg-green-700 transition">Save</button>
+                          className="bg-green-600 text-white px-2.5 py-1 rounded text-[10px] font-medium hover:bg-green-700 transition">Update</button>
+                        <button onClick={() => cancelRule(idx)}
+                          disabled={!isDirty}
+                          className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 px-2 py-1 rounded text-[10px] font-medium transition disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="Revert unsaved changes">Cancel</button>
                         <button onClick={() => { if (confirm("Delete this rule?")) deleteRule(idx); }}
                           className="text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded text-[10px] font-medium transition">Del</button>
                       </div>
@@ -531,6 +636,54 @@ export default function ContentTranslationPage() {
         </div>
       </div>
 
+      {/* Per-row Test Result Modal */}
+      {testRowIdx !== null && testResult && (
+        <div className="mt-4 bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold text-purple-800">🧪 Testing: {rules[testRowIdx]?.name}</h4>
+            <button onClick={closeTest} className="text-purple-400 hover:text-purple-600 text-xs font-medium">Close</button>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-slate-500 w-20 shrink-0">Sample Input:</span>
+              <input value={testSample} onChange={e => { setTestSample(e.target.value); }}
+                className="flex-1 border rounded px-2 py-1.5 font-mono text-xs bg-white focus:ring-2 focus:ring-purple-500 focus:outline-none" />
+              <button onClick={() => testRule(testRowIdx!)}
+                className="bg-purple-600 text-white px-3 py-1.5 rounded text-[10px] font-medium hover:bg-purple-700 transition">Re-run</button>
+            </div>
+            <div className="bg-white rounded-lg p-3 border border-purple-100 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400 w-20 shrink-0">Match Pattern:</span>
+                <code className="text-xs font-mono text-slate-700">{rules[testRowIdx]?.matchPattern}</code>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400 w-20 shrink-0">Replace With:</span>
+                <code className="text-xs font-mono text-slate-700">{rules[testRowIdx]?.replacementFixed}</code>
+                {rules[testRowIdx]?.replacementFixed?.includes("{{OTP}}") && (
+                  <span className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded font-mono">OTP</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400 w-20 shrink-0">OTP Regex:</span>
+                <code className={`text-xs font-mono ${rules[testRowIdx]?.customRegex ? "text-purple-700 bg-purple-50" : "text-slate-500"} px-2 py-0.5 rounded`}>
+                  {rules[testRowIdx]?.customRegex || `\\d{${rules[testRowIdx]?.otpMinLength},${rules[testRowIdx]?.otpMaxLength}} (auto)`}
+                </code>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400 w-20 shrink-0">Extracted OTP:</span>
+                <code className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${testResult.otp ? "text-amber-700 bg-amber-50" : "text-red-500 bg-red-50"}`}>
+                  {testResult.otp || "❌ not found"}
+                </code>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400 w-20 shrink-0">Transformed:</span>
+                <code className="text-xs font-mono text-emerald-700 bg-emerald-50 px-2 py-1 rounded flex-1">{testResult.transformed}</code>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Applies To Table */}
       {assignedRules.length > 0 && (
         <div className="mt-4 bg-white border rounded-xl shadow-sm overflow-hidden">
@@ -544,7 +697,7 @@ export default function ContentTranslationPage() {
                 <th className="text-left px-3 py-2 font-medium">Scope</th>
                 <th className="text-left px-3 py-2 font-medium">Entity</th>
                 <th className="text-left px-3 py-2 font-medium">Priority</th>
-                <th className="text-left px-3 py-2 font-medium">OTP Range</th>
+                <th className="text-left px-3 py-2 font-medium">OTP / Regex</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -558,7 +711,11 @@ export default function ContentTranslationPage() {
                   </td>
                   <td className="px-3 py-2 font-medium text-slate-600">{rule.entityName || `#${rule.entityId}`}</td>
                   <td className="px-3 py-2 text-slate-500">{rule.priority}</td>
-                  <td className="px-3 py-2 font-mono text-slate-500">{rule.otpMinLength}-{rule.otpMaxLength} digits</td>
+                  <td className="px-3 py-2 font-mono text-slate-500">
+                    {rule.customRegex
+                      ? <code className="text-[10px] text-purple-600 bg-purple-50 px-1 rounded">{rule.customRegex}</code>
+                      : `${rule.otpMinLength}-${rule.otpMaxLength} digits`}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -572,7 +729,10 @@ export default function ContentTranslationPage() {
         <ul className="space-y-1 list-disc list-inside">
           <li><strong>Match Content:</strong> Regex pattern to find keywords in the SMS body (e.g., <code className="bg-slate-200 px-1 rounded text-[10px]">facebook|FB|OTP</code>)</li>
           <li><strong>Replace With:</strong> The new message template. Use <code className="bg-slate-200 px-1 rounded text-[10px]">{`{{OTP}}`}</code> to auto-fill the extracted code.</li>
-          <li><strong>OTP Length:</strong> Extracts digits between Min and Max length. Default: 4-8 digits. The extracted OTP fills the <code className="bg-slate-200 px-1 rounded text-[10px]">{`{{OTP}}`}</code> placeholder.</li>
+          <li><strong>OTP Length:</strong> Extracts digits between Min and Max length. Default: 4–8 digits. Toggle <strong>regex</strong> to use a custom regex with capture groups.</li>
+          <li><strong>Custom Regex:</strong> Optional — overrides min/max. Use <code className="bg-slate-200 px-1 rounded text-[10px]">{`(\\d{6})`}</code> for exact length, or <code className="bg-slate-200 px-1 rounded text-[10px]">{`OTP[:_](\\d+)`}</code> with a capture group. Group 1 is used as the OTP value.</li>
+          <li><strong>Test:</strong> Click <strong>Test</strong> per row to run the rule against custom sample text and see the extracted OTP + transformed output.</li>
+          <li><strong>Update:</strong> Saves the rule to the database. <strong>Cancel</strong> reverts unsaved changes to the last saved state.</li>
           <li><strong>Scope:</strong> Drag clients/suppliers from the top bar to assign them to specific rules.</li>
           <li><strong>Priority:</strong> Lower numbers run first. Check the Applies To table to see all assignments.</li>
         </ul>
