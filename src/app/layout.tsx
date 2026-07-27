@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import Script from "next/script";
 import "./globals.css";
 
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID || "";
+const TAWKTO_ID = process.env.NEXT_PUBLIC_TAWKTO_ID || "";
 
 const SITE_URL = "https://net2app.com";
 const SITE_NAME = "Net2APP";
@@ -143,7 +143,7 @@ export const metadata: Metadata = {
   ],
   applicationName: SITE_NAME,
   generator: "Next.js",
-  referrer: "origin-when-cross-origin",
+  referrer: "strict-origin-when-cross-origin",
   creator: "Tri Angle Trade Centre FZE LLC",
   publisher: "Tri Angle Trade Centre FZE LLC",
   category: "Technology",
@@ -305,23 +305,24 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
         {children}
-      </body>
-      {GA_ID && (
-        <>
-          <Script
-            src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`}
-            strategy="afterInteractive"
+        {TAWKTO_ID && (
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date(); Tawk_API.onLoad = function(){ Tawk_API.hideWidget(); }; (function(){var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];s1.async=true;s1.src='https://embed.tawk.to/${TAWKTO_ID}/default';s1.charset='UTF-8';s1.setAttribute('crossorigin','*');s0.parentNode.insertBefore(s1,s0);})();`,
+            }}
           />
-          <Script id="google-analytics" strategy="afterInteractive">
-            {`
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){dataLayer.push(arguments);}
-              gtag('js', new Date());
-              gtag('config', '${GA_ID}');
-            `}
-          </Script>
-        </>
-      )}
+        )}
+        {GA_ID && (
+          <>
+            <script async src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} />
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_ID}');`,
+              }}
+            />
+          </>
+        )}
+      </body>
 
     </html>
   );

@@ -1550,7 +1550,12 @@ export default function LandingPage() {
 
       {/* ── Tawk.to Chat Button ── */}
       <button
-        onClick={() => { (window as any).Tawk_API?.toggle(); }}
+        onClick={() => {
+          const Tawk = (window as any).Tawk_API;
+          if (!Tawk) return;
+          Tawk.showWidget();
+          setTimeout(() => Tawk.maximize?.(), 150);
+        }}
         className="fixed bottom-24 right-6 z-50 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center group hover:scale-110"
         aria-label="Open live chat"
         title="Chat with us"
