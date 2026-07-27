@@ -68,6 +68,10 @@ export async function PUT(request: Request) {
   if (body.limitedPromoText !== undefined) await upsert("limited_promo_text", body.limitedPromoText);
   if (body.limitedPromoBadge !== undefined) await upsert("limited_promo_badge", body.limitedPromoBadge);
 
+  // Peak hours for supplier unbind alerts
+  if (body.peakHoursStart !== undefined) await upsert("peak_hours_start", body.peakHoursStart);
+  if (body.peakHoursEnd !== undefined) await upsert("peak_hours_end", body.peakHoursEnd);
+
   // Server locations (stored as JSON in platform_settings)
   if (body.serverLocations !== undefined) await upsert("server_locations", JSON.stringify(body.serverLocations));
 

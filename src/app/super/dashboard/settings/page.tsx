@@ -49,6 +49,9 @@ export default function SuperSettingsPage() {
   const [promoTitle, setPromoTitle] = useState("Limited Time Offer");
   const [promoText, setPromoText] = useState("First Starter payment of 250,000 → Get +100,000 bonus SMS!");
   const [promoBadge, setPromoBadge] = useState("+100,000 Bonus SMS");
+  // Peak hours for supplier unbind alerts
+  const [peakHoursStart, setPeakHoursStart] = useState("08:00");
+  const [peakHoursEnd, setPeakHoursEnd] = useState("22:00");
   // Server locations
   const [serverLocations, setServerLocations] = useState<ServerLocation[]>([
     { id: "canada", country: "Canada", city: "Toronto", countryCodes: "US,CA,MX", ipAddress: "", port: 2775, isActive: true },
@@ -85,6 +88,9 @@ export default function SuperSettingsPage() {
     if (r.settings?.limited_promo_title) setPromoTitle(r.settings.limited_promo_title);
     if (r.settings?.limited_promo_text) setPromoText(r.settings.limited_promo_text);
     if (r.settings?.limited_promo_badge) setPromoBadge(r.settings.limited_promo_badge);
+    // Peak hours
+    if (r.settings?.peak_hours_start) setPeakHoursStart(r.settings.peak_hours_start);
+    if (r.settings?.peak_hours_end) setPeakHoursEnd(r.settings.peak_hours_end);
     // Server locations
     if (r.settings?.server_locations) {
       try { const locs = JSON.parse(r.settings.server_locations); setServerLocations(locs); } catch {}
@@ -112,6 +118,8 @@ export default function SuperSettingsPage() {
         limitedPromoTitle: promoTitle,
         limitedPromoText: promoText,
         limitedPromoBadge: promoBadge,
+        peakHoursStart: peakHoursStart,
+        peakHoursEnd: peakHoursEnd,
         serverLocations: serverLocations,
         syncToAllTenants: true,  // ← triggers auto-sync
       }),
@@ -388,6 +396,68 @@ export default function SuperSettingsPage() {
         </div>
         <div className="mt-4 bg-amber-50 rounded-lg p-3 text-xs text-amber-800">
           <strong>💡 Tip:</strong> Disabling the promo hides ALL promo elements (banner, hero badge, promo card) from the landing page instantly. Numbers update in real-time.
+        </div>
+      </div>
+
+      {/* Peak Hours Configuration */}
+      <div className="bg-white rounded-xl border p-6 shadow-sm">
+        <div className="flex items-center gap-3 mb-4">
+          <h3 className="font-semibold text-lg">⏰ Peak Hours Configuration</h3>
+          <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700 font-medium">Supplier Alerts</span>
+        </div>
+        <p className="text-sm text-slate-500 mb-4">
+          Define peak traffic hours for supplier unbind monitoring. During peak hours, alerts are escalated with shorter cooldowns (2 min), email notifications, and auto-escalation after 5 minutes. Off-peak uses SMS-only alerts with a 10-minute cooldown to avoid waking people.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              <span className="inline-block mr-1.5">☀️</span> Peak Start (UTC)
+            </label>
+            <input
+              type="time"
+              value={peakHoursStart}
+              onChange={e => setPeakHoursStart(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2.5 text-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-xs text-slate-400 mt-1">When peak monitoring begins (default: 08:00 UTC)</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              <span className="inline-block mr-1.5">🌙</span> Peak End (UTC)
+            </label>
+            <input
+              type="time"
+              value={peakHoursEnd}
+              onChange={e => setPeakHoursEnd(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2.5 text-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-xs text-slate-400 mt-1">When peak monitoring ends (default: 22:00 UTC)</p>
+          </div>
+        </div>
+        <div className="mt-5 bg-slate-50 rounded-lg p-4 text-sm">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <p className="font-semibold text-green-800 text-sm mb-1">🔴 Peak Hours ({peakHoursStart}–{peakHoursEnd} UTC)</p>
+              <ul className="text-xs text-green-700 space-y-1">
+                <li>• SMS + Email alerts</li>
+                <li>• 2-minute cooldown</li>
+                <li>• Escalation after 5 min</li>
+                <li>• Dashboard: error severity</li>
+              </ul>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="font-semibold text-amber-800 text-sm mb-1">🟡 Off-Peak ({peakHoursEnd}–{peakHoursStart} UTC)</p>
+              <ul className="text-xs text-amber-700 space-y-1">
+                <li>• SMS alerts only (no email)</li>
+                <li>• 10-minute cooldown</li>
+                <li>• No escalation</li>
+                <li>• Dashboard: warning severity</li>
+              </ul>
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 mt-3">
+            💡 <strong>Tip:</strong> Override these defaults to match your business hours. For example, set start=06:00 end=18:00 for Asian markets, or start=14:00 end=02:00 for US timezones. Changes take effect after the next PM2 restart or deploy.
+          </p>
         </div>
       </div>
 
