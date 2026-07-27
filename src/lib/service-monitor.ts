@@ -24,7 +24,7 @@ interface ServiceStatus {
  * Create an alert in the public alerts table.
  * Deduplicates by checking for an existing unresolved alert of the same type in the last 10 minutes.
  */
-async function createAlert(type: string, title: string, message: string, severity: "info" | "warning" | "error" = "warning") {
+export async function createAlert(type: string, title: string, message: string, severity: "info" | "warning" | "error" = "warning") {
   try {
     // Check for duplicate in last 10 minutes
     const existing = await db
