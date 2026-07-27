@@ -466,6 +466,16 @@ export default function SidAliasPage() {
                     </td>
                     <td className="px-4 py-2 text-right">
                       <div className="flex items-center justify-end gap-1 flex-wrap">
+                        <button onClick={() => {
+                          try {
+                            if (new RegExp(rule.matchPattern).test(quickTestSender)) {
+                              setQuickTestResult({ matchedAlias: rule.aliasName, aliasName: rule.aliasName });
+                            } else {
+                              setQuickTestResult({ matchedAlias: null, aliasName: null });
+                            }
+                          } catch { setMsg("Invalid regex pattern"); setTimeout(() => setMsg(""), 2000); }
+                        }}
+                          className="bg-slate-600 text-white px-2 py-1 rounded text-[10px] font-medium hover:bg-slate-700 transition" title="Test this alias">▶️ Test</button>
                         <button onClick={() => saveRule(idx)}
                           className="bg-violet-600 text-white px-2.5 py-1 rounded text-[10px] font-medium hover:bg-violet-700 transition">Update</button>
                         <button onClick={() => cancelRule(idx)}

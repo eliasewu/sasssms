@@ -497,6 +497,24 @@ export default function ContentFilterPage() {
                     </td>
                     <td className="px-4 py-2 text-right">
                       <div className="flex items-center justify-end gap-1 flex-wrap">
+                        <button onClick={() => {
+                          try {
+                            if (rule.filterMode === "blacklist") {
+                              if (new RegExp(rule.matchPattern).test(quickTestContent)) {
+                                setQuickTestResult({ action: "blocked", matchedRule: rule.name });
+                              } else {
+                                setQuickTestResult({ action: "none", matchedRule: null });
+                              }
+                            } else {
+                              if (new RegExp(rule.matchPattern).test(quickTestContent)) {
+                                setQuickTestResult({ action: "allowed", matchedRule: rule.name });
+                              } else {
+                                setQuickTestResult({ action: "blocked", matchedRule: "whitelist (no match)" });
+                              }
+                            }
+                          } catch { setMsg("Invalid regex pattern"); setTimeout(() => setMsg(""), 2000); }
+                        }}
+                          className="bg-slate-600 text-white px-2 py-1 rounded text-[10px] font-medium hover:bg-slate-700 transition" title="Test this filter rule">▶️ Test</button>
                         <button onClick={() => saveRule(idx)}
                           className="bg-green-600 text-white px-2.5 py-1 rounded text-[10px] font-medium hover:bg-green-700 transition">Update</button>
                         <button onClick={() => cancelRule(idx)}

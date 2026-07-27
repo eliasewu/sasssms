@@ -488,6 +488,13 @@ export default function NumberTranslationPage() {
                     <td className="px-4 py-2 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button
+                          onClick={() => {
+                            setSampleInput("00880");
+                            setSampleStrip(rule.stripDigits);
+                            setSampleAdd(rule.addPrefix);
+                          }}
+                          className="bg-slate-600 text-white px-2 py-1 rounded text-[10px] font-medium hover:bg-slate-700 transition" title="Preview this rule in the demo above">▶️ Test</button>
+                        <button
                           onClick={() => saveRule(idx)}
                           className="bg-green-600 text-white px-2.5 py-1 rounded text-[10px] font-medium hover:bg-green-700 transition"
                         >

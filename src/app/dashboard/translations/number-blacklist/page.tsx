@@ -447,6 +447,16 @@ export default function NumberBlacklistPage() {
                     </td>
                     <td className="px-4 py-2 text-right">
                       <div className="flex items-center justify-end gap-1 flex-wrap">
+                        <button onClick={() => {
+                          try {
+                            if (new RegExp(rule.matchPattern).test(quickTestNumber)) {
+                              setQuickTestResult({ blocked: true, matchedRule: rule.name });
+                            } else {
+                              setQuickTestResult({ blocked: false, matchedRule: null });
+                            }
+                          } catch { setMsg("Invalid regex pattern"); setTimeout(() => setMsg(""), 2000); }
+                        }}
+                          className="bg-slate-600 text-white px-2 py-1 rounded text-[10px] font-medium hover:bg-slate-700 transition" title="Test this rule">▶️ Test</button>
                         <button onClick={() => saveRule(idx)}
                           className="bg-green-600 text-white px-2.5 py-1 rounded text-[10px] font-medium hover:bg-green-700 transition">Update</button>
                         <button onClick={() => cancelRule(idx)}
