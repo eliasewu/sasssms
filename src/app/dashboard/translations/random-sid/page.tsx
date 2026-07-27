@@ -346,11 +346,12 @@ export default function RandomSidTranslationPage() {
           <table className="w-full text-xs">
             <thead className="sticky top-0 z-10">
               <tr className="bg-slate-100 text-slate-500 uppercase tracking-wider">
-                <th className="text-left px-4 py-2.5 font-medium">Country</th>
-                <th className="text-left px-3 py-2.5 font-medium">Network</th>
+                <th className="text-left px-3 py-2.5 font-medium w-8">#</th>
+                <th className="text-left px-3 py-2.5 font-medium">Country</th>
+                <th className="text-left px-3 py-2.5 font-medium">Operator</th>
                 <th className="text-left px-3 py-2.5 font-medium w-24">MCCMNC</th>
-                <th className="text-left px-3 py-2.5 font-medium">Sender ID</th>
-                <th className="text-center px-3 py-2.5 font-medium w-20">Status</th>
+                <th className="text-left px-3 py-2.5 font-medium">Assigned SID</th>
+                <th className="text-left px-3 py-2.5 font-medium w-20">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -369,7 +370,8 @@ export default function RandomSidTranslationPage() {
                 return (
                   <tr key={`${op.mccmnc}-${op.countryName}-${op.networkName}`}
                     className={`hover:bg-blue-50/30 transition-colors ${dirty ? "bg-yellow-50/30" : ""}`}>
-                    <td className="px-4 py-2">
+                    <td className="px-3 py-2 text-slate-400 text-[10px] font-mono">{realIdx + 1}</td>
+                    <td className="px-3 py-2">
                       <span className="text-slate-700 font-medium text-[11px]">{op.countryName}</span>
                     </td>
                     <td className="px-3 py-2">
@@ -402,7 +404,7 @@ export default function RandomSidTranslationPage() {
                           Cancel
                         </button>
                       ) : hasSid ? (
-                        <span className="text-[10px] text-emerald-600 font-medium">✓ Mapped</span>
+                        <span className="text-[10px] text-emerald-600 font-medium">Mapped</span>
                       ) : (
                         <span className="text-[10px] text-slate-400">—</span>
                       )}
