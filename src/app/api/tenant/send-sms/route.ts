@@ -18,6 +18,7 @@ import { getOnlineOttDevices, sendOttMessage } from "@/lib/ott-pairing-engine";
 import type { OttDeviceType } from "@/lib/ott-pairing-engine";
 import { lookupClientRate, lookupSupplierCost } from "@/lib/rates";
 import { buildUrl, evaluateCondition, extractFromResponse, parseHeaders } from "@/lib/api-connector-parser";
+import { buildRegex } from "@/lib/regex-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -318,7 +319,7 @@ export async function POST(request: Request) {
     );
     for (const row of blResult.rows) {
       try {
-        if (new RegExp(row.match_pattern as string).test(destination)) {
+        if (buildRegex(row.match_pattern as string).test(destination)) {
           return NextResponse.json({
             error: `SMS blocked: destination number matches blacklist rule "${row.name}"`,
             blockedBy: row.name,
@@ -349,7 +350,7 @@ export async function POST(request: Request) {
 
     for (const row of blacklistRules) {
       try {
-        if (new RegExp(row.match_pattern as string).test(content)) {
+        if (buildRegex(row.match_pattern as string).test(content)) {
           return NextResponse.json({
             error: `SMS blocked: content matches blacklist rule "${row.name}"`,
             blockedBy: row.name,
@@ -363,7 +364,7 @@ export async function POST(request: Request) {
       let whitelistMatch = false;
       for (const row of whitelistRules) {
         try {
-          if (new RegExp(row.match_pattern as string).test(content)) {
+          if (buildRegex(row.match_pattern as string).test(content)) {
             whitelistMatch = true;
             break;
           }

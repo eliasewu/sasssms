@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
+import { buildRegex } from "@/lib/regex-utils";
 
 interface BlacklistRule {
   ruleId: number | null;
@@ -215,7 +216,7 @@ export default function NumberBlacklistPage() {
     for (const rule of rules) {
       if (!rule.isActive) continue;
       try {
-        if (new RegExp(rule.matchPattern).test(quickTestNumber)) {
+        if (buildRegex(rule.matchPattern).test(quickTestNumber)) {
           setQuickTestResult({ blocked: true, matchedRule: rule.name });
           return;
         }
@@ -449,7 +450,7 @@ export default function NumberBlacklistPage() {
                       <div className="flex items-center justify-end gap-1 flex-wrap">
                         <button onClick={() => {
                           try {
-                            if (new RegExp(rule.matchPattern).test(quickTestNumber)) {
+                            if (buildRegex(rule.matchPattern).test(quickTestNumber)) {
                               setQuickTestResult({ blocked: true, matchedRule: rule.name });
                             } else {
                               setQuickTestResult({ blocked: false, matchedRule: null });

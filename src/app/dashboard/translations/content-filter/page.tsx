@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
+import { buildRegex } from "@/lib/regex-utils";
 
 interface FilterRule {
   ruleId: number | null;
@@ -223,7 +224,7 @@ export default function ContentFilterPage() {
     const blacklist = rules.filter(r => r.isActive && r.filterMode === "blacklist");
     for (const rule of blacklist) {
       try {
-        if (new RegExp(rule.matchPattern).test(quickTestContent)) {
+        if (buildRegex(rule.matchPattern).test(quickTestContent)) {
           setQuickTestResult({ action: "blocked", matchedRule: rule.name });
           return;
         }
@@ -235,7 +236,7 @@ export default function ContentFilterPage() {
       let anyMatch = false;
       for (const rule of whitelist) {
         try {
-          if (new RegExp(rule.matchPattern).test(quickTestContent)) {
+          if (buildRegex(rule.matchPattern).test(quickTestContent)) {
             setQuickTestResult({ action: "allowed", matchedRule: rule.name });
             return;
           }
@@ -500,13 +501,13 @@ export default function ContentFilterPage() {
                         <button onClick={() => {
                           try {
                             if (rule.filterMode === "blacklist") {
-                              if (new RegExp(rule.matchPattern).test(quickTestContent)) {
+                              if (buildRegex(rule.matchPattern).test(quickTestContent)) {
                                 setQuickTestResult({ action: "blocked", matchedRule: rule.name });
                               } else {
                                 setQuickTestResult({ action: "none", matchedRule: null });
                               }
                             } else {
-                              if (new RegExp(rule.matchPattern).test(quickTestContent)) {
+                              if (buildRegex(rule.matchPattern).test(quickTestContent)) {
                                 setQuickTestResult({ action: "allowed", matchedRule: rule.name });
                               } else {
                                 setQuickTestResult({ action: "blocked", matchedRule: "whitelist (no match)" });

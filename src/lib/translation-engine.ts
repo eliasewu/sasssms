@@ -5,6 +5,7 @@
  */
 import { tenantQuery } from "@/lib/tenant-schema";
 import { batchEnrichMccMnc } from "@/lib/rates";
+import { buildRegex, isSafeRegex } from "@/lib/regex-utils";
 
 interface TranslationProfile {
   id: number;
@@ -168,17 +169,6 @@ async function loadPoolItems(
  * Returns the (possibly) modified sender, destination, content.
  */
 
-/**
- * Check if a regex pattern is safe (no exponential backtracking risk).
- * Rejects patterns with nested quantifiers like (a+)+b
- */
-function isSafeRegex(pattern: string): boolean {
-  if (!pattern || pattern.trim() === "") return false;
-  const nestedQuantifier = /\([^)]*[+*{][^)]*\)[+*{]/;
-  if (nestedQuantifier.test(pattern)) return false;
-  return true;
-}
-
 async function applyProfile(
   schemaName: string,
   profile: TranslationProfile,
@@ -196,7 +186,7 @@ async function applyProfile(
       console.warn(`Unsafe regex pattern rejected for profile ${profile.name}: ${profile.matchPattern}`);
       return { sender, destination, content, applied: false };
     }
-    regex = new RegExp(profile.matchPattern || ".*", "m");
+    regex = buildRegex(profile.matchPattern || ".*", "m");
   } catch {
     // Invalid regex, skip this profile
     return { sender, destination, content, applied: false };
