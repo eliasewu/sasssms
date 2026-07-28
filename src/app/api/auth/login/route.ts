@@ -5,9 +5,16 @@ import { verifyPassword, createToken } from "@/lib/auth";
 import { trackLogin } from "@/lib/db-helpers";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
+import { authLimiter, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   try {
+    // Rate limit: 10 attempts per IP per minute
+    const clientIp = getClientIp(request);
+    if (authLimiter.check(clientIp)) {
+      return NextResponse.json({ error: "Too many login attempts. Please try again in a minute." }, { status: 429 });
+    }
+
     const body = await request.json();
     const { email, password } = body;
 
@@ -39,10 +46,10 @@ export async function POST(request: Request) {
     });
 
     // Track login session
-    const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "127.0.0.1";
+    const sessionIp = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "127.0.0.1";
     const ua = request.headers.get("user-agent") || "";
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-    await trackLogin("tenant", tenant.id, tenant.email, ip, ua, tokenHash);
+    await trackLogin("tenant", tenant.id, tenant.email, sessionIp, ua, tokenHash);
 
     const response = NextResponse.json({
       success: true,

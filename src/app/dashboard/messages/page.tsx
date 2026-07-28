@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useColumnFilters, FilterRow, FilterToggle, type ColumnFilterDef } from "@/components/column-filters";
+import { SkeletonTable, SkeletonStatBar } from "@/components/loading-states";
 import { lookupMccSync, formatMccMnc, padMnc } from "@/lib/mcc-lookup-client";
 
 interface Message {
@@ -82,13 +83,16 @@ export default function DetailedSmsLogsPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [selectedMsg, setSelectedMsg] = useState<Message | null>(null);
-  const [filter, setFilter] = useState({ status: "", clientId: "", search: "" });
+  const [filter, setFilter] = useState({ status: "", clientId: "", search: "", connectionType: "" });
+  const [loading, setLoading] = useState(true);
   const limit = 25;
 
   const load = useCallback(async () => {
+    try {
     const params = new URLSearchParams({ limit: limit.toString(), offset: (page * limit).toString() });
     if (filter.status) params.set("status", filter.status);
     if (filter.clientId) params.set("clientId", filter.clientId);
+    if (filter.connectionType) params.set("connectionType", filter.connectionType);
     const r = await fetch(`/api/tenant/messages?${params}`).then(r => r.json());
 
     // Batch fetch MCC/MNC for all destinations
@@ -157,6 +161,8 @@ export default function DetailedSmsLogsPage() {
     });
     setMessages(msgs);
     setTotal(r.total || 0);
+    } catch { /* keep existing data on error */ }
+    finally { setLoading(false); }
   }, [page, filter]);
 
   useEffect(() => { load(); }, [load]);
@@ -199,6 +205,14 @@ export default function DetailedSmsLogsPage() {
         <div className="flex gap-3">
           <FilterToggle showFilters={showFilters} hasActive={hasActive} activeCount={activeFilterCount} onClick={toggle} />
           <input value={filter.search} onChange={e => setFilter({...filter, search: e.target.value})} placeholder="Search msg ID, content..." className="border rounded-lg px-3 py-2 text-sm w-48" />
+          <select value={filter.connectionType} onChange={e => { setFilter({...filter, connectionType: e.target.value}); setPage(0); }} className="border rounded-lg px-3 py-2 text-sm">
+            <option value="">All Types</option>
+            <option value="VOICE_OTP">📞 Voice OTP</option>
+            <option value="SMPP">SMPP</option>
+            <option value="WhatsApp OTT">💬 WhatsApp OTT</option>
+            <option value="Telegram OTT">✈️ Telegram OTT</option>
+            <option value="CUSTOM_API">🔌 Custom API</option>
+          </select>
           <select value={filter.status} onChange={e => { setFilter({...filter, status: e.target.value}); setPage(0); }} className="border rounded-lg px-3 py-2 text-sm">
             <option value="">All Statuses</option>
             <option value="QUEUED">Queued</option>
@@ -209,8 +223,10 @@ export default function DetailedSmsLogsPage() {
         </div>
       </div>
 
-      {/* Stats Bar */}
-      <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
+      {loading ? (
+        <SkeletonStatBar count={8} cols="md:grid-cols-8" />
+      ) : (
+        <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
         <div className="bg-white rounded-lg border p-3 text-center"><p className="text-lg font-bold text-slate-800">{total}</p><p className="text-[10px] text-slate-500">Total</p></div>
         <div className="bg-white rounded-lg border p-3 text-center"><p className="text-lg font-bold text-blue-600">{messages.filter(m => m.send_result === 'success').length}</p><p className="text-[10px] text-slate-500">Sent OK</p></div>
         <div className="bg-white rounded-lg border p-3 text-center"><p className="text-lg font-bold text-green-600">{messages.filter(m => m.deliver_result === 'Success').length}</p><p className="text-[10px] text-slate-500">DLR OK</p></div>
@@ -219,9 +235,12 @@ export default function DetailedSmsLogsPage() {
         <div className="bg-white rounded-lg border p-3 text-center"><p className="text-lg font-bold text-purple-600">${messages.reduce((s, m) => s + parseFloat(m.supplier_cost || "0"), 0).toFixed(4)}</p><p className="text-[10px] text-slate-500">Supplier Cost</p></div>
         <div className="bg-white rounded-lg border p-3 text-center"><p className="text-lg font-bold text-slate-800">{new Set(messages.map(m => m.route_name)).size}</p><p className="text-[10px] text-slate-500">Routes</p></div>
         <div className="bg-white rounded-lg border p-3 text-center"><p className="text-lg font-bold text-slate-800">{new Set(messages.map(m => m.supplier_user)).size}</p><p className="text-[10px] text-slate-500">Suppliers</p></div>
-      </div>
+        </div>
+      )}
 
-      {/* Message Table - Compact with hover detail */}
+      {loading ? (
+        <SkeletonTable cols={16} rows={12} />
+      ) : (
       <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -254,7 +273,14 @@ export default function DetailedSmsLogsPage() {
                   <td className="px-2 py-2 font-mono text-[10px] max-w-[100px] truncate">{m.alias}</td>
                   <td className="px-2 py-2">{m.sender}</td>
                   <td className="px-2 py-2 font-mono text-[10px]">{m.recipients}</td>
-                  <td className="px-2 py-2 max-w-[120px] truncate">{m.content}</td>
+                  <td className="px-2 py-2 max-w-[120px] truncate">
+                    {m.src_type === "VOICE_OTP" || m.src_type === "Voice OTP" ? (
+                      <span className="inline-flex items-center gap-1">
+                        <span className="text-[10px] px-1 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">📞 OTP</span>
+                        <span className="font-mono font-bold text-purple-700">{m.otp_code || m.content}</span>
+                      </span>
+                    ) : m.content}
+                  </td>
                   <td className="px-2 py-2 font-mono text-[10px]">{m.mcc || "—"}</td>
                   <td className="px-2 py-2 font-mono text-[10px]">{padMnc(m.mnc) || "—"}</td>
                   <td className="px-2 py-2 font-mono text-[10px]">${parseFloat(m.cost || "0").toFixed(6)}</td>
@@ -286,6 +312,7 @@ export default function DetailedSmsLogsPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* Message Detail Panel */}
       {selectedMsg && (
@@ -371,19 +398,57 @@ export default function DetailedSmsLogsPage() {
                 </div>
 
                 {/* Content */}
-                <div className="col-span-full grid grid-cols-2 gap-4 bg-slate-50 rounded-lg p-4">
-                  <div>
-                    <p className="text-slate-500 text-xs mb-1">SMS Content</p>
-                    <p className="text-sm font-mono bg-white rounded p-2 border">{selectedMsg.content || selectedMsg.dest_sms}</p>
+                {/* Content — detect Voice OTP and show special card */}
+                {(selectedMsg.src_type === "VOICE_OTP" || selectedMsg.src_type === "Voice OTP") ? (
+                  <div className="col-span-full bg-purple-50 rounded-lg p-4 border border-purple-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">📞</span>
+                        <span className="font-semibold text-purple-800">Voice OTP Call</span>
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${selectedMsg.send_result === 'success' || selectedMsg.deliver_result === 'Success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{selectedMsg.deliver_result === 'Success' ? 'Call Delivered' : selectedMsg.send_result === 'success' ? 'Call Placed' : 'Call Failed'}</span>
+                      </div>
+                      <span className="text-purple-500 text-xs">ID: {selectedMsg.id}</span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <p className="text-xs text-purple-500 mb-1">OTP Code</p>
+                        <p className="text-2xl font-bold font-mono text-purple-900 tracking-widest">{selectedMsg.otp_code || selectedMsg.content}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-purple-500 mb-1">Language</p>
+                        <p className="text-sm font-medium text-purple-800">{selectedMsg.language || "English"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-purple-500 mb-1">Destination</p>
+                        <p className="text-sm font-mono text-purple-800">{selectedMsg.dst_receiver}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-purple-500 mb-1">Sender</p>
+                        <p className="text-sm font-mono text-purple-800">{selectedMsg.sender}</p>
+                      </div>
+                    </div>
+                    {selectedMsg.original_content && (
+                      <details className="mt-3">
+                        <summary className="text-xs text-purple-500 cursor-pointer hover:text-purple-700">Original SMS content</summary>
+                        <p className="mt-2 text-sm text-slate-600 bg-white rounded p-2 border">{selectedMsg.original_content}</p>
+                      </details>
+                    )}
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <DetailField label="SMS bytes" value={selectedMsg.sms_bytes} />
-                    <DetailField label="Dest SMS bytes" value={selectedMsg.dest_sms_bytes} />
-                    <DetailField label="Dest SMS" value={selectedMsg.dest_sms || selectedMsg.content} />
-                    <DetailField label="MMS attachment" value={selectedMsg.mms_attachment || "—"} />
-                    <DetailField label="MMS title" value={selectedMsg.mms_title || "—"} />
+                ) : (
+                  <div className="col-span-full grid grid-cols-2 gap-4 bg-slate-50 rounded-lg p-4">
+                    <div>
+                      <p className="text-slate-500 text-xs mb-1">SMS Content</p>
+                      <p className="text-sm font-mono bg-white rounded p-2 border">{selectedMsg.content || selectedMsg.dest_sms}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <DetailField label="SMS bytes" value={selectedMsg.sms_bytes} />
+                      <DetailField label="Dest SMS bytes" value={selectedMsg.dest_sms_bytes} />
+                      <DetailField label="Dest SMS" value={selectedMsg.dest_sms || selectedMsg.content} />
+                      <DetailField label="MMS attachment" value={selectedMsg.mms_attachment || "—"} />
+                      <DetailField label="MMS title" value={selectedMsg.mms_title || "—"} />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* IDs and IP */}
                 <div className="col-span-full grid grid-cols-3 gap-4 bg-slate-50 rounded-lg p-4">
@@ -397,7 +462,7 @@ export default function DetailedSmsLogsPage() {
         </div>
       )}
 
-      {messages.length === 0 && (
+      {messages.length === 0 && !loading && (
         <div className="bg-white rounded-xl border p-12 text-center text-slate-400">
           <p className="text-lg mb-2">📝 No messages found</p>
           <p className="text-sm">Messages will appear here when you send SMS through the platform</p>

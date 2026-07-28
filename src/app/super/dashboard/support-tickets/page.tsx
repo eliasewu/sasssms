@@ -13,6 +13,8 @@ interface Ticket {
   priority: string;
   replied_by: string | null;
   reply_count: number;
+  server?: string;
+  _serverIp?: string;
   created_at: string;
   updated_at: string;
 }
@@ -70,6 +72,7 @@ export default function SuperSupportTicketsPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTicket, setSelectedTicket] = useState<{ ticket: Ticket; replies: Reply[] } | null>(null);
+  const [selectedServerIp, setSelectedServerIp] = useState<string | undefined>();
   const [replyMsg, setReplyMsg] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -92,20 +95,24 @@ export default function SuperSupportTicketsPage() {
 
   useEffect(() => { fetchTickets(); }, [fetchTickets]);
 
-  const openTicket = async (ticketId: number) => {
+  const openTicket = async (ticketId: number, serverIp?: string) => {
     try {
-      const res = await fetch(`/api/super/support-tickets/${ticketId}`, { credentials: "include" });
+      const query = serverIp ? `?_serverIp=${encodeURIComponent(serverIp)}` : "";
+      const res = await fetch(`/api/super/support-tickets/${ticketId}${query}`, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         setSelectedTicket({ ticket: data.ticket, replies: data.replies });
+        setSelectedServerIp(serverIp);
       }
     } catch { /* ignore */ }
   };
 
-  const handleReply = async (ticketId: number) => {
+  const handleReply = async (ticketId: number, serverIp?: string) => {
     if (!replyMsg.trim() && selectedFiles.length === 0) return;
     setSubmitting(true);
     setUploadProgress(0);
+
+    const query = serverIp ? `?_serverIp=${encodeURIComponent(serverIp)}` : "";
 
     const onSuccess = (data: { reply: Reply }) => {
       if (selectedTicket) {
@@ -121,13 +128,12 @@ export default function SuperSupportTicketsPage() {
     };
 
     if (selectedFiles.length > 0) {
-      // Use XMLHttpRequest for upload progress tracking
       const formData = new FormData();
       formData.append("message", replyMsg.trim());
       selectedFiles.forEach(f => formData.append("files", f));
 
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", `/api/super/support-tickets/${ticketId}`);
+      xhr.open("POST", `/api/super/support-tickets/${ticketId}${query}`);
       xhr.withCredentials = true;
 
       xhr.upload.onprogress = (e) => {
@@ -148,9 +154,8 @@ export default function SuperSupportTicketsPage() {
       return;
     }
 
-    // Text-only: use fetch (no progress bar needed)
     try {
-      const res = await fetch(`/api/super/support-tickets/${ticketId}`, {
+      const res = await fetch(`/api/super/support-tickets/${ticketId}${query}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -164,9 +169,10 @@ export default function SuperSupportTicketsPage() {
     finally { setSubmitting(false); }
   };
 
-  const handleStatusChange = async (ticketId: number, newStatus: string) => {
+  const handleStatusChange = async (ticketId: number, newStatus: string, serverIp?: string) => {
     try {
-      const res = await fetch("/api/super/support-tickets", {
+      const query = serverIp ? `?_serverIp=${encodeURIComponent(serverIp)}` : "";
+      const res = await fetch(`/api/super/support-tickets${query}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -174,9 +180,8 @@ export default function SuperSupportTicketsPage() {
       });
       if (res.ok) {
         fetchTickets();
-        // Refresh detail view if open
         if (selectedTicket && selectedTicket.ticket.id === ticketId) {
-          openTicket(ticketId);
+          openTicket(ticketId, serverIp);
         }
       }
     } catch { /* ignore */ }
@@ -236,7 +241,7 @@ export default function SuperSupportTicketsPage() {
                   From: {selectedTicket.ticket.tenant_name} ({selectedTicket.ticket.tenant_email})
                 </p>
               </div>
-              <button onClick={() => setSelectedTicket(null)} className="text-slate-400 hover:text-slate-600 text-sm">
+              <button onClick={() => { setSelectedTicket(null); setSelectedServerIp(undefined); }} className="text-slate-400 hover:text-slate-600 text-sm">
                 ✕ Close
               </button>
             </div>
@@ -257,7 +262,7 @@ export default function SuperSupportTicketsPage() {
                 selectedTicket.ticket.status !== s && (
                   <button
                     key={s}
-                    onClick={() => handleStatusChange(selectedTicket.ticket.id, s)}
+                    onClick={() => handleStatusChange(selectedTicket.ticket.id, s, selectedServerIp)}
                     className="px-3 py-1 rounded-lg text-xs font-medium bg-white border hover:bg-slate-50 transition"
                   >
                     Mark {s.replace("_", " ")}
@@ -265,8 +270,7 @@ export default function SuperSupportTicketsPage() {
                 )
               ))}
               {selectedTicket.ticket.status !== "OPEN" && selectedTicket.ticket.status !== "CLOSED" && (
-                <button
-                  onClick={() => handleStatusChange(selectedTicket.ticket.id, "OPEN")}
+                <button                    onClick={() => handleStatusChange(selectedTicket.ticket.id, "OPEN", selectedServerIp)}
                   className="px-3 py-1 rounded-lg text-xs font-medium bg-white border hover:bg-blue-50 text-blue-600 transition"
                 >
                   Reopen
@@ -356,12 +360,12 @@ export default function SuperSupportTicketsPage() {
                   type="text"
                   value={replyMsg}
                   onChange={e => setReplyMsg(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(selectedTicket.ticket.id); } }}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(selectedTicket.ticket.id, selectedServerIp); } }}
                   className="flex-1 border rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-orange-500"
                   placeholder="Type your reply..."
                 />
                 <button
-                  onClick={() => handleReply(selectedTicket.ticket.id)}
+                  onClick={() => handleReply(selectedTicket.ticket.id, selectedServerIp)}
                   disabled={submitting || (!replyMsg.trim() && selectedFiles.length === 0) || !!getUploadLimitError(selectedFiles)}
                   className="px-5 py-2.5 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700 disabled:opacity-50 transition"
                 >
@@ -456,6 +460,7 @@ export default function SuperSupportTicketsPage() {
               <thead className="bg-slate-50">
                 <tr>
                   <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">ID</th>
+                  <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Server</th>
                   <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Tenant</th>
                   <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Subject</th>
                   <th className="text-left px-5 py-3 font-medium text-slate-500 text-xs uppercase">Priority</th>
@@ -469,10 +474,15 @@ export default function SuperSupportTicketsPage() {
                 {tickets.map((ticket) => (
                   <tr key={ticket.id} className="border-t hover:bg-orange-50 transition">
                     <td className="px-5 py-3 font-mono text-xs text-slate-500">#{ticket.id}</td>
+                    <td className="px-5 py-3">
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-full px-2 py-0.5 whitespace-nowrap">
+                        🖥️ {ticket.server || "Local"}
+                      </span>
+                    </td>
                     <td className="px-5 py-3 text-xs text-slate-600">{ticket.tenant_name}</td>
                     <td
                       className="px-5 py-3 font-medium text-slate-800 max-w-xs truncate cursor-pointer hover:text-orange-600"
-                      onClick={() => openTicket(ticket.id)}
+                      onClick={() => openTicket(ticket.id, ticket._serverIp)}
                     >
                       {ticket.subject}
                     </td>
@@ -500,7 +510,7 @@ export default function SuperSupportTicketsPage() {
                     </td>
                     <td className="px-5 py-3">
                       <button
-                        onClick={() => openTicket(ticket.id)}
+                        onClick={() => openTicket(ticket.id, ticket._serverIp)}
                         className="text-xs px-3 py-1 rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-100 font-medium transition"
                       >
                         View

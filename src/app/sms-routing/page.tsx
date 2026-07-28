@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+
 export const metadata: Metadata = {
   title: "SMS Routing — Multi-Layer Intelligent SMS Routing Engine | Net2APP",
   description:

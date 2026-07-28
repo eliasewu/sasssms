@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     const tree: Record<string, {
       countryCode: string;
       countryName: string;
-      operators: { mcc: string; mnc: string; networkName: string; networkType: string }[];
+      operators: { mcc: string; mnc: string; mccmnc: string; networkName: string; networkType: string }[];
     }> = {};
 
     for (const row of result.rows) {

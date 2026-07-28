@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useConfirmModal } from "@/components/confirm-modal";
 import CopyButton from "@/components/copy-button";
 import { useColumnFilters, FilterRow, FilterToggle, type ColumnFilterDef } from "@/components/column-filters";
+import { SkeletonTable } from "@/components/loading-states";
+import { genCode, genId, genPwd } from "@/lib/id-generators";
 
 interface Client {
   id: number; client_code: string; name: string; company_name: string; contact_person: string;
@@ -24,6 +26,7 @@ export default function ClientPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [routePlans, setRoutePlans] = useState<RoutePlan[]>([]);
   const [smppServers, setSmppServers] = useState<SmppServer[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
@@ -37,6 +40,8 @@ export default function ClientPage() {
   });
 
   const load = useCallback(async () => {
+    setLoading(true);
+    try {
     const [cr, rr] = await Promise.all([
       fetch("/api/tenant/clients", { cache: "no-store" }).then(r => r.json()),
       fetch("/api/tenant/route-plans", { cache: "no-store" }).then(r => r.json()),
@@ -45,6 +50,9 @@ export default function ClientPage() {
     setRoutePlans(rr.routePlans || []);
     // Fetch SMPP server config
     fetch("/api/tenant/smpp-servers", { cache: "no-store" }).then(r => r.json()).then(d => setSmppServers(d.servers || [])).catch(() => {});
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -142,7 +150,16 @@ export default function ClientPage() {
         </div>
         <div className="flex items-center gap-3">
           <FilterToggle showFilters={showFilters} hasActive={hasActive} activeCount={activeFilterCount} onClick={toggle} />
-          <button onClick={() => { setShowForm(true); setEditing(null); setShowPwd(false); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium">
+          <button onClick={() => {
+            setShowForm(true); setEditing(null); setShowPwd(false);
+            // Auto-generate values for new client
+            setForm(prev => ({
+              ...prev,
+              clientCode: prev.clientCode || genCode(),
+              smppUsername: prev.smppUsername || genId(),
+              smppPassword: prev.smppPassword || genPwd(),
+            }));
+          }} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium">
             + Add Client
           </button>
         </div>
@@ -159,7 +176,9 @@ export default function ClientPage() {
             <section className="bg-slate-50 rounded-xl p-5">
               <h4 className="font-semibold text-slate-700 mb-4">🏢 Company Information</h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Input label="Client Code" value={form.clientCode} onChange={e => setForm({...form, clientCode: e.target.value})} />
+                <Input label="Client Code" value={form.clientCode} onChange={e => setForm({...form, clientCode: e.target.value})}
+                  suffix={<button type="button" onClick={() => setForm({...form, clientCode: genCode()})} className="shrink-0 px-2 py-0.5 text-xs font-medium rounded bg-slate-600 text-white hover:bg-slate-700 transition" title="Generate random code">🎲</button>}
+                />
                 <Input label="Company Name *" value={form.name} onChange={e => setForm({...form, name: e.target.value})} required />
                 <Input label="Contact Person" value={form.contactPerson} onChange={e => setForm({...form, contactPerson: e.target.value})} />
                 <Input label="Email *" type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} required />
@@ -189,8 +208,17 @@ export default function ClientPage() {
                   <strong>Client connects to:</strong> {smppServers[0]?.host || "server-ip"}:{smppServers[0]?.port || "2775"} (SMSC server port)
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Input label="SMPP Username" value={form.smppUsername} onChange={e => setForm({...form, smppUsername: e.target.value})} />
-                  <Input label="SMPP Password" type={showPwd ? "text" : "password"} value={form.smppPassword} onChange={e => setForm({...form, smppPassword: e.target.value})} suffix={<div className="flex gap-1">{form.smppPassword && form.smppPassword !== "••••••••" && <CopyButton value={form.smppPassword} />}<button type="button" onClick={() => setShowPwd(!showPwd)} className="shrink-0 px-2 py-0.5 text-xs rounded border border-slate-300 hover:bg-slate-100 transition-colors" title={showPwd ? "Hide password" : "Show password"}>{showPwd ? "🙈" : "👁️"}</button></div>} />
+                  <Input label="SMPP Username" value={form.smppUsername} onChange={e => setForm({...form, smppUsername: e.target.value})}
+                    suffix={<button type="button" onClick={() => setForm({...form, smppUsername: genId()})} className="shrink-0 px-2 py-0.5 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700 transition" title="Generate random username">🎲</button>}
+                  />
+                  <Input label="SMPP Password" type={showPwd ? "text" : "password"} value={form.smppPassword} onChange={e => setForm({...form, smppPassword: e.target.value})}
+                    suffix={
+                      <div className="flex gap-1">
+                        <button type="button" onClick={() => setForm({...form, smppPassword: genPwd()})} className="shrink-0 px-2 py-0.5 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700 transition" title="Generate random password">🎲 Gen</button>
+                        {form.smppPassword && form.smppPassword !== "••••••••" && <CopyButton value={form.smppPassword} />}
+                        <button type="button" onClick={() => setShowPwd(!showPwd)} className="shrink-0 px-2 py-0.5 text-xs rounded border border-slate-300 hover:bg-slate-100 transition-colors" title={showPwd ? "Hide password" : "Show password"}>{showPwd ? "🙈" : "👁️"}</button>
+                      </div>
+                    } />
                   <Input label="Allowed IP" value={form.smppAllowedIp} onChange={e => setForm({...form, smppAllowedIp: e.target.value})} placeholder="0.0.0.0/0" suffix={form.smppAllowedIp ? <CopyButton value={form.smppAllowedIp} /> : undefined} />
                   <Input label="Port" type="number" value={form.smppPort} onChange={e => setForm({...form, smppPort: e.target.value})} placeholder="2775" />
                   <div>
@@ -244,6 +272,9 @@ export default function ClientPage() {
         </div>
       )}
 
+      {loading ? (
+        <SkeletonTable cols={8} rows={8} />
+      ) : (
       <div className="bg-white rounded-xl border shadow-sm overflow-x-auto">
         <table className="w-full text-sm min-w-[1000px]">
           <thead className="bg-slate-50"><tr><th className="text-left px-4 py-3">Code/Name</th><th className="text-left px-4 py-3">Contact</th><th className="text-left px-4 py-3">SMPP User</th><th className="text-left px-4 py-3">Port</th><th className="text-left px-4 py-3">Bind</th><th className="text-left px-4 py-3">Type</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Actions</th></tr>
@@ -278,6 +309,7 @@ export default function ClientPage() {
         </table>
         {hasActive && <div className="px-4 py-2 border-t bg-slate-50 text-xs text-slate-500">Showing {filteredClients.length} of {clients.length} clients</div>}
       </div>
+      )}
       {confirmModal}
     </div>
   );

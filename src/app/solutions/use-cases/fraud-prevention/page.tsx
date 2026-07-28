@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Fraud Prevention — Real-Time SMS, Flash SMS & Voice Alerts | Net2APP",
   description:

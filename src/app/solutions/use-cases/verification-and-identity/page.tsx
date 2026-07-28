@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Verification & Identity — SMS OTP, Voice OTP & 2FA Solutions | Net2APP",
   description:

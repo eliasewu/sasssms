@@ -28,7 +28,7 @@ DB_PASS="postgres"
 DB_NAME="app_db"
 DB_URL="postgresql://${DB_USER}:${DB_PASS}@127.0.0.1:5432/${DB_NAME}"
 NODE_V="22"
-APP_PORT="5555"
+APP_PORT="5556"
 SMPP_PORT="2775"
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
@@ -292,7 +292,7 @@ systemctl enable net2app.service 2>/dev/null || warn "net2app service enable fai
 cat > "$APP_DIR/health-check.sh" << 'HCSCRIPT'
 #!/bin/bash
 LOG_FILE="/var/log/net2app-health.log"
-APP_PORT=5555
+APP_PORT=5556
 LOCK_FILE="/tmp/net2app-health.lock"
 
 # Prevent overlapping runs
@@ -444,7 +444,7 @@ server {
     }
 
     location / {
-        proxy_pass http://127.0.0.1:5555;
+        proxy_pass http://127.0.0.1:5556;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';

@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const since = new Date(Date.now() - hours * 3600000).toISOString();
 
   // Run all queries in parallel
-  const [dlrSummary, supplierBreakdown, recentDlrs, totalProfit, hourlyTrend] = await Promise.all([
+  const [dlrSummary, supplierBreakdown, recentDlrs, totalProfit, hourlyTrend, dlrHealth] = await Promise.all([
     // Overall DLR status counts
     tenantQuery(
       tenant.schemaName,
@@ -29,9 +29,10 @@ export async function GET(request: Request) {
        ORDER BY 
          CASE COALESCE(dlr_status, 'PENDING')
            WHEN 'DELIVERED' THEN 1
-           WHEN 'PENDING' THEN 2
-           WHEN 'FAILED' THEN 3
-           ELSE 4
+           WHEN 'SENT' THEN 2
+           WHEN 'PENDING' THEN 3
+           WHEN 'FAILED' THEN 4
+           ELSE 5
          END`,
       [since]
     ),
@@ -57,9 +58,10 @@ export async function GET(request: Request) {
        ORDER BY s.name, 
          CASE COALESCE(m.dlr_status, 'PENDING')
            WHEN 'DELIVERED' THEN 1
-           WHEN 'PENDING' THEN 2
-           WHEN 'FAILED' THEN 3
-           ELSE 4
+           WHEN 'SENT' THEN 2
+           WHEN 'PENDING' THEN 3
+           WHEN 'FAILED' THEN 4
+           ELSE 5
          END`,
       [since]
     ),
@@ -73,6 +75,7 @@ export async function GET(request: Request) {
          m.status, m.dlr_status, m.dlr_timestamp,
          m.cost, m.supplier_cost, m.profit,
          m.supplier_id, s.name as supplier_name,
+         COALESCE(s.force_dlr, false) as supplier_force_dlr,
          m.client_id, c.name as client_name,
          m.connection_type, m.created_at
        FROM messages m
@@ -84,7 +87,7 @@ export async function GET(request: Request) {
       [since]
     ),
 
-    // Total profit by DLR status
+    // Overview + total profit by DLR status
     tenantQuery(
       tenant.schemaName,
       `SELECT 
@@ -94,7 +97,8 @@ export async function GET(request: Request) {
          COUNT(*) as total_messages,
          COUNT(*) FILTER (WHERE dlr_status = 'DELIVERED') as delivered,
          COUNT(*) FILTER (WHERE dlr_status = 'FAILED') as failed,
-         COUNT(*) FILTER (WHERE dlr_status IS NULL OR dlr_status = 'PENDING') as pending
+         COUNT(*) FILTER (WHERE dlr_status IN ('PENDING', 'SENT') OR dlr_status IS NULL) as pending,
+         COUNT(*) FILTER (WHERE dlr_status = 'SENT') as awaiting_dlr
        FROM messages
        WHERE created_at >= $1`,
       [since]
@@ -107,12 +111,27 @@ export async function GET(request: Request) {
          date_trunc('hour', m.created_at) as hour,
          COUNT(*) FILTER (WHERE m.dlr_status = 'DELIVERED') as delivered,
          COUNT(*) FILTER (WHERE m.dlr_status = 'FAILED') as failed,
-         COUNT(*) FILTER (WHERE m.dlr_status IS NULL OR m.dlr_status = 'PENDING') as pending,
+         COUNT(*) FILTER (WHERE m.dlr_status IN ('PENDING', 'SENT') OR m.dlr_status IS NULL) as pending,
          COUNT(*) as total
        FROM messages m
        WHERE m.created_at >= $1
        GROUP BY date_trunc('hour', m.created_at)
        ORDER BY hour`,
+      [since]
+    ),
+
+    // DLR Health: awaiting real DLR vs force_dlr resolved
+    tenantQuery(
+      tenant.schemaName,
+      `SELECT
+         COUNT(*) as total_with_dlr,
+         COUNT(*) FILTER (WHERE m.dlr_status = 'SENT') as awaiting_real_dlr,
+         COUNT(*) FILTER (WHERE m.dlr_status = 'DELIVERED' AND COALESCE(s.force_dlr, false) = true) as force_dlr_delivered,
+         COUNT(*) FILTER (WHERE m.dlr_status = 'DELIVERED' AND COALESCE(s.force_dlr, false) = false) as real_dlr_delivered,
+         COUNT(*) FILTER (WHERE m.dlr_status = 'FAILED') as real_dlr_failed
+       FROM messages m
+       LEFT JOIN suppliers s ON m.supplier_id = s.id
+       WHERE m.created_at >= $1`,
       [since]
     ),
   ]);
@@ -162,11 +181,12 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({
-    overview: totalProfit.rows[0] || { total_profit: 0, total_revenue: 0, total_cost: 0, total_messages: 0, delivered: 0, failed: 0, pending: 0 },
+    overview: totalProfit.rows[0] || { total_profit: 0, total_revenue: 0, total_cost: 0, total_messages: 0, delivered: 0, failed: 0, pending: 0, awaiting_dlr: 0 },
     dlrSummary: dlrSummary.rows,
     suppliers: Array.from(supplierMap.values()),
     recentMessages: recentDlrs.rows,
     hourlyTrend: hourlyTrend.rows,
+    dlrHealth: dlrHealth.rows[0] || { total_with_dlr: 0, awaiting_real_dlr: 0, force_dlr_delivered: 0, real_dlr_delivered: 0, real_dlr_failed: 0 },
     periodHours: hours,
   });
 }

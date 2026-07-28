@@ -48,6 +48,7 @@ export const tenants = pgTable("tenants", {
   lastRechargeAt: timestamp("last_recharge_at"),
   lastRechargeAmount: decimal("last_recharge_amount", { precision: 10, scale: 2 }),
   accountExpiresAt: timestamp("account_expires_at"),
+  googleId: varchar("google_id", { length: 255 }).unique(),
   emailVerified: boolean("email_verified").default(false),
   phoneVerified: boolean("phone_verified").default(false),
   autoRenewEnabled: boolean("auto_renew_enabled").default(true).notNull(),

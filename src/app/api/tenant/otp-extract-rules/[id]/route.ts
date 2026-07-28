@@ -39,12 +39,12 @@ export async function PUT(
   const vals: (string | number | boolean | null)[] = [];
   let idx = 1;
 
-  const fields = ["name","mcc","mnc","regex_pattern","otp_group_index","forward_supplier_id","forward_sender","forward_template","is_active","sort_order"];
+  const fields = ["name","mcc","mnc","regex_pattern","otp_group_index","forward_supplier_id","forward_sender","forward_template","is_active","sort_order","auto_detect"];
   const bodyMap: Record<string, string> = {
     name: "name", mcc: "mcc", mnc: "mnc", regexPattern: "regex_pattern",
     otpGroupIndex: "otp_group_index", forwardSupplierId: "forward_supplier_id",
     forwardSender: "forward_sender", forwardTemplate: "forward_template",
-    isActive: "is_active", sortOrder: "sort_order",
+    isActive: "is_active", sortOrder: "sort_order", autoDetect: "auto_detect",
   };
 
   for (const [bodyKey, col] of Object.entries(bodyMap)) {

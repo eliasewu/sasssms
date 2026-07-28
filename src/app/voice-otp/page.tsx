@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+
 export const metadata: Metadata = {
   title: "Voice OTP Service — Call-Based One-Time Password Delivery | Net2APP",
   description:

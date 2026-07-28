@@ -278,9 +278,11 @@ async function pollDlrForMessage(
       );
     }
 
-    // 11b. DLR-based billing: charge SMS credit ONLY for DLR-billed messages
-    // (cost=0 on submit means it was deferred to delivery time)
-    if (dlrStatus === "DELIVERED" && needsCostUpdate) {
+    // 11b. SMS counter: charge ALL DLR-billed messages against credits,
+    // regardless of delivery status (FAILED, DELIVERED, EXPIRED, etc.).
+    // The submit-time isDlrBilling check deferred the counter increment to here.
+    // We check msgCost === 0 to identify DLR-billed messages (cost deferred to delivery).
+    if (msg.client_id && msgCost === 0) {
       try {
         await client.query("SET search_path TO public");
         await client.query(
@@ -339,7 +341,7 @@ export async function pollCustomApiDlrs() {
           `SELECT m.id, m.message_id, m.supplier_message_id, m.destination,
                   m.client_id, m.supplier_id, m.dlr_callback_url, m.created_at, m.last_dlr_poll_at
            FROM messages m
-           WHERE m.dlr_status = 'PENDING'
+           WHERE m.dlr_status IN ('PENDING', 'SENT')
              AND m.connection_type = 'CUSTOM_API'
              AND m.created_at > NOW() - INTERVAL '2 hours'
            ORDER BY m.created_at ASC

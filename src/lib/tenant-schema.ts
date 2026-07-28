@@ -16,14 +16,14 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
     await client.query(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`);
     await client.query(`SET search_path TO "${schemaName}"`);
 
-    // Create tables in dependency order (no FKs first, then add references)
-    const createTable = async (sql: string) => {
-      try { await client.query(sql); } catch (e: unknown) { 
+    // Helper: wrap query in try-catch for non-fatal failures
+    const safeQuery = (sql: string, params?: unknown[]) =>
+      client.query(sql, params).catch((e: unknown) => {
         console.error(`Table error in ${schemaName}:`, (e as Error).message);
-      }
-    };
+      });
 
-    await createTable(`CREATE TABLE IF NOT EXISTS clients (
+    // Batch 1 — tables needed before seeding route plans
+    await safeQuery(`CREATE TABLE IF NOT EXISTS clients (
       id SERIAL PRIMARY KEY, client_code VARCHAR(50), name VARCHAR(255) NOT NULL,
       company_name VARCHAR(255), contact_person VARCHAR(255), email VARCHAR(255) NOT NULL,
       phone VARCHAR(50) NOT NULL, country VARCHAR(100), address TEXT,
@@ -38,13 +38,13 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       updated_at TIMESTAMP DEFAULT NOW(), deleted_at TIMESTAMP, deleted_by VARCHAR(255),
       created_at TIMESTAMP DEFAULT NOW())`);
 
-    await createTable(`CREATE TABLE IF NOT EXISTS client_rates (
+    await safeQuery(`CREATE TABLE IF NOT EXISTS client_rates (
       id SERIAL PRIMARY KEY, client_id INTEGER NOT NULL, country_code VARCHAR(10) NOT NULL,
       mcc VARCHAR(10), mnc VARCHAR(10), mccmnc VARCHAR(6), operator_name VARCHAR(255),
       rate DECIMAL(10,6) NOT NULL,
       is_active BOOLEAN DEFAULT true, updated_at TIMESTAMP DEFAULT NOW())`);
 
-    await createTable(`CREATE TABLE IF NOT EXISTS suppliers (
+    await safeQuery(`CREATE TABLE IF NOT EXISTS suppliers (
       id SERIAL PRIMARY KEY, supplier_code VARCHAR(50), name VARCHAR(255) NOT NULL,
       company_name VARCHAR(255), contact_person VARCHAR(255), email VARCHAR(255),
       phone VARCHAR(50), connection_type VARCHAR(50) NOT NULL, connection_mode VARCHAR(20) DEFAULT 'CLIENT',
@@ -58,37 +58,37 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       updated_at TIMESTAMP DEFAULT NOW(), deleted_at TIMESTAMP, deleted_by VARCHAR(255),
       gsm_device_id INTEGER, connector_id INTEGER, created_at TIMESTAMP DEFAULT NOW())`);
 
-    await createTable(`CREATE TABLE IF NOT EXISTS supplier_rates (
+    await safeQuery(`CREATE TABLE IF NOT EXISTS supplier_rates (
       id SERIAL PRIMARY KEY, supplier_id INTEGER NOT NULL, country_code VARCHAR(10) NOT NULL,
       mcc VARCHAR(10), mnc VARCHAR(10), mccmnc VARCHAR(6), operator_name VARCHAR(255),
       cost DECIMAL(10,6) NOT NULL,
       is_active BOOLEAN DEFAULT true, updated_at TIMESTAMP DEFAULT NOW())`);
 
-    await createTable(`CREATE TABLE IF NOT EXISTS trunks (
+    await safeQuery(`CREATE TABLE IF NOT EXISTS trunks (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, supplier_id INTEGER NOT NULL,
       connector_id INTEGER, capacity INTEGER DEFAULT 100, current_load INTEGER DEFAULT 0,
       mcc_allow_list TEXT, mcc_deny_list TEXT,
       is_active BOOLEAN DEFAULT true, updated_at TIMESTAMP DEFAULT NOW(),
       deleted_at TIMESTAMP, created_at TIMESTAMP DEFAULT NOW())`);
 
-    await createTable(`CREATE TABLE IF NOT EXISTS routes (
+    await safeQuery(`CREATE TABLE IF NOT EXISTS routes (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, trunk_id INTEGER NOT NULL,
       country_code VARCHAR(10), prefix VARCHAR(20), priority INTEGER DEFAULT 1,
       is_active BOOLEAN DEFAULT true, updated_at TIMESTAMP DEFAULT NOW(),
       deleted_at TIMESTAMP, created_at TIMESTAMP DEFAULT NOW())`);
 
-    await createTable(`CREATE TABLE IF NOT EXISTS route_plans (
+    await safeQuery(`CREATE TABLE IF NOT EXISTS route_plans (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL UNIQUE, description TEXT,
       is_active BOOLEAN DEFAULT true, updated_at TIMESTAMP DEFAULT NOW(),
       created_at TIMESTAMP DEFAULT NOW())`);
 
     // route_plan_routes without FK first
-    await createTable(`CREATE TABLE IF NOT EXISTS route_plan_routes (
+    await safeQuery(`CREATE TABLE IF NOT EXISTS route_plan_routes (
       id SERIAL PRIMARY KEY, route_plan_id INTEGER NOT NULL, route_id INTEGER NOT NULL,
       priority INTEGER DEFAULT 1)`);
 
     // route_trunks — junction table allowing one route to have multiple trunks
-    await createTable(`CREATE TABLE IF NOT EXISTS route_trunks (
+    await safeQuery(`CREATE TABLE IF NOT EXISTS route_trunks (
       id SERIAL PRIMARY KEY, route_id INTEGER NOT NULL, trunk_id INTEGER NOT NULL,
       priority INTEGER DEFAULT 1, is_active BOOLEAN DEFAULT true,
       created_at TIMESTAMP DEFAULT NOW())`);
@@ -108,7 +108,9 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
     await seedPlans('Local Direct OTP');
     await seedPlans('Local Direct Marketing');
 
-    await createTable(`CREATE TABLE IF NOT EXISTS messages (
+    // Batch 2 — all remaining tables can be created in parallel
+    await Promise.all([
+      safeQuery(`CREATE TABLE IF NOT EXISTS messages (
       id SERIAL PRIMARY KEY, client_id INTEGER NOT NULL, sender VARCHAR(20) NOT NULL,
       destination VARCHAR(20) NOT NULL, content TEXT NOT NULL,
       status VARCHAR(20) DEFAULT 'QUEUED', route_plan_id INTEGER, route_id INTEGER,
@@ -123,148 +125,148 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       original_content TEXT, translation_notes TEXT,
       supplier_message_id VARCHAR(255),
       last_dlr_poll_at TIMESTAMP,
-      created_at TIMESTAMP DEFAULT NOW())`);
+      created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS sms_inbox (
+      safeQuery(`CREATE TABLE IF NOT EXISTS sms_inbox (
       id SERIAL PRIMARY KEY, sender VARCHAR(20) NOT NULL, destination VARCHAR(20) NOT NULL,
       content TEXT NOT NULL, supplier_id INTEGER, received_at TIMESTAMP DEFAULT NOW(),
-      is_read BOOLEAN DEFAULT false)`);
+      is_read BOOLEAN DEFAULT false)`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS campaigns (
+      safeQuery(`CREATE TABLE IF NOT EXISTS campaigns (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, client_id INTEGER NOT NULL,
       sender VARCHAR(20) NOT NULL, content TEXT NOT NULL, recipients TEXT,
       total_count INTEGER DEFAULT 0, sent_count INTEGER DEFAULT 0,
       delivered_count INTEGER DEFAULT 0, failed_count INTEGER DEFAULT 0,
       status VARCHAR(20) DEFAULT 'DRAFT', scheduled_at TIMESTAMP,
-      started_at TIMESTAMP, completed_at TIMESTAMP, created_at TIMESTAMP DEFAULT NOW())`);
+      started_at TIMESTAMP, completed_at TIMESTAMP, created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS invoices (
+      safeQuery(`CREATE TABLE IF NOT EXISTS invoices (
       id SERIAL PRIMARY KEY, client_id INTEGER, invoice_number VARCHAR(50) NOT NULL,
       amount DECIMAL(12,4) NOT NULL, tax DECIMAL(12,4) DEFAULT 0,
       total_amount DECIMAL(12,4) NOT NULL, status VARCHAR(20) DEFAULT 'DRAFT',
       period_start TIMESTAMP NOT NULL, period_end TIMESTAMP NOT NULL,
       due_date TIMESTAMP NOT NULL, notes TEXT, created_by VARCHAR(255),
       created_for_type VARCHAR(20), created_for_id INTEGER, created_for_name VARCHAR(255),
-      created_at TIMESTAMP DEFAULT NOW())`);
+      created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS supplier_invoices (
+      safeQuery(`CREATE TABLE IF NOT EXISTS supplier_invoices (
       id SERIAL PRIMARY KEY, supplier_id INTEGER, invoice_number VARCHAR(50) NOT NULL,
       amount DECIMAL(12,4) NOT NULL, tax DECIMAL(12,4) DEFAULT 0,
       total_amount DECIMAL(12,4) NOT NULL, status VARCHAR(20) DEFAULT 'DRAFT',
       period_start TIMESTAMP NOT NULL, period_end TIMESTAMP NOT NULL,
       due_date TIMESTAMP NOT NULL, notes TEXT, created_by VARCHAR(255),
-      supplier_name VARCHAR(255), created_at TIMESTAMP DEFAULT NOW())`);
+      supplier_name VARCHAR(255), created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS payments (
+      safeQuery(`CREATE TABLE IF NOT EXISTS payments (
       id SERIAL PRIMARY KEY, client_id INTEGER NOT NULL, invoice_id INTEGER,
       amount DECIMAL(12,4) NOT NULL, payment_method VARCHAR(50),
       transaction_id VARCHAR(255), status VARCHAR(20) DEFAULT 'PENDING',
-      notes TEXT, created_at TIMESTAMP DEFAULT NOW())`);
+      notes TEXT, created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS connectors (
+      safeQuery(`CREATE TABLE IF NOT EXISTS connectors (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, provider VARCHAR(255),
       type VARCHAR(50) NOT NULL, region VARCHAR(50) DEFAULT 'global',
       api_url TEXT, api_key TEXT, auth_method VARCHAR(50) DEFAULT 'API_KEY',
       endpoints TEXT, status VARCHAR(20) DEFAULT 'active',
       is_active BOOLEAN DEFAULT true, updated_at TIMESTAMP DEFAULT NOW(),
-      created_at TIMESTAMP DEFAULT NOW())`);
+      created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS ott_devices (
+      safeQuery(`CREATE TABLE IF NOT EXISTS ott_devices (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, device_type VARCHAR(50) NOT NULL,
       phone_number VARCHAR(20), api_config TEXT, proxy_id INTEGER,
       qr_code TEXT, qr_session TEXT, qr_expires_at TIMESTAMP,
       status VARCHAR(20) DEFAULT 'OFFLINE', last_seen TIMESTAMP,
-      is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`);
+      is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS proxy_config (
+      safeQuery(`CREATE TABLE IF NOT EXISTS proxy_config (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, proxy_type VARCHAR(50) DEFAULT 'residential',
       host VARCHAR(255) NOT NULL, port INTEGER NOT NULL, username VARCHAR(255),
       password VARCHAR(255), protocol VARCHAR(20) DEFAULT 'socks5',
-      is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`);
+      is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS voice_otp_config (
+      safeQuery(`CREATE TABLE IF NOT EXISTS voice_otp_config (
       id SERIAL PRIMARY KEY, country_group VARCHAR(255) NOT NULL, prefixes VARCHAR(500),
       primary_language VARCHAR(50) NOT NULL, secondary_language VARCHAR(50),
       primary_audio_count INTEGER DEFAULT 0, secondary_audio_count INTEGER DEFAULT 0,
       play_count INTEGER DEFAULT 3, retry_count INTEGER DEFAULT 1,
       bilingual BOOLEAN DEFAULT false,
-      is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`);
+      is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS voice_otp_audio (
+      safeQuery(`CREATE TABLE IF NOT EXISTS voice_otp_audio (
       id SERIAL PRIMARY KEY, config_id INTEGER NOT NULL, language VARCHAR(50) NOT NULL,
       digit VARCHAR(20) NOT NULL, file_name VARCHAR(255), file_url TEXT,
-      audio_type VARCHAR(10) DEFAULT 'wav', created_at TIMESTAMP DEFAULT NOW())`);
+      audio_type VARCHAR(10) DEFAULT 'wav', created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS voice_otp_sip_config (
+      safeQuery(`CREATE TABLE IF NOT EXISTS voice_otp_sip_config (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, sip_host VARCHAR(255),
       sip_port INTEGER DEFAULT 5060, sip_username VARCHAR(255), sip_password VARCHAR(255),
       caller_id VARCHAR(50), max_retries INTEGER DEFAULT 3, timeout INTEGER DEFAULT 30,
-      is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`);
+      is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS voice_otp_call_logs (
+      safeQuery(`CREATE TABLE IF NOT EXISTS voice_otp_call_logs (
       id SERIAL PRIMARY KEY, destination VARCHAR(20) NOT NULL, otp_code VARCHAR(10),
       language VARCHAR(50), status VARCHAR(20), attempt_count INTEGER DEFAULT 1,
       duration INTEGER, sip_config_id INTEGER, audio_playlist TEXT, attempt_log TEXT,
       call_sid VARCHAR(100), sip_config_name VARCHAR(255),
-      country VARCHAR(100), mcc VARCHAR(10), created_at TIMESTAMP DEFAULT NOW())`);
+      country VARCHAR(100), mcc VARCHAR(10), created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS social_api_config (
+      safeQuery(`CREATE TABLE IF NOT EXISTS social_api_config (
       id SERIAL PRIMARY KEY, platform VARCHAR(50) NOT NULL, name VARCHAR(255) NOT NULL,
       api_key TEXT, api_secret TEXT, phone_number VARCHAR(20), webhook_url TEXT,
-      proxy_id INTEGER, is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`);
+      proxy_id INTEGER, is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS business_api_connect (
+      safeQuery(`CREATE TABLE IF NOT EXISTS business_api_connect (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, provider VARCHAR(100) NOT NULL,
       api_url TEXT, credentials TEXT, proxy_id INTEGER,
-      is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`);
+      is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS ip_whitelist (
+      safeQuery(`CREATE TABLE IF NOT EXISTS ip_whitelist (
       id SERIAL PRIMARY KEY, ip_address VARCHAR(50) NOT NULL, description VARCHAR(255),
-      client_id INTEGER, is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`);
+      client_id INTEGER, is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS email_templates (
+      safeQuery(`CREATE TABLE IF NOT EXISTS email_templates (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, subject VARCHAR(255) NOT NULL,
       body TEXT NOT NULL, type VARCHAR(50), is_active BOOLEAN DEFAULT true,
-      created_at TIMESTAMP DEFAULT NOW())`);
+      created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS smtp_config (
+      safeQuery(`CREATE TABLE IF NOT EXISTS smtp_config (
       id SERIAL PRIMARY KEY, host VARCHAR(255) NOT NULL, port INTEGER DEFAULT 587,
       username VARCHAR(255), password VARCHAR(255), from_email VARCHAR(255),
       from_name VARCHAR(255) DEFAULT 'Net2APP', encryption VARCHAR(10) DEFAULT 'tls',
-      is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`);
+      is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS alerts (
+      safeQuery(`CREATE TABLE IF NOT EXISTS alerts (
       id SERIAL PRIMARY KEY, type VARCHAR(50) NOT NULL, title VARCHAR(255) NOT NULL,
       message TEXT NOT NULL, severity VARCHAR(20) DEFAULT 'info',
-      is_read BOOLEAN DEFAULT false, created_at TIMESTAMP DEFAULT NOW())`);
+      is_read BOOLEAN DEFAULT false, created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS pending_dlrs (
+      safeQuery(`CREATE TABLE IF NOT EXISTS pending_dlrs (
       id SERIAL PRIMARY KEY, client_id INTEGER NOT NULL,
       message_id VARCHAR(100) NOT NULL, supplier_message_id VARCHAR(100),
       status VARCHAR(50) NOT NULL, submit_date VARCHAR(20),
       done_date VARCHAR(20), error_code VARCHAR(10),
       dest VARCHAR(20) NOT NULL, src VARCHAR(20) NOT NULL,
-      created_at TIMESTAMP DEFAULT NOW())`);
+      created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS integrations (
+      safeQuery(`CREATE TABLE IF NOT EXISTS integrations (
       id SERIAL PRIMARY KEY, type VARCHAR(50) NOT NULL, name VARCHAR(255) NOT NULL,
       webhook_url TEXT, config TEXT, is_active BOOLEAN DEFAULT true,
-      created_at TIMESTAMP DEFAULT NOW())`);
+      created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS users (
+      safeQuery(`CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, email VARCHAR(255) NOT NULL,
       password_hash TEXT NOT NULL, role_id INTEGER, is_active BOOLEAN DEFAULT true,
-      last_login TIMESTAMP, created_at TIMESTAMP DEFAULT NOW())`);
+      last_login TIMESTAMP, created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS roles (
+      safeQuery(`CREATE TABLE IF NOT EXISTS roles (
       id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL UNIQUE, permissions TEXT,
-      created_at TIMESTAMP DEFAULT NOW())`);
+      created_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS translations (
+      safeQuery(`CREATE TABLE IF NOT EXISTS translations (
       id SERIAL PRIMARY KEY, key VARCHAR(255) NOT NULL, language VARCHAR(10) NOT NULL,
-      value TEXT NOT NULL)`);
+      value TEXT NOT NULL)`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS custom_api_connectors (
+      safeQuery(`CREATE TABLE IF NOT EXISTS custom_api_connectors (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL,
       type VARCHAR(20) NOT NULL DEFAULT 'HTTP_API',
       send_url_template TEXT NOT NULL, send_method VARCHAR(10) DEFAULT 'GET',
@@ -275,10 +277,10 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       dlr_delivered_value VARCHAR(100) DEFAULT 'Delivered',
       dlr_poll_seconds INTEGER DEFAULT 30,
       dlr_timeout_seconds INTEGER DEFAULT 3600,
-      is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`);
+      is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`),
 
     // ── MCC/MNC-based Translation Engine ──
-    await createTable(`CREATE TABLE IF NOT EXISTS translation_profiles (
+      safeQuery(`CREATE TABLE IF NOT EXISTS translation_profiles (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL,
       target_field VARCHAR(20) NOT NULL DEFAULT 'SENDER',
       mode VARCHAR(20) NOT NULL DEFAULT 'FIXED',
@@ -289,22 +291,22 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       sort_order INTEGER DEFAULT 0,
       is_active BOOLEAN DEFAULT true,
       created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW())`);
+      updated_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS translation_pool_items (
+      safeQuery(`CREATE TABLE IF NOT EXISTS translation_pool_items (
       id SERIAL PRIMARY KEY, profile_id INTEGER NOT NULL,
       replacement_value TEXT NOT NULL,
       mccmnc VARCHAR(6),
-      updated_at TIMESTAMP DEFAULT NOW())`);
+      updated_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS translation_assignments (
+      safeQuery(`CREATE TABLE IF NOT EXISTS translation_assignments (
       id SERIAL PRIMARY KEY, profile_id INTEGER NOT NULL,
       client_id INTEGER, supplier_id INTEGER,
       priority INTEGER DEFAULT 1, is_active BOOLEAN DEFAULT true,
-      updated_at TIMESTAMP DEFAULT NOW())`);
+      updated_at TIMESTAMP DEFAULT NOW())`),
 
     // ── OTP Extract & Forward ──
-    await createTable(`CREATE TABLE IF NOT EXISTS otp_extract_rules (
+      safeQuery(`CREATE TABLE IF NOT EXISTS otp_extract_rules (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL,
       mcc VARCHAR(10), mnc VARCHAR(10),
       regex_pattern TEXT NOT NULL, otp_group_index INTEGER DEFAULT 1,
@@ -312,14 +314,15 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       forward_template TEXT DEFAULT '{otp}', auto_detect BOOLEAN DEFAULT false,
       is_active BOOLEAN DEFAULT true,
       sort_order INTEGER DEFAULT 0,
-      created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`);
+      created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`),
 
-    await createTable(`CREATE TABLE IF NOT EXISTS otp_forward_logs (
+      safeQuery(`CREATE TABLE IF NOT EXISTS otp_forward_logs (
       id SERIAL PRIMARY KEY, rule_id INTEGER, inbox_message_id INTEGER,
       original_sender VARCHAR(20), original_content TEXT,
       extracted_otp VARCHAR(20), destination VARCHAR(20),
       forward_status VARCHAR(30), forward_message_id VARCHAR(100),
-      error_message TEXT, created_at TIMESTAMP DEFAULT NOW())`);
+      error_message TEXT, created_at TIMESTAMP DEFAULT NOW())`),
+    ]);
 
     // Seed 80+ API connectors into new tenant
     const connectorSQL = `

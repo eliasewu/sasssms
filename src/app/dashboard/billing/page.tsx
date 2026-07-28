@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { SkeletonCardGrid, SkeletonStatBar, ErrorState, EmptyState } from "@/components/loading-states";
 
 interface TenantInfo {
   companyName: string; email: string; packageType: string; balance: string;
@@ -42,18 +43,30 @@ export default function BillingTopupPage() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
-    const [tr, pr, txr, pkr] = await Promise.all([
-      fetch("/api/auth/me").then(r => r.json()),
-      fetch("/api/tenant/payment-gateways").then(r => r.json()).catch((e) => { console.error("Failed to load payment gateways:", e); return { gateways: [] }; }),
-      fetch("/api/tenant/payment-transactions").then(r => r.json()).catch((e) => { console.error("Failed to load transactions:", e); return { transactions: [] }; }),
-      fetch("/api/public/settings").then(r => r.json()).catch((e) => { console.error("Failed to load packages:", e); return { packages: [] }; }),
-    ]);
-    if (tr.tenant) setTenant(tr.tenant);
-    setGateways(pr.gateways || []);
-    setTxns(txr.transactions || []);
-    setPackages((pkr.packages || []).filter((p: PackageInfo) => p.isActive));
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const [tr, pr, txr, pkr] = await Promise.all([
+        fetch("/api/auth/me").then(r => r.json()),
+        fetch("/api/tenant/payment-gateways").then(r => r.json()).catch((e) => { console.error("Failed to load payment gateways:", e); return { gateways: [] }; }),
+        fetch("/api/tenant/payment-transactions").then(r => r.json()).catch((e) => { console.error("Failed to load transactions:", e); return { transactions: [] }; }),
+        fetch("/api/public/settings").then(r => r.json()).catch((e) => { console.error("Failed to load packages:", e); return { packages: [] }; }),
+      ]);
+      if (tr.tenant) setTenant(tr.tenant);
+      setGateways(pr.gateways || []);
+      setTxns(txr.transactions || []);
+      const activePackages = (pkr.packages || []).filter((p: PackageInfo) => p.isActive);
+      setPackages(activePackages);
+    } catch (e) {
+      console.error("Billing page load failed:", e);
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -159,8 +172,13 @@ export default function BillingTopupPage() {
 
       {msg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">{msg}</div>}
 
+      {loadError && <ErrorState message="Failed to load billing data. Please check your connection." onRetry={load} />}
+
       {/* Account Status */}
-      {tenant && (
+      {loading ? (
+        <SkeletonStatBar count={3} cols="md:grid-cols-3" />
+      ) : (
+        tenant && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div className="bg-white rounded-xl border p-5 shadow-sm">
             <p className="text-sm text-slate-500">Current Package</p>
@@ -205,7 +223,7 @@ export default function BillingTopupPage() {
             )}
           </div>
         </div>
-      )}
+      ))}
 
       {/* Tabs */}
       <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
@@ -218,6 +236,11 @@ export default function BillingTopupPage() {
           {/* ── Package Selection Cards ── */}
           <div>
             <h3 className="font-semibold text-lg mb-4">📦 Choose a Package</h3>
+            {loading ? (
+              <SkeletonCardGrid count={3} />
+            ) : packages.length === 0 ? (
+              <EmptyState icon="📦" title="No packages available" description="Please contact your admin to set up billing packages." />
+            ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {packages.map(pkg => {
                 const isSelected = selectedPkg?.id === pkg.id;
@@ -276,12 +299,8 @@ export default function BillingTopupPage() {
                   </div>
                 );
               })}
-              {packages.length === 0 && (
-                <div className="col-span-3 bg-amber-50 border border-amber-200 rounded-lg p-4 text-center">
-                  <p className="text-sm text-amber-700">No packages available. Please contact admin.</p>
-                </div>
-              )}
             </div>
+            )}
           </div>
 
           {/* ── Top-Up / Purchase Form ── */}

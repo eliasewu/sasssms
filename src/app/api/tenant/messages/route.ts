@@ -12,6 +12,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const clientId = url.searchParams.get("clientId");
   const status = url.searchParams.get("status");
+  const connectionType = url.searchParams.get("connectionType");
   const campaignId = url.searchParams.get("campaignId");
   const limit = parseInt(url.searchParams.get("limit") || "50");
   const offset = parseInt(url.searchParams.get("offset") || "0");
@@ -33,6 +34,7 @@ export async function GET(request: Request) {
   if (clientId) { query += ` AND m.client_id = $${idx++}`; params.push(clientId); }
   if (status) { query += ` AND m.status = $${idx++}`; params.push(status); }
   if (campaignId) { query += ` AND m.campaign_id = $${idx++}`; params.push(campaignId); }
+  if (connectionType) { query += ` AND m.connection_type = $${idx++}`; params.push(connectionType); }
   
   // Filter by source type
   if (source === "test") { query += ` AND m.connection_type IS NULL AND m.content LIKE '%Test%'`; }
@@ -63,6 +65,7 @@ export async function GET(request: Request) {
   let cidx = 1;
   if (clientId) { countQuery += ` AND client_id = $${cidx++}`; countParams.push(clientId); }
   if (status) { countQuery += ` AND status = $${cidx++}`; countParams.push(status); }
+  if (connectionType) { countQuery += ` AND connection_type = $${cidx++}`; countParams.push(connectionType); }
 
   const countResult = await tenantQuery(tenant.schemaName, countQuery, countParams);
 

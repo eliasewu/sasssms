@@ -36,7 +36,9 @@ import makeWASocket, {
   type WASocket,
 } from "@whiskeysockets/baileys";
 import { SocksProxyAgent } from "socks-proxy-agent";
+// @ts-ignore -- telegram is an optional dependency without types
 import { TelegramClient } from "telegram";
+// @ts-ignore -- telegram/sessions is an optional dependency without types
 import { StringSession } from "telegram/sessions";
 
 // ── Types ──
@@ -398,12 +400,12 @@ async function startWhatsAppClient(
                ORDER BY created_at DESC LIMIT 1
              )
              RETURNING dlr_callback_url, message_id, destination`,
-            [`%${remoteJid.replace(/@.*$/, "")}%`, deviceId, !!u.receipt?.messageId]
+            [`%${remoteJid.replace(/@.*$/, "")}%`, deviceId, !!(u.receipt as any)?.messageId]
           );
           await pg.query(`SET search_path TO public`);
 
           // Push DLR when receipt indicates delivery
-          if (dlrResult.rows.length > 0 && u.receipt?.messageId) {
+          if (dlrResult.rows.length > 0 && (u.receipt as any)?.messageId) {
             const { dlr_callback_url, message_id, destination } = dlrResult.rows[0] as Record<string, string>;
             pushOttDlr(dlr_callback_url || null, message_id, destination, "DELIVERED", "WhatsApp OTT");
           }
@@ -665,6 +667,7 @@ async function stopDeviceClient(schemaName: string, deviceId: number): Promise<v
   try {
     if (conn.deviceType === "whatsapp") {
       const sock = conn.client as WASocket;
+      // @ts-ignore -- removeAllListeners may accept optional arg
       sock.ev.removeAllListeners();
       sock.ws?.close();
     } else {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 
+
 interface LandingSettings {
   costPerSms: string;
   packages: Array<{

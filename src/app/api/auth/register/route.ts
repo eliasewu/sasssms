@@ -116,36 +116,23 @@ export async function POST(request: Request) {
       console.error("MCC/MNC seed failed for new tenant:", e)
     );
 
-    // ── Seed default Voice OTP audio from super admin defaults into tenant schema ──
+    // ── Seed default Voice OTP audio from super admin defaults into tenant schema (single batch INSERT) ──
     try {
-      const defResult = await pool.query("SELECT * FROM voice_otp_default_audio ORDER BY language, digit");
-      if (defResult.rows.length > 0) {
-        const client = await pool.connect();
-        try {
-          for (const def of defResult.rows) {
-            // Find matching config_id in tenant schema
-            const configResult = await client.query(
-              `SELECT id FROM "${schemaName}".voice_otp_config WHERE primary_language = $1 OR secondary_language = $1 LIMIT 1`,
-              [def.language]
-            );
-            if (configResult.rows.length > 0) {
-              const configId = configResult.rows[0].id;
-              // Check if this audio already exists
-              const existingAudio = await client.query(
-                `SELECT id FROM "${schemaName}".voice_otp_audio WHERE config_id = $1 AND language = $2 AND digit = $3`,
-                [configId, def.language, def.digit]
-              );
-              if (existingAudio.rows.length === 0) {
-                await client.query(
-                  `INSERT INTO "${schemaName}".voice_otp_audio (config_id, language, digit, file_name, file_url, audio_type) VALUES ($1, $2, $3, $4, $5, $6)`,
-                  [configId, def.language, def.digit, def.file_name, def.file_url, def.audio_type || 'wav']
-                );
-              }
-            }
-          }
-        } finally {
-          client.release();
-        }
+      const pc = await pool.connect();
+      try {
+        await pc.query(
+          `INSERT INTO "${schemaName}".voice_otp_audio (config_id, language, digit, file_name, file_url, audio_type)
+           SELECT vc.id, da.language, da.digit, da.file_name, da.file_url, COALESCE(da.audio_type, 'wav')
+           FROM voice_otp_default_audio da
+           JOIN "${schemaName}".voice_otp_config vc
+             ON vc.primary_language = da.language OR vc.secondary_language = da.language
+           WHERE NOT EXISTS (
+             SELECT 1 FROM "${schemaName}".voice_otp_audio va
+             WHERE va.config_id = vc.id AND va.language = da.language AND va.digit = da.digit
+           )`
+        );
+      } finally {
+        pc.release();
       }
     } catch (e) {
       // Non-fatal: defaults table may not exist yet, or no defaults configured

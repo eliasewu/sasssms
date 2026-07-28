@@ -6,7 +6,7 @@
 
 LOG_FILE="/var/log/net2app-health.log"
 MAX_LOG_SIZE_MB=10
-APP_PORT=5555
+APP_PORT=5556
 APP_DIR="/opt/net2app"
 LOCK_FILE="/tmp/net2app-health.lock"
 

@@ -1,0 +1,54 @@
+;;
+;; Domain:     net2app.com.
+;; Exported:   2026-07-26 05:22:51
+;;
+;; This file is intended for use for informational and archival
+;; purposes ONLY and MUST be edited before use on a production
+;; DNS server.  In particular, you must:
+;;   -- update the SOA record with the correct authoritative name server
+;;   -- update the SOA record with the contact e-mail address information
+;;   -- update the NS record(s) with the authoritative name servers for this domain.
+;;
+;; For further information, please consult the BIND documentation
+;; located on the following website:
+;;
+;; http://www.isc.org/
+;;
+;; And RFC 1035:
+;;
+;; http://www.ietf.org/rfc/rfc1035.txt
+;;
+;; Please note that we do NOT offer technical support for any use
+;; of this zone data, the BIND name server, or any other third-party
+;; DNS software.
+;;
+;; Use at your own risk.
+;; SOA Record
+net2app.com	3600	IN	SOA	dayana.ns.cloudflare.com. dns.cloudflare.com. 2053670997 10000 2400 604800 3600
+
+;; NS Records
+net2app.com.	86400	IN	NS	dayana.ns.cloudflare.com.
+net2app.com.	86400	IN	NS	mack.ns.cloudflare.com.
+
+;; A Records
+mail.net2app.com.	1	IN	A	146.59.47.22 ; cf_tags=cf-proxied:true
+mail.net2app.com.	1	IN	A	54.37.252.5 ; cf_tags=cf-proxied:true
+mail.net2app.com.	1	IN	A	145.239.1.7 ; cf_tags=cf-proxied:true
+mail.net2app.com.	1	IN	A	149.56.22.232 ; cf_tags=cf-proxied:true
+mail.net2app.com.	1	IN	A	15.235.35.125 ; cf_tags=cf-proxied:true
+net2app.com.	1	IN	A	146.59.47.22 ; cf_tags=cf-proxied:true
+net2app.com.	1	IN	A	54.37.252.5 ; cf_tags=cf-proxied:true
+net2app.com.	1	IN	A	145.239.1.7 ; cf_tags=cf-proxied:true
+net2app.com.	1	IN	A	149.56.22.232 ; cf_tags=cf-proxied:true
+net2app.com.	1	IN	A	15.235.35.125 ; cf_tags=cf-proxied:true
+
+;; CNAME Records
+www.net2app.com.	1	IN	CNAME	net2app.com. ; cf_tags=cf-proxied:true
+
+;; MX Records
+net2app.com.	1	IN	MX	10 mail.net2app.com.
+
+;; TXT Records
+default._domainkey.net2app.com.	1	IN	TXT	"v=DKIM1; h=sha256; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4blW/\010N+0InnvcFF2nvpimJKEqnLiWYAywGQk38uZbFV3QFjtTte6I1+2V3thaRMoaMIWi9CQacMvYr2lw2dfdNByfGkvtBg8zU/\010trK2My1xQAY+fcbA9+IikHs/uowKUuiwmUNs/\010CYM5QGvueorpr0pLx7i4FxAOhQV08tCO1TvJ0btdUBNc" "bxGpIW69MBhEo2E4dA36vlL6hVGouBXMjCpqS/\010ypMVHgEeVAs01qCagUhjxQOlh80VZekQ2Xv5Chb/\010y2UxBFTX2DbP0yGK7qYNJFEmv3wAvAyDGoyMpOJCSawQQWILiaCwMWxC71HuL80FJSgiZNQKLRwGqHA/4w+LwIDAQAB"
+_dmarc.net2app.com.	1	IN	TXT	"v=DMARC1; p=none; rua=mailto:admin@net2app.com"
+net2app.com.	1	IN	TXT	"v=spf1 mx a ~all"

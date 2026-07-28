@@ -460,7 +460,7 @@ export async function checkPackageExpiry(): Promise<{ notified: number; errors: 
  * Looks up the tenant's schema for an active route/trunk/supplier combo
  * and delivers via deliverSmsWithFallback. Fire-and-forget — DLR is not tracked.
  */
-async function sendTenantSms(
+export async function sendTenantSms(
   tenantId: number,
   schemaName: string,
   phoneNumber: string,

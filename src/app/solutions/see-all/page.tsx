@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+
 export const metadata: Metadata = {
   title: "All SMS Gateway Solutions — Complete Directory | Net2APP",
   description:

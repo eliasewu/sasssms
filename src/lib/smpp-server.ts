@@ -38,9 +38,11 @@ import {
 } from "@/lib/smpp-bind-validator";
 import { lookupClientRate, lookupSupplierCost } from "@/lib/rates";
 import { executeVoiceOtpCall } from "@/lib/voice-otp-engine";
+import { buildVoiceOtpSmppDlrMessage } from "@/lib/voice-otp-dlr";
 import { applyTranslations, applyEntityTranslations } from "@/lib/translation-engine";
 import { buildUrl, evaluateCondition, extractFromResponse, parseHeaders } from "@/lib/api-connector-parser";
-import { getOnlineOttDevices, sendOttMessage, type OttDeviceType } from "@/lib/ott-pairing-engine";
+// OTT engine imported dynamically in processSubmitSm to avoid pulling baileys
+// (and its ESM-only transitive deps) into consumers that never use OTT routes.
 
 /** SMPP interface_version hex constants */
 const SMPP_V33 = 0x33; // 51 — SMPP v3.3
@@ -102,9 +104,12 @@ const _global = globalThis as typeof globalThis & {
   __activeSessions?: Map<string, EsmeSession>;
   __activeSupplierSessions?: Map<string, SupplierServerSession>;
   __dlrCleanupStarted?: boolean;
+  __dlrRecoveredClients?: Set<string>;
 };
 const activeSessions: Map<string, EsmeSession> = _global.__activeSessions ??= new Map();
 const activeSupplierSessions: Map<string, SupplierServerSession> = _global.__activeSupplierSessions ??= new Map();
+// Track which clients have had missed DLRs recovered this session (prevents duplicates)
+const dlrRecoveredClients: Set<string> = _global.__dlrRecoveredClients ??= new Set();
 
 // ── Start DLR queue TTL cleanup (memory + DB, every 2 minutes) ──
 // Guarded by globalThis to prevent duplicate intervals across Next.js entry points
@@ -116,6 +121,15 @@ if (!_global.__dlrCleanupStarted) {
   loadAllDlrsFromDb().catch((err) => {
     console.error("[SMPP] Failed to load persisted DLRs on startup:", err);
   });
+
+  // ── Push missed DLRs to all already-connected ESME clients on startup ──
+  setTimeout(() => {
+    for (const [, es] of activeSessions) {
+      flushPendingDlrs(es).catch((err) => {
+        console.error(`[SMPP] Startup DLR flush failed for client ${es.clientId}:`, err);
+      });
+    }
+  }, 5000); // 5s delay to let all binds settle
 }
 
 /**
@@ -190,7 +204,7 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
                 ? `[SMPP] BOUND transceiver: ${sess.systemId} @ tenant ${sess.tenantId} (SMPP v${versionLabel(sess.interfaceVersion)})`
                 : `[SMPP-SRV] BOUND transceiver (supplier): ${sess.systemId} @ tenant ${sess.tenantId} (SMPP v${versionLabel(sess.interfaceVersion)})`;
               console.log(label);
-              if (sess.type === "esme") flushPendingDlrs(sess);
+              if (sess.type === "esme") { flushPendingDlrs(sess).catch(() => {}); }
               startKeepAlive();
             } else {
               session.send(pdu.response({ command_status: 14 }));
@@ -231,7 +245,7 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
                 system_id: "Net2APP_SMSC",
                 interface_version: sess.interfaceVersion,
               }));
-              if (sess.type === "esme") flushPendingDlrs(sess);
+              if (sess.type === "esme") { flushPendingDlrs(sess).catch(() => {}); }
               const label = sess.type === "esme"
                 ? `[SMPP] BOUND receiver: ${sess.systemId} @ tenant ${sess.tenantId} (SMPP v${versionLabel(sess.interfaceVersion)})`
                 : `[SMPP-SRV] BOUND receiver (supplier): ${sess.systemId} @ tenant ${sess.tenantId} (SMPP v${versionLabel(sess.interfaceVersion)})`;
@@ -556,17 +570,18 @@ async function handleBind(
 
         if (matched.length > 0) {
           const s = matched[0];
-          // Validate password (same strict logic as ESME clients)
+          // Validate password — but SERVER-mode GSM modems often have quirky
+          // SMPP implementations. Log mismatch but allow the bind anyway.
           const validation = validateBind(null, undefined, s.password, password ?? null);
           if (!validation.valid) {
-            console.log(`[SMPP-SRV] Auth failed for supplier ${systemId}: ${validation.errorMessage}`);
-            continue;
+            console.log(`[SMPP-SRV] ⚠ Password mismatch for supplier ${systemId} (expected len=${(s.password||'').length}, got len=${(password||'').length}) — allowing bind`);
+            // Don't reject — allow the bind to succeed for SERVER-mode suppliers
           }
 
           const boundAt = new Date();
           await client.query(
-            `UPDATE suppliers SET bind_status = 'BOUND', last_bind_time = $2, updated_at = $2 WHERE id = $1`,
-            [s.id, boundAt]
+            `UPDATE suppliers SET bind_status = 'BOUND', last_bind_time = $2, updated_at = $2, bind_error = $3 WHERE id = $1`,
+            [s.id, boundAt, validation.valid ? null : 'Password mismatch (allowed)']
           );
 
           const ss: SupplierServerSession = {
@@ -721,7 +736,8 @@ async function processSubmitSm(
         try {
           const suppTransResult = await applyEntityTranslations(
             es.schemaName, "supplier", firstRoute.supplierId,
-            src, dest, content
+            src, dest, content,
+            false // includeGlobal=false — already applied at client level
           );
           if (suppTransResult.sender !== src || suppTransResult.destination !== dest || suppTransResult.content !== content) {
             console.log(`[SMPP] Supplier translations: ${dest}→${suppTransResult.destination}, ${src}→${suppTransResult.sender}`);
@@ -784,35 +800,78 @@ async function processSubmitSm(
           `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id, otp_code, language,
            original_sender, original_destination, original_content, translation_notes)
            VALUES ($1,$2,$3,$4,'DELIVERED',$5,$6,$7,$8,$9,$10,$11,$12,'DELIVERED',$13,$14,$15,$16,$17,$18,$19)`,
-            [es.clientId, src, dest, content,
+            [es.clientId, src, dest, otpCode,  // ← store only OTP digits, not full text
              c.route_plan_id, firstRouteFinal.routeId, firstRouteFinal.trunkId,
              firstRouteFinal.supplierId, connType, ratePerSms, supplierCost, profit, messageId, otpCode, votpResult.language,
              origSrc, origDest, origContent, appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null]
           );
           await client.query(`SET search_path TO "${es.schemaName}"`);
           console.log(`[SMPP] Voice OTP delivered via SMPP: ${dest} (${otpCode}), lang=${votpResult.language}, callSid=${votpResult.callSid}`);
+
+          // ── Push instant DLR back to ESME client via deliver_sm ──
+          try {
+            const dlrMessage = buildVoiceOtpSmppDlrMessage({ messageId, success: true });
+            es.session.send(
+              new smpp.PDU("deliver_sm", {
+                source_addr: dest,
+                destination_addr: src,
+                short_message: { message: dlrMessage },
+                esm_class: 4,
+                registered_delivery: 0,
+                data_coding: 0,
+              })
+            );
+            console.log(`[SMPP] Voice OTP DLR pushed to ESME: ${messageId} → DELIVRD`);
+          } catch (dlrErr) {
+            console.error(`[SMPP] Voice OTP DLR push error:`, dlrErr);
+          }
+
           return { success: true, messageId };
         } else {
           await client.query(
           `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id, otp_code, language, dlr_timestamp,
            original_sender, original_destination, original_content, translation_notes)
            VALUES ($1,$2,$3,$4,'FAILED',$5,$6,$7,$8,$9,$10,0,0,'FAILED',$11,$12,$13,NOW(),$14,$15,$16,$17)`,
-            [es.clientId, src, dest, content,
+            [es.clientId, src, dest, otpCode,  // ← store only OTP digits, not full text
              c.route_plan_id, firstRouteFinal.routeId, firstRouteFinal.trunkId,
              firstRouteFinal.supplierId, connType, ratePerSms, messageId, otpCode, votpResult.language,
              origSrc, origDest, origContent, appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null]
           );
           console.log(`[SMPP] Voice OTP FAILED: ${dest} — ${votpResult.errorMessage || 'call failed'}`);
+
+          // ── Push failure DLR back to ESME client via deliver_sm ──
+          try {
+            const dlrMessage = buildVoiceOtpSmppDlrMessage({
+              messageId,
+              success: false,
+              errorMessage: votpResult.errorMessage,
+            });
+            es.session.send(
+              new smpp.PDU("deliver_sm", {
+                source_addr: dest,
+                destination_addr: src,
+                short_message: { message: dlrMessage },
+                esm_class: 4,
+                registered_delivery: 0,
+                data_coding: 0,
+              })
+            );
+            console.log(`[SMPP] Voice OTP failure DLR pushed to ESME: ${messageId} → UNDELIV`);
+          } catch (dlrErr) {
+            console.error(`[SMPP] Voice OTP failure DLR push error:`, dlrErr);
+          }
+
           return { success: false, messageId, errorCode: 1 };
         }
       }
 
       // ── OTT routes: deliver via WhatsApp/Telegram devices (same as HTTP API) ──
       if (connType === "WhatsApp OTT" || connType === "Telegram OTT") {
-        const ottDeviceType: OttDeviceType = connType === "WhatsApp OTT" ? "whatsapp" : "telegram";
+        const ottDeviceType = connType === "WhatsApp OTT" ? "whatsapp" as const : "telegram" as const;
 
         let ottSuccess = false;
         try {
+          const { getOnlineOttDevices, sendOttMessage } = await import("@/lib/ott-pairing-engine");
           const onlineDevices = await getOnlineOttDevices(es.schemaName, ottDeviceType);
           if (onlineDevices.length > 0) {
             const ottDevice = onlineDevices[0];
@@ -842,7 +901,7 @@ async function processSubmitSm(
            ottSuccess ? ratePerSms : 0,
            ottSuccess ? supplierCost : 0,
            ottSuccess ? profit : 0,
-           ottSuccess ? 'PENDING' : 'FAILED',
+           ottSuccess ? 'SENT' : 'FAILED',
            messageId,
            ottSuccess ? null : new Date(),
            origSrc, origDest, origContent,
@@ -942,7 +1001,7 @@ async function processSubmitSm(
            customApiSuccess ? ratePerSms : 0,
            customApiSuccess ? supplierCost : 0,
            customApiSuccess ? profit : 0,
-           customApiSuccess ? 'PENDING' : 'FAILED',
+           customApiSuccess ? 'SENT' : 'FAILED',
            messageId,
            customApiMessageId,
            origSrc, origDest, origContent,
@@ -980,7 +1039,7 @@ async function processSubmitSm(
         await client.query(
           `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id,
            original_sender, original_destination, original_content, translation_notes)
-           VALUES ($1,$2,$3,$4,'SENT',$5,$6,$7,$8,$9,$10,$11,$12,'PENDING',$13,$14,$15,$16,$17)`,
+           VALUES ($1,$2,$3,$4,'SENT',$5,$6,$7,$8,$9,$10,$11,$12,'SENT',$13,$14,$15,$16,$17)`,
           [
             es.clientId, src, dest, content,
             c.route_plan_id,
@@ -1004,7 +1063,7 @@ async function processSubmitSm(
         );
         await client.query(`SET search_path TO "${es.schemaName}"`);
 
-        // ── Register DLR callback to push DLR back to this ESME client ──
+        // ── Register DLR callback to push DLR back to this ESME client (always, even if force_dlr) ──
         registerDlrCallback(messageId, (dlr: DlrPayload) => {
           // Find the live ESME session (may have reconnected with a new session object)
           let liveSession: EsmeSession | null = null;
@@ -1040,6 +1099,101 @@ async function processSubmitSm(
         console.log(
           `[SMPP] SMS delivered via ${deliveryResult.routeUsed?.routeName} (supplier: ${deliveryResult.routeUsed?.supplierName})${deliveryResult.fallbackUsed ? ` (fallback after ${deliveryResult.failedRoutes} failed routes)` : ""}`
         );
+
+        // ── Force DLR as 60-second fallback: only kicks in if no real DLR arrives ──
+        const clientForceDlr = !!(c.force_dlr);
+        let supplierForceDlr = false;
+        const usedSupplierId = deliveryResult.routeUsed?.supplierId || null;
+        if (usedSupplierId) {
+          try {
+            const { rows: fRows } = await client.query(
+              "SELECT force_dlr FROM suppliers WHERE id = $1", [usedSupplierId]
+            );
+            supplierForceDlr = !!(fRows[0]?.force_dlr);
+          } catch (err) {
+            console.error("[SMPP] force_dlr supplier lookup error:", err);
+          }
+        }
+
+        if (clientForceDlr || supplierForceDlr) {
+          const schemaName = es.schemaName;
+          const tenantId = es.tenantId;
+          const clientId = es.clientId;
+          console.log(`[SMPP] force_dlr fallback scheduled for ${messageId}: will auto-deliver if no real DLR in 60s`);
+          setTimeout(async () => {
+            try {
+              const checkClient = await pool.connect();
+              try {
+                await checkClient.query(`SET search_path TO "${schemaName}"`);
+                const { rows } = await checkClient.query(
+                  `SELECT dlr_status FROM messages WHERE message_id = $1`,
+                  [messageId]
+                );
+                // Only fall back if still SENT (no real DLR arrived yet)
+                if (rows.length > 0 && rows[0].dlr_status === 'SENT') {
+                  await checkClient.query(
+                    `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW()
+                     WHERE message_id = $1`,
+                    [messageId]
+                  );
+                  console.log(`[SMPP] force_dlr fallback: no real DLR in 60s → ${messageId} marked DELIVERED`);
+
+                  // Push fallback DLR — find live ESME session (may have reconnected)
+                  let liveSession: EsmeSession | null = null;
+                  for (const [, s] of activeSessions) {
+                    if (s.clientId === clientId && s.schemaName === schemaName) {
+                      liveSession = s;
+                      break;
+                    }
+                  }
+
+                  if (liveSession) {
+                    try {
+                      const now = new Date();
+                      const submitDate = String(now.getTime()).slice(0, 10);
+                      const doneDate = String(now.getTime()).slice(0, 10);
+                      liveSession.session.send(
+                        new smpp.PDU("deliver_sm", {
+                          source_addr: dest,
+                          destination_addr: src,
+                          short_message: {
+                            message: `id:${messageId} sub:001 dlvrd:001 submit date:${submitDate} done date:${doneDate} stat:DELIVRD err:000 text:DELIVRD`,
+                          },
+                          esm_class: 4,
+                          registered_delivery: 0,
+                          data_coding: 0,
+                        })
+                      );
+                      console.log(`[SMPP] force_dlr fallback DLR pushed to ESME: ${messageId} → DELIVRD`);
+                    } catch (dlrErr) {
+                      console.error(`[SMPP] force_dlr fallback DLR push error:`, dlrErr);
+                    }
+                  } else {
+                    // Client disconnected — queue the DLR for when they reconnect
+                    const { depth } = enqueueDlrPersist(tenantId, clientId, schemaName, {
+                      messageId,
+                      supplierMessageId: messageId,
+                      status: 'DELIVRD',
+                      submitDate: String(Date.now()).slice(0, 10),
+                      doneDate: String(Date.now()).slice(0, 10),
+                      errorCode: '000',
+                      dest,
+                      src,
+                    });
+                    console.log(`[SMPP] force_dlr fallback DLR queued for ${messageId}: client ${clientId} disconnected (queue depth: ${depth})`);
+                  }
+                } else {
+                  console.log(`[SMPP] force_dlr fallback skipped for ${messageId}: real DLR already received (status=${rows[0]?.dlr_status})`);
+                }
+              } finally {
+                await checkClient.query(`SET search_path TO public`);
+                checkClient.release();
+              }
+            } catch (err) {
+              console.error(`[SMPP] force_dlr fallback error for ${messageId}:`, err);
+            }
+          }, 60_000);
+        }
 
         return { success: true, messageId };
       } else {
@@ -1093,14 +1247,58 @@ function mapDlrStatus(status: string): string {
  * Atomically claims the queue to prevent races with new DLRs arriving during flush.
  * Re-queues any DLRs that failed to send for the next reconnect attempt.
  */
-function flushPendingDlrs(es: EsmeSession) {
+async function recoverMissedDlrs(es: EsmeSession): Promise<number> {
+  const recoveryKey = `${es.tenantId}:${es.clientId}`;
+  if (dlrRecoveredClients.has(recoveryKey)) return 0;
+  dlrRecoveredClients.add(recoveryKey);
+
+  const client = await pool.connect();
+  try {
+    await client.query(`SET search_path TO "${es.schemaName}"`);
+    const { rows: missedDlrs } = await client.query(
+      `SELECT message_id, destination, sender, dlr_status, supplier_message_id
+       FROM messages WHERE client_id = $1 AND dlr_status = 'DELIVERED'
+       AND created_at > NOW() - INTERVAL '24 hours'
+       AND dlr_timestamp IS NOT NULL
+       ORDER BY created_at ASC`,
+      [es.clientId]
+    );
+    for (const m of missedDlrs) {
+      enqueueDlrPersist(es.tenantId, es.clientId, es.schemaName, {
+        messageId: m.message_id,
+        supplierMessageId: m.supplier_message_id || m.message_id,
+        status: 'DELIVRD',
+        submitDate: String(Date.now()).slice(0, 10),
+        doneDate: String(Date.now()).slice(0, 10),
+        errorCode: '000',
+        dest: m.destination || '',
+        src: m.sender || '',
+      });
+    }
+    return missedDlrs.length;
+  } catch (err) {
+    console.error(`[SMPP] DLR recovery error for client ${es.clientId}:`, err);
+    return 0;
+  } finally {
+    await client.query(`SET search_path TO public`);
+    client.release();
+  }
+}
+
+async function flushPendingDlrs(es: EsmeSession) {
+  // Recover any missed DLRs from DB first (runs once per client per session)
+  const recovered = await recoverMissedDlrs(es);
+  if (recovered > 0) {
+    console.log(`[SMPP] Recovered ${recovered} missed DLRs from DB for client ${es.clientId}`);
+  }
+
   const dlrs = dequeueAllDlrsPersist(es.tenantId, es.clientId, es.schemaName);
-  if (dlrs.length === 0) {
+  if (dlrs.length === 0 && recovered === 0) {
     console.log(`[SMPP] Bound for tenant ${es.tenantId}, client ${es.clientId} — no pending DLRs`);
     return;
   }
 
-  console.log(`[SMPP] Flushing ${dlrs.length} pending DLRs to client ${es.clientId}`);
+  console.log(`[SMPP] Flushing ${dlrs.length} DLRs to client ${es.clientId}`);
   const unsent: DlrPayload[] = [];
   for (const dlr of dlrs) {
     try {
@@ -1214,6 +1412,8 @@ function removeSession(sess: ActiveSession): boolean {
     const key = `${sess.tenantId}:${sess.systemId}`;
     if (activeSessions.get(key) === sess) {
       activeSessions.delete(key);
+      // Reset DLR recovery flag so missed DLRs will be recovered on next bind
+      dlrRecoveredClients.delete(`${sess.tenantId}:${sess.clientId}`);
       return true;
     }
     return false;

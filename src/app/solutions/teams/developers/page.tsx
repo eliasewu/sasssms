@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "For Developers — RESTful SMS API, SMPP v3.4 & Webhooks | Net2APP",
   description: "Developer-first SMS platform with clean RESTful APIs, full SMPP v3.4 protocol support, and webhook-based DLR callbacks. Integrate SMS, Voice OTP, RCS, WhatsApp, and Telegram into any application.",

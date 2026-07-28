@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "SMS Solutions for Nonprofits — Donation Campaigns & Volunteer Alerts | Net2APP",
   description: "Donation campaign SMS, volunteer coordination, event notifications, and impact updates for nonprofit organizations reaching supporters directly on mobile.",

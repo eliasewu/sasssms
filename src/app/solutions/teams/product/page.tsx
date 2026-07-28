@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "For Product Teams — Voice OTP, In-App Messaging & API-First Design | Net2APP",
   description: "Add communication features to your product with a single API integration. SMS, Voice OTP, WhatsApp, and Telegram — all through one platform with multi-tenant architecture.",

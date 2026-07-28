@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+
 export const metadata: Metadata = {
   title: "SMS Gateway for Startups — Pay-as-You-Go, No Setup Fees | Net2APP",
   description:

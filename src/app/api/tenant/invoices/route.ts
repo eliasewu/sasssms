@@ -51,8 +51,8 @@ export async function POST(request: Request) {
     msgResult = await tenantQuery(
       tenant.schemaName,
       `SELECT COUNT(*) as msg_count,
-              COALESCE(SUM(CAST(cost AS DECIMAL)), 0) as total_revenue,
-              COALESCE(SUM(CAST(cost AS DECIMAL)), 0) as total_cost
+              COALESCE(SUM(CAST(COALESCE(supplier_cost, '0') AS DECIMAL)), 0) as total_revenue,
+              COALESCE(SUM(CAST(COALESCE(supplier_cost, '0') AS DECIMAL)), 0) as total_cost
        FROM messages WHERE supplier_id = $1 AND created_at >= $2 AND created_at <= $3`,
       [supplierId, periodStart, periodEnd]
     );
@@ -62,8 +62,10 @@ export async function POST(request: Request) {
 
   const totalRevenue = parseFloat(msgResult.rows[0].total_revenue) || 0;
   const totalCost = parseFloat(msgResult.rows[0].total_cost) || 0;
-  const profit = totalRevenue - totalCost; // profit = client_rate - supplier_rate
-  const amount = clientId ? totalRevenue : totalCost;
+  // For client invoices: profit = client_rate - supplier_cost
+  // For supplier invoices: profit = supplier_cost (their earnings)
+  const profit = clientId ? (totalRevenue - totalCost) : totalRevenue;
+  const amount = totalRevenue;
   const tax = amount * ((taxRate || 0) / 100);
   const totalAmount = amount + tax;
   const invoiceNumber = "INV-" + Date.now() + "-" + (clientId || supplierId);

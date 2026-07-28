@@ -12,7 +12,7 @@ interface SmsInbox {
 }
 
 async function getInboxMessages(): Promise<SmsInbox[]> {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const tokenCookie = cookieStore.get("tenant_token");
   if (!tokenCookie) return [];
 

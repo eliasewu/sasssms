@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "For Marketing Teams — SMS Campaigns, RCS & Audience Segmentation | Net2APP",
   description: "Run SMS marketing campaigns with powerful segmentation, personalization, and analytics. Use RCS rich messaging for branded campaigns with images and interactive buttons.",

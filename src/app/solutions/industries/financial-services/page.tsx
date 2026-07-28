@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "SMS Solutions for Financial Services — Secure OTP & Alerts | Net2APP",
   description: "Secure transaction alerts, Voice OTP for banking authentication, fraud detection notifications, and regulatory compliance messaging for financial institutions.",

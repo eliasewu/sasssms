@@ -245,6 +245,63 @@ const _MCC_LANGUAGE_DATABASE: Record<string, { country: string; language: string
   "659": { country: "South Sudan", language: "English" },
 };
 
+// ── Country Dial Code → MCC Mapping ──
+// When a destination starts with a country dialing code (e.g. +880 for Bangladesh),
+// this map resolves it to the correct MCC (e.g. 470), since the first 3 digits of
+// a phone number are the country code, not the MCC. Country codes can be 1-3 digits.
+// Try longest match first (3 digits → 2 digits → 1 digit).
+const COUNTRY_CODE_TO_MCC: Record<string, string> = {
+  // 3-digit country codes
+  "211": "659", "212": "604", "213": "603", "216": "605", "218": "606", "220": "607",
+  "221": "608", "222": "609", "223": "610", "224": "611", "225": "612", "226": "613",
+  "227": "614", "228": "615", "229": "616", "230": "617", "231": "618", "232": "619",
+  "233": "620", "234": "621", "235": "622", "236": "623", "237": "624", "238": "625",
+  "239": "626", "240": "627", "241": "628", "242": "629", "243": "630", "244": "631",
+  "245": "632", "246": "633", "247": "633", "248": "633", "249": "634", "250": "635",
+  "251": "636", "252": "637", "253": "638", "254": "639", "255": "640", "256": "641",
+  "257": "642", "258": "643", "260": "645", "261": "646", "262": "647", "263": "648",
+  "264": "649", "265": "650", "266": "651", "267": "652", "268": "653", "269": "654",
+  "290": "658", "291": "657", "297": "363", "298": "288", "299": "290",
+  "350": "266", "351": "268", "352": "270", "353": "272", "354": "274", "355": "276",
+  "356": "278", "357": "280", "358": "244", "359": "284",
+  "370": "246", "371": "247", "372": "248", "373": "259", "374": "283", "375": "257",
+  "376": "213", "377": "212", "378": "222", "379": "222",
+  "380": "255", "381": "220", "382": "297", "383": "221",
+  "385": "219", "386": "293", "387": "218", "389": "294",
+  "420": "230", "421": "231", "423": "295",
+  "500": "750", "501": "702", "502": "704", "503": "706", "504": "708", "505": "710",
+  "506": "712", "507": "714", "508": "308", "509": "372",
+  "590": "340", "591": "736", "592": "738", "593": "740", "594": "742", "595": "744",
+  "596": "340", "597": "746", "598": "748", "599": "362",
+  "670": "514", "672": "505", "673": "528", "674": "536", "675": "537", "676": "539",
+  "677": "540", "678": "541", "679": "542",
+  "680": "545", "681": "546", "682": "548", "683": "555", "685": "549",
+  "686": "545", "687": "546", "688": "553", "689": "547",
+  "690": "554", "691": "550", "692": "551",
+  "850": "467", "852": "454", "853": "455", "855": "456", "856": "457",
+  "880": "470", "886": "466",
+  "960": "472", "961": "415", "962": "416", "963": "417", "964": "418", "965": "419",
+  "966": "420", "967": "421", "968": "422",
+  "970": "425", "971": "424", "972": "425", "973": "426", "974": "427", "975": "402",
+  "976": "428", "977": "429",
+  "992": "436", "993": "438", "994": "400", "995": "282", "996": "437", "998": "434",
+  // 2-digit country codes
+  "20": "602", "27": "655",
+  "30": "202", "31": "204", "32": "206", "33": "208", "34": "214",
+  "36": "216", "39": "222",
+  "40": "226", "41": "228", "43": "232", "44": "234", "45": "238",
+  "46": "240", "47": "242", "48": "260", "49": "262",
+  "51": "716", "52": "334", "53": "368", "54": "722", "55": "724",
+  "56": "730", "57": "732", "58": "734",
+  "60": "502", "61": "505", "62": "510", "63": "515", "64": "530",
+  "65": "525", "66": "520",
+  "81": "440", "82": "450", "84": "452", "86": "460",
+  "90": "286", "91": "404", "92": "410", "93": "412", "94": "413",
+  "95": "414", "98": "432",
+  // 1-digit country codes (shared North American Numbering Plan → use USA 310 as default)
+  "1": "310", "7": "250",
+};
+
 // ── Types ──
 export interface VoiceOtpRequest {
   destination: string;
@@ -319,10 +376,29 @@ export interface VoiceOtpResult {
 
 /**
  * Extract MCC (Mobile Country Code) from a phone number.
- * Strips leading + and takes first 3 digits.
+ * 
+ * Strategy:
+ * 1. Strip leading + and non-numeric chars
+ * 2. Try longest-match country dial code → MCC mapping (3-digit first, then 2-digit, then 1-digit)
+ * 3. If matched, return the real MCC (e.g. +880 → 470 for Bangladesh)
+ * 4. Fall back to first 3 digits of the number (works when number already contains real MCC)
  */
 export function extractMcc(destination: string): string {
   const cleaned = destination.replace(/^\+/, "").replace(/[^0-9]/g, "");
+
+  // Try 3-digit country code match
+  const prefix3 = cleaned.slice(0, 3);
+  if (COUNTRY_CODE_TO_MCC[prefix3]) return COUNTRY_CODE_TO_MCC[prefix3];
+
+  // Try 2-digit country code match
+  const prefix2 = cleaned.slice(0, 2);
+  if (COUNTRY_CODE_TO_MCC[prefix2]) return COUNTRY_CODE_TO_MCC[prefix2];
+
+  // Try 1-digit country code match
+  const prefix1 = cleaned.slice(0, 1);
+  if (COUNTRY_CODE_TO_MCC[prefix1]) return COUNTRY_CODE_TO_MCC[prefix1];
+
+  // Fallback: first 3 digits as-is (may be a real MCC already, or unknown)
   return cleaned.slice(0, 3);
 }
 
@@ -334,7 +410,7 @@ export function extractMcc(destination: string): string {
  */
 export function resolveLanguage(destination: string): LanguageResolution {
   const mcc = extractMcc(destination);
-  const entry = MCC_LANGUAGE_DATABASE[mcc];
+  const entry = _MCC_LANGUAGE_DATABASE[mcc];
 
   if (!entry) {
     return {
@@ -528,10 +604,7 @@ export function generateCallSid(): string {
   return `VOTCALL_${ts}_${random}`;
 }
 
-// ── SIP Call Executor Interface ──
-// In production, this would use Asterisk AMI (Asterisk Manager Interface) or SIP
-// to originate calls. The interface is defined here so it can be swapped
-// between a simulator and a real Asterisk connector.
+// ── SIP Call Executor Interface (implemented by AsteriskAmiExecutor) ──
 
 export interface SipCallExecutor {
   originateCall(params: {
@@ -627,7 +700,7 @@ export async function executeVoiceOtpCall(params: {
          SELECT 1 FROM unnest(string_to_array(COALESCE(prefixes,''), ',')) AS pfx
          WHERE $1 LIKE pfx || '%'
        ) ORDER BY id LIMIT 1`,
-      [mcc]
+      ['+' + destination.replace(/^\+/, '')]
     ).catch(() => ({ rows: [] as Record<string,unknown>[] })),
   ]);
   const audioFiles: AudioFile[] = audioResult.rows;
@@ -657,25 +730,9 @@ export async function executeVoiceOtpCall(params: {
     attemptPlaylists = attemptLanguages.map(() => []);
   }
 
-  // ── Fetch supplier's API config (for external HTTP API mode) ──
-  let supplierApiUrl: string | null = null;
-  let supplierApiKey: string | null = null;
-  if (supplierId) {
-    try {
-      const suppResult = await tenantQuery(
-        schemaName,
-        "SELECT api_url, api_key FROM suppliers WHERE id = $1",
-        [supplierId]
-      );
-      if (suppResult.rows.length > 0) {
-        supplierApiUrl = (suppResult.rows[0].api_url as string) || null;
-        supplierApiKey = (suppResult.rows[0].api_key as string) || null;
-      }
-    } catch { /* proceed without */ }
-  }
-
-  // ── 5. Call execution ──
-  const reconnectSchedule = [0, 60, 120];
+  // ── 5. Call execution via Asterisk AMI ──
+  // Retry delays: 0s (first call), 35s (retry 2), 70s (retry 3) — ~30-35s per spec
+  const reconnectSchedule = [0, 35, 70];
   const callAttempts: CallAttempt[] = [];
   let totalDuration = 0;
   let callSuccess = false;
@@ -706,54 +763,8 @@ export async function executeVoiceOtpCall(params: {
 
     let sipResult: { success: boolean; callSid: string; duration: number; status: "ANSWERED"|"NO_ANSWER"|"BUSY"|"FAILED"; errorMessage?: string };
 
-    // Mode A: External Voice OTP HTTP API
-    if (supplierApiUrl) {
-      try {
-        const audioDir = attPlaylist.length > 0 && attPlaylist[0].fileUrl
-          ? attPlaylist[0].fileUrl.replace(/\/[^/]+$/, "") : "/audio/builtin";
-        const greetingFile = attPlaylist.find(p => p.type === "greeting");
-
-        const apiPayload: Record<string, unknown> = {
-          src_num: sender,
-          dst_num: destination,
-          message: otpCode,
-          internal_message_id: messageId || callSid,
-          src_sip_address: activeSip ? `${activeSip.sipHost || "127.0.0.1"}:${activeSip.sipPort || 5060}` : "127.0.0.1:5060",
-          dst_sip_address: activeSip ? `${activeSip.sipHost || "127.0.0.1"}:${activeSip.sipPort || 5060}` : "127.0.0.1:5060",
-          play_count: playCount,
-          play_sleep_ms: 0,
-          reconnect_schedule: "0,1,2",
-          dlr_send: true,
-          dlr_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://net2app.com"}/api/tenant/voice-otp-dlr-callback?message_id=${messageId || callSid}&supplier_id=${supplierId}&tenant_id=${tenantId}&schema=${encodeURIComponent(schemaName)}&status={{status}}`,
-          audio_files_dir: audioDir,
-          greeting_file: greetingFile?.fileName || "codeismen.mp3",
-          audio_codec: "G729",
-        };
-
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000);
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (supplierApiKey) headers["Authorization"] = `Bearer ${supplierApiKey}`;
-
-        const apiRes = await fetch(supplierApiUrl, {
-          method: "POST", headers, body: JSON.stringify(apiPayload), signal: controller.signal,
-        });
-        clearTimeout(timeout);
-
-        sipResult = {
-          success: apiRes.ok, callSid: callSid, duration: 0,
-          status: apiRes.ok ? "ANSWERED" : "FAILED",
-          errorMessage: apiRes.ok ? undefined : `API returned ${apiRes.status}`,
-        };
-      } catch (err) {
-        sipResult = {
-          success: false, callSid: callSid, duration: 0, status: "FAILED",
-          errorMessage: `External API error: ${(err as Error).message}`,
-        };
-      }
-    }
-    // Mode B: Built-in Asterisk AMI or simulation fallback
-    else if (activeSip) {
+    // Asterisk AMI call execution (SIP config required)
+    if (activeSip) {
       try {
         sipResult = await amiExecutor.originateCall({
           destination,
@@ -763,22 +774,16 @@ export async function executeVoiceOtpCall(params: {
           timeout: activeSip.timeout || 30,
           audioPlaylist: attPlaylist,
         });
-      } catch {
-        const roll = Math.random();
+      } catch (err) {
         sipResult = {
-          success: roll > 0.3, callSid: generateCallSid(),
-          duration: roll > 0.3 ? Math.floor(3 + Math.random() * 22) : 0,
-          status: roll > 0.3 ? "ANSWERED" : (roll > 0.15 ? "NO_ANSWER" : "FAILED"),
-          errorMessage: "AMI unavailable — using simulation fallback",
+          success: false, callSid: generateCallSid(), duration: 0, status: "FAILED",
+          errorMessage: `Asterisk AMI error: ${(err as Error).message}`,
         };
       }
     } else {
-      const roll = Math.random();
       sipResult = {
-        success: roll > 0.3, callSid: generateCallSid(),
-        duration: roll > 0.3 ? Math.floor(3 + Math.random() * 22) : 0,
-        status: roll > 0.3 ? "ANSWERED" : (roll > 0.15 ? "NO_ANSWER" : "FAILED"),
-        errorMessage: roll > 0.3 ? undefined : "No SIP config — fallback simulation",
+        success: false, callSid: generateCallSid(), duration: 0, status: "FAILED",
+        errorMessage: "No SIP config configured — configure voice_otp_sip_config or use Asterisk AMI",
       };
     }
 
@@ -822,78 +827,4 @@ export async function executeVoiceOtpCall(params: {
   };
 }
 
-/**
- * Simulated SIP call executor for testing/development.
- * In production, replace with real Asterisk AMI integration.
- */
-export class SimulatedSipCallExecutor implements SipCallExecutor {
-  private successRate: number;
-  private minDuration: number;
-  private maxDuration: number;
 
-  constructor(successRate = 0.7, minDuration = 3, maxDuration = 25) {
-    this.successRate = successRate;
-    this.minDuration = minDuration;
-    this.maxDuration = maxDuration;
-  }
-
-  async originateCall(params: {
-    destination: string;
-    callerId: string;
-    sipHost: string;
-    sipPort: number;
-    sipUsername: string;
-    sipPassword: string;
-    timeout: number;
-    audioPlaylist: AudioPlaylistItem[];
-  }): Promise<{
-    success: boolean;
-    callSid: string;
-    duration: number;
-    status: "ANSWERED" | "NO_ANSWER" | "BUSY" | "FAILED";
-    errorMessage?: string;
-  }> {
-    const callSid = generateCallSid();
-    
-    // Simulate network latency
-    await new Promise((r) => setTimeout(r, 500 + Math.random() * 1500));
-
-    const roll = Math.random();
-    
-    if (roll < this.successRate) {
-      const duration = Math.floor(
-        this.minDuration + Math.random() * (this.maxDuration - this.minDuration)
-      );
-      return {
-        success: true,
-        callSid,
-        duration,
-        status: "ANSWERED",
-      };
-    } else if (roll < this.successRate + 0.15) {
-      return {
-        success: false,
-        callSid,
-        duration: 0,
-        status: "NO_ANSWER",
-        errorMessage: "No answer after timeout",
-      };
-    } else if (roll < this.successRate + 0.25) {
-      return {
-        success: false,
-        callSid,
-        duration: 0,
-        status: "BUSY",
-        errorMessage: "Line busy",
-      };
-    } else {
-      return {
-        success: false,
-        callSid,
-        duration: 0,
-        status: "FAILED",
-        errorMessage: "SIP connection failed",
-      };
-    }
-  }
-}

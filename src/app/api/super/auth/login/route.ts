@@ -3,9 +3,16 @@ import { db } from "@/db";
 import { superAdmins } from "@/db/schema";
 import { verifyPassword, createToken } from "@/lib/auth";
 import { eq } from "drizzle-orm";
+import { authLimiter, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   try {
+    // Rate limit: 10 attempts per IP per minute
+    const ip = getClientIp(request);
+    if (authLimiter.check(ip)) {
+      return NextResponse.json({ error: "Too many attempts. Please try again later." }, { status: 429 });
+    }
+
     const body = await request.json();
     const { email, password } = body;
 

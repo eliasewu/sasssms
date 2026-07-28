@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Mass Texting — Bulk SMS Broadcast with Intelligent Routing | Net2APP",
   description: "Broadcast SMS campaigns to thousands of recipients with high throughput. Net2APP's intelligent routing engine automatically selects the best supplier for each destination. Includes DLR tracking and real-time analytics.",

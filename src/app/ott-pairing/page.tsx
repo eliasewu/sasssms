@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+
 export const metadata: Metadata = {
   title: "OTT Device Pairing — WhatsApp & Telegram Device Connection | Net2APP",
   description:

@@ -231,10 +231,17 @@ export class AsteriskAmiClient {
       Channel: params.channel,
       CallerID: params.callerId,
       Timeout: String(params.timeout * 1000), // milliseconds
-      Application: params.application || "Wait",
-      Data: params.data || "1",
       Async: "true",
     };
+
+    // Default to Answer if no application specified (answers the channel immediately,
+    // producing ANSWERED status with DialEnd → the Voice OTP engine detects success)
+    if (params.application) {
+      origParams.Application = params.application;
+      if (params.data != null) origParams.Data = params.data;
+    } else {
+      origParams.Application = "Answer";
+    }
 
     // Set custom variables
     if (params.variable) {
@@ -436,6 +443,10 @@ export class AsteriskAmiExecutor implements SipCallExecutor {
    * Originate a voice OTP call via Asterisk AMI.
    * If tenant has their own SIP server configured, connects to that server's AMI.
    * Otherwise falls back to the local Asterisk AMI.
+   * 
+   * When an audioPlaylist is provided, uses Playback to play the concatenated
+   * audio files (greeting + OTP digits). Falls back to Answer when the playlist
+   * is empty (silent call — just answers and hangs up).
    */
   async originateCall(params: {
     destination: string;
@@ -473,12 +484,28 @@ export class AsteriskAmiExecutor implements SipCallExecutor {
 
       const channel = buildChannel(params);
 
+      // ── Build Playback data string from audio playlist ──
+      // Converts AudioPlaylistItem[] → "voice-otp/greeting_bangla&voice-otp/digit_2&..."
+      // Asterisk Playback auto-answers the channel and plays each file sequentially.
+      // Falls back to Answer if playlist is empty.
+      let originateApp: string | undefined;
+      let originateData: string | undefined;
+      if (params.audioPlaylist.length > 0) {
+        const soundPaths = params.audioPlaylist.map((item) => {
+          // Strip any file extension — Asterisk adds format-specific extension automatically
+          const name = item.fileName.replace(/\.[^.]+$/, "");
+          return `voice-otp/${name}`;
+        });
+        originateApp = "Playback";
+        originateData = soundPaths.join("&");
+      }
+
       const result = await ami.originate({
         channel,
         callerId: params.callerId,
         timeout: params.timeout,
-        application: "Wait",
-        data: "1",
+        application: originateApp,
+        data: originateData,
         variable: {
           VOTP_DEST: params.destination,
           VOTP_LANG: "en",

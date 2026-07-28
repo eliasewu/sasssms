@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useConfirmModal } from "@/components/confirm-modal";
 import CopyButton from "@/components/copy-button";
 import { useColumnFilters, FilterRow, FilterToggle, type ColumnFilterDef } from "@/components/column-filters";
+import { SkeletonTable } from "@/components/loading-states";
+import { genCode, genId, genPwd } from "@/lib/id-generators";
 
 const CONNECTION_TYPES = ["SMPP", "HTTP API", "Email", "WhatsApp OTT", "Telegram OTT", "Voice OTP", "Local Bypass", "RCS", "Flash SMS"];
 const SMPP_VERSIONS = ["3.3", "3.4", "5.0"];
@@ -17,9 +19,6 @@ function bindTypeLabel(b: string): string {
   return b;
 }
 const CONNECTION_MODES = ["CLIENT", "SERVER"];
-
-function genId(): string { return "gsm_" + Math.random().toString(36).slice(2, 8); }
-function genPwd(): string { return Array.from({length: 12}, () => "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 56)]).join(""); }
 
 interface Supplier {
   id: number; supplier_code: string; name: string; company_name: string; contact_person: string;
@@ -35,6 +34,7 @@ interface Connector { id: number; name: string; type: string; provider: string; 
 export default function SupplierPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [showPwd, setShowPwd] = useState(false);
@@ -55,6 +55,7 @@ export default function SupplierPage() {
   });
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
       const [sr, cr] = await Promise.all([
         fetch("/api/tenant/suppliers", { cache: "no-store" }).then(r => r.json()),
@@ -64,6 +65,8 @@ export default function SupplierPage() {
       setConnectors(cr.connectors || []);
     } catch (err) {
       console.error("Failed to load suppliers:", err);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -226,7 +229,16 @@ export default function SupplierPage() {
         <div><h2 className="text-xl font-bold text-slate-800">Supplier Management</h2><p className="text-sm text-slate-500">{suppliers.length} suppliers configured</p></div>
         <div className="flex items-center gap-3">
           <FilterToggle showFilters={showFilters} hasActive={hasActive} activeCount={activeFilterCount} onClick={toggle} />
-          <button onClick={() => { setShowForm(true); setEditing(null); setShowPwd(false); setError(""); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium">+ Add Supplier</button>
+          <button onClick={() => {
+            setShowForm(true); setEditing(null); setShowPwd(false); setError("");
+            // Auto-generate values for new supplier
+            setForm(prev => ({
+              ...prev,
+              supplierCode: prev.supplierCode || genCode(),
+              systemId: prev.systemId || genId(),
+              password: prev.password || genPwd(),
+            }));
+          }} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium">+ Add Supplier</button>
         </div>
       </div>
 
@@ -244,7 +256,9 @@ export default function SupplierPage() {
             <section className="bg-slate-50 rounded-xl p-5">
               <h4 className="font-semibold mb-4">🏢 Company Information</h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <F label="Supplier Code" value={form.supplierCode} onChange={v => setForm({...form, supplierCode: v})} />
+                <F label="Supplier Code" value={form.supplierCode} onChange={v => setForm({...form, supplierCode: v})}
+                  suffix={<button type="button" onClick={() => setForm({...form, supplierCode: genCode()})} className="shrink-0 px-2 py-0.5 text-xs font-medium rounded bg-slate-600 text-white hover:bg-slate-700 transition" title="Generate random code">🎲</button>}
+                />
                 <F label="Company Name *" value={form.name} onChange={v => setForm({...form, name: v})} required />
                 <F label="Contact Person" value={form.contactPerson} onChange={v => setForm({...form, contactPerson: v})} />
                 <F label="Email" type="email" value={form.email} onChange={v => setForm({...form, email: v})} />
@@ -278,8 +292,17 @@ export default function SupplierPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {!form.inboundMode && <F label="SMPP Host *" value={form.host} onChange={v => setForm({...form, host: v})} required={form.connectionMode === "CLIENT"} placeholder="145.239.1.103" />}
                   <F label="Port" type="number" value={form.port} onChange={v => setForm({...form, port: v})} disabled={form.inboundMode} />
-                  <F label={form.inboundMode ? "System ID (Username)" : "System ID"} value={form.systemId} onChange={v => setForm({...form, systemId: v})} placeholder={form.inboundMode ? "gsm_a1b2c3" : undefined} suffix={form.inboundMode ? <button type="button" onClick={() => setForm({...form, systemId: genId()})} className="shrink-0 px-3 py-2 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 transition-colors" title="Generate random username">🎲 Generate</button> : undefined} />
-                  <F label="Password" type={showPwd ? "text" : "password"} value={form.password} onChange={v => setForm({...form, password: v})} placeholder={form.inboundMode ? "12-char random" : undefined} suffix={<div className="flex gap-1">{form.inboundMode && <button type="button" onClick={() => setForm({...form, password: genPwd()})} className="shrink-0 px-2.5 py-0.5 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 transition-colors" title="Generate random password">🎲 Gen</button>}{form.password && form.password !== "••••••••" && <CopyButton value={form.password} />}<button type="button" onClick={() => setShowPwd(!showPwd)} className="shrink-0 px-2 py-0.5 text-xs rounded border border-slate-300 hover:bg-slate-100 transition-colors" title={showPwd ? "Hide password" : "Show password"}>{showPwd ? "🙈" : "👁️"}</button></div>} />
+                  <F label={form.inboundMode ? "System ID (Username)" : "System ID"} value={form.systemId} onChange={v => setForm({...form, systemId: v})} placeholder={form.inboundMode ? "gsm_a1b2c3" : undefined}
+                    suffix={<button type="button" onClick={() => setForm({...form, systemId: genId()})} className="shrink-0 px-2 py-0.5 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 transition-colors" title="Generate random username">🎲</button>}
+                  />
+                  <F label="Password" type={showPwd ? "text" : "password"} value={form.password} onChange={v => setForm({...form, password: v})} placeholder={form.inboundMode ? "12-char random" : undefined}
+                    suffix={
+                      <div className="flex gap-1">
+                        <button type="button" onClick={() => setForm({...form, password: genPwd()})} className="shrink-0 px-2 py-0.5 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 transition-colors" title="Generate random password">🎲 Gen</button>
+                        {form.password && form.password !== "••••••••" && <CopyButton value={form.password} />}
+                        <button type="button" onClick={() => setShowPwd(!showPwd)} className="shrink-0 px-2 py-0.5 text-xs rounded border border-slate-300 hover:bg-slate-100 transition-colors" title={showPwd ? "Hide password" : "Show password"}>{showPwd ? "🙈" : "👁️"}</button>
+                      </div>
+                    } />
                   <div>
                     <label className="block text-sm font-medium mb-1">System Type</label>
                     <select value={form.systemType} onChange={e => setForm({...form, systemType: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
@@ -472,6 +495,9 @@ export default function SupplierPage() {
       )}
 
       {/* Supplier Table */}
+      {loading ? (
+        <SkeletonTable cols={8} rows={8} />
+      ) : (
       <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-slate-50">
@@ -537,6 +563,7 @@ export default function SupplierPage() {
         </table>
         {hasActive && <div className="px-4 py-2 border-t bg-slate-50 text-xs text-slate-500">Showing {filteredSuppliers.length} of {suppliers.length} suppliers</div>}
       </div>
+      )}
       {confirmModal}
 
       {/* ── Connection Test Results Modal ── */}

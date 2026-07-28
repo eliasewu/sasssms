@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Cross-Sell & Upsell — Behavior-Triggered SMS Messaging | Net2APP",
   description: "Trigger SMS messages based on customer behavior — purchase history, browsing patterns, and engagement. Send personalized product recommendations and upsell offers at the right moment.",

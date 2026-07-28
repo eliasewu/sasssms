@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "For Data Engineering — SMS Data Pipelines & DLR Analytics | Net2APP",
   description: "Build data pipelines around your SMS infrastructure. Stream message logs, DLR reports, and analytics data into your data warehouse, BI tools, and custom dashboards.",

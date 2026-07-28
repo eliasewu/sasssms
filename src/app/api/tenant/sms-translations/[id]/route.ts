@@ -19,7 +19,7 @@ export async function GET(
       ) as pool_items,
       COALESCE(
         (SELECT json_agg(json_build_object('id', ta.id, 'clientId', ta.client_id, 'supplierId', ta.supplier_id, 'priority', ta.priority, 'isActive', ta.is_active))
-         FROM translation_assignments ta WHERE ta.profile_id = tp.id), '[]'::json
+         FROM translation_assignments ta WHERE ta.profile_id = tp.id AND ta.is_active = true), '[]'::json
       ) as assignments
     FROM translation_profiles tp WHERE tp.id = $1`,
     [id]

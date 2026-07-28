@@ -10,6 +10,7 @@ interface DlrOverview {
   delivered: number;
   failed: number;
   pending: number;
+  awaiting_dlr: number;
 }
 
 interface DlrSummary {
@@ -67,6 +68,13 @@ interface DlrStats {
   suppliers: SupplierDlr[];
   recentMessages: RecentMessage[];
   hourlyTrend: HourlyTrend[];
+  dlrHealth: {
+    total_with_dlr: number;
+    awaiting_real_dlr: number;
+    force_dlr_delivered: number;
+    real_dlr_delivered: number;
+    real_dlr_failed: number;
+  };
   periodHours: number;
 }
 
@@ -74,6 +82,7 @@ const statusBadge = (status: string | null) => {
   const s = (status || "PENDING").toUpperCase();
   if (s === "DELIVERED") return { bg: "bg-green-100", text: "text-green-700", icon: "✅", label: "DELIVERED" };
   if (s === "FAILED") return { bg: "bg-red-100", text: "text-red-700", icon: "❌", label: "FAILED" };
+  if (s === "SENT") return { bg: "bg-blue-100", text: "text-blue-700", icon: "📤", label: "SENT" };
   return { bg: "bg-amber-100", text: "text-amber-700", icon: "⏳", label: "PENDING" };
 };
 
@@ -177,9 +186,9 @@ export default function DlrStatusPage() {
           <p className="text-2xl font-bold text-green-600">{stats?.overview.delivered || 0}</p>
           <p className="text-xs text-slate-500 mt-1">✅ Delivered</p>
         </div>
-        <div className="bg-white rounded-xl border p-4 text-center shadow-sm ring-2 ring-amber-200">
-          <p className="text-2xl font-bold text-amber-600">{stats?.overview.pending || 0}</p>
-          <p className="text-xs text-slate-500 mt-1">⏳ Pending</p>
+        <div className="bg-white rounded-xl border p-4 text-center shadow-sm ring-2 ring-blue-200">
+          <p className="text-2xl font-bold text-blue-600">{stats?.overview.pending || 0}</p>
+          <p className="text-xs text-slate-500 mt-1">📤 Awaiting DLR</p>
         </div>
         <div className="bg-white rounded-xl border p-4 text-center shadow-sm ring-2 ring-red-200">
           <p className="text-2xl font-bold text-red-600">{stats?.overview.failed || 0}</p>
@@ -200,6 +209,80 @@ export default function DlrStatusPage() {
           <p className="text-xs text-slate-500 mt-1">Profit</p>
         </div>
       </div>
+
+      {/* DLR Health Indicator */}
+      {stats?.dlrHealth && (stats.dlrHealth.total_with_dlr > 0 || stats.dlrHealth.awaiting_real_dlr > 0) && (
+        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b bg-gradient-to-r from-slate-50 to-blue-50">
+            <h3 className="font-semibold text-slate-800">🔍 DLR Health</h3>
+            <p className="text-xs text-slate-500">Real DLR receipt vs instant force_dlr delivery breakdown</p>
+          </div>
+          <div className="p-5">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              {/* Awaiting Real DLR */}
+              <div className={`rounded-xl border-2 p-4 text-center ${stats.dlrHealth.awaiting_real_dlr > 0 ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white'}`}>
+                <p className="text-3xl font-bold text-blue-600">{stats.dlrHealth.awaiting_real_dlr}</p>
+                <p className="text-xs text-slate-600 mt-1 font-medium">📤 Awaiting Real DLR</p>
+                <p className="text-[10px] text-slate-400 mt-1">Sent, waiting for GSM delivery receipt</p>
+              </div>
+
+              {/* Real DLR Delivered */}
+              <div className={`rounded-xl border-2 p-4 text-center ${stats.dlrHealth.real_dlr_delivered > 0 ? 'border-green-300 bg-green-50' : 'border-slate-200 bg-white'}`}>
+                <p className="text-3xl font-bold text-green-600">{stats.dlrHealth.real_dlr_delivered}</p>
+                <p className="text-xs text-slate-600 mt-1 font-medium">✅ Real DLR Received</p>
+                <p className="text-[10px] text-slate-400 mt-1">Actual GSM delivery confirmation</p>
+              </div>
+
+              {/* Force DLR Delivered */}
+              <div className={`rounded-xl border-2 p-4 text-center ${stats.dlrHealth.force_dlr_delivered > 0 ? 'border-purple-300 bg-purple-50' : 'border-slate-200 bg-white'}`}>
+                <p className="text-3xl font-bold text-purple-600">{stats.dlrHealth.force_dlr_delivered}</p>
+                <p className="text-xs text-slate-600 mt-1 font-medium">⚡ Force DLR</p>
+                <p className="text-[10px] text-slate-400 mt-1">Instant delivery (no real receipt)</p>
+              </div>
+
+              {/* Failed */}
+              <div className={`rounded-xl border-2 p-4 text-center ${stats.dlrHealth.real_dlr_failed > 0 ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`}>
+                <p className="text-3xl font-bold text-red-600">{stats.dlrHealth.real_dlr_failed}</p>
+                <p className="text-xs text-slate-600 mt-1 font-medium">❌ Failed</p>
+                <p className="text-[10px] text-slate-400 mt-1">Delivery failed or rejected</p>
+              </div>
+
+              {/* Health Score */}
+              <div className="rounded-xl border-2 border-slate-200 bg-white p-4 text-center">
+                <p className="text-xs text-slate-500 mb-1">DLR Health Score</p>
+                {(() => {
+                  const totalResolved = stats.dlrHealth.real_dlr_delivered + stats.dlrHealth.force_dlr_delivered + stats.dlrHealth.real_dlr_failed;
+                  const total = totalResolved + stats.dlrHealth.awaiting_real_dlr;
+                  if (total === 0) return <p className="text-2xl font-bold text-slate-400">—</p>;
+                  const pct = Math.round((totalResolved / total) * 100);
+                  const color = pct >= 90 ? 'text-green-600' : pct >= 50 ? 'text-amber-600' : 'text-red-600';
+                  const barColor = pct >= 90 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500';
+                  return (
+                    <>
+                      <p className={`text-2xl font-bold ${color}`}>{pct}%</p>
+                      <div className="w-full bg-slate-200 rounded-full h-2 mt-2">
+                        <div className={`h-2 rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1">{totalResolved} resolved / {total} total</p>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Visual flow diagram */}
+            <div className="mt-4 flex items-center justify-center gap-2 text-xs text-slate-500">
+              <span className="flex items-center gap-1 px-2 py-1 rounded bg-blue-100 text-blue-700">📤 SENT → Awaiting DLR</span>
+              <span>→</span>
+              <span className="flex items-center gap-1 px-2 py-1 rounded bg-green-100 text-green-700">✅ DELIVERED (real DLR)</span>
+              <span className="text-slate-300">|</span>
+              <span className="flex items-center gap-1 px-2 py-1 rounded bg-purple-100 text-purple-700">⚡ DELIVERED (force)</span>
+              <span className="text-slate-300">|</span>
+              <span className="flex items-center gap-1 px-2 py-1 rounded bg-red-100 text-red-700">❌ FAILED</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Supplier DLR Breakdown */}
       <div className="bg-white rounded-xl border shadow-sm overflow-hidden">

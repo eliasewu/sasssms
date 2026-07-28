@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+
 export const metadata: Metadata = {
   title: "WhatsApp & Telegram Business API — Multi-Device Messaging Gateway | Net2APP",
   description:

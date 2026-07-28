@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "For Customer Experience — Omnichannel SMS & WhatsApp Engagement | Net2APP",
   description: "Deliver seamless customer experiences across SMS, Voice OTP, WhatsApp, and Telegram. Automate engagement journeys, send personalized messages, and collect feedback.",

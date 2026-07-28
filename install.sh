@@ -132,7 +132,7 @@ chown -R root:root "$APP_DIR"
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/app_db
 JWT_SECRET=net2app-production-change-me-2024
 NODE_ENV=production
-PORT=5555
+PORT=5556
 NEXT_PUBLIC_TAWKTO_ID=646f1d5874285f0ec46d8d19
 EOF
 
@@ -202,7 +202,7 @@ systemctl enable net2app.service 2>/dev/null || true
 cat > "$APP_DIR/health-check.sh" << 'HCSCRIPT'
 #!/bin/bash
 LOG_FILE="/var/log/net2app-health.log"
-APP_PORT=5555
+APP_PORT=5556
 LOCK_FILE="/tmp/net2app-health.lock"
 exec 200>"$LOCK_FILE"
 /usr/bin/flock -n 200 || exit 0
@@ -272,7 +272,7 @@ server {
     ssl_ciphers HIGH:!aNULL:!MD5;
     client_max_body_size 100M;
     location / {
-        proxy_pass http://127.0.0.1:5555;
+        proxy_pass http://127.0.0.1:5556;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -282,7 +282,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 300s;
     }
-    location /api/webhooks/ { proxy_pass http://127.0.0.1:5555; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+    location /api/webhooks/ { proxy_pass http://127.0.0.1:5556; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
 }
 NGX
 
@@ -326,11 +326,11 @@ systemctl is-active postgresql 2>/dev/null && echo "    ✅ PostgreSQL" || echo 
 systemctl is-active redis-server 2>/dev/null && echo "    ✅ Redis" || echo "    ❌ Redis"
 systemctl is-active nginx 2>/dev/null && echo "    ✅ Nginx" || echo "    ❌ Nginx"
 systemctl is-enabled net2app.service 2>/dev/null && echo "    ✅ Net2APP (auto-start)" || echo "    ❌ Net2APP (not enabled)"
-ss -tlnp 2>/dev/null | grep -q ":5555 " && echo "    ✅ Port 5555 listening" || echo "    ❌ Port 5555 NOT listening"
+ss -tlnp 2>/dev/null | grep -q ":5556 " && echo "    ✅ Port 5556 listening" || echo "    ❌ Port 5556 NOT listening"
 iptables -I INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
 iptables -I INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
 iptables -I INPUT -p tcp --dport 2775 -j ACCEPT 2>/dev/null || true
-iptables -I INPUT -p tcp --dport 5555 -j ACCEPT 2>/dev/null || true
+iptables -I INPUT -p tcp --dport 5556 -j ACCEPT 2>/dev/null || true
 iptables -I INPUT -p udp --dport 5060 -j ACCEPT 2>/dev/null || true
 
 SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
@@ -344,7 +344,7 @@ echo "  Super Admin: https://net2app.com/super"
 echo "  SMPP Port:   2775 (ESME/SMSC)"
 echo "  Voice OTP:   5060 (Asterisk SIP)"
 echo "  AMI Port:    5038 (admin/Telco1988)"
-echo "  App Port:    5555"
+echo "  App Port:    5556"
 echo ""
 echo "  Setup Super Admin:"
 echo "  Key: SETUP_SMS_PLATFORM_2024"

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Optimize Ad Spend — SMS Retargeting & Coupon Delivery | Net2APP",
   description: "Maximize ROI on advertising campaigns with SMS-driven retargeting. Send personalized coupons, exclusive offers, and time-sensitive promotions to warm leads.",

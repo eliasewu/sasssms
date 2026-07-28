@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+
 export const metadata: Metadata = {
   title: "Case Studies — Real-World SMS Gateway Success Stories | Net2APP",
   description:

@@ -32,17 +32,20 @@ export async function POST(request: Request) {
   if (!tenant) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  const { name, mcc, mnc, regexPattern, otpGroupIndex, forwardSupplierId, forwardSender, forwardTemplate } = body;
+  const { name, mcc, mnc, regexPattern, otpGroupIndex, forwardSupplierId, forwardSender, forwardTemplate, autoDetect } = body;
 
-  if (!name || !regexPattern) {
-    return NextResponse.json({ error: "name and regexPattern are required" }, { status: 400 });
+  if (!name) {
+    return NextResponse.json({ error: "name is required" }, { status: 400 });
+  }
+  if (!autoDetect && !regexPattern) {
+    return NextResponse.json({ error: "regexPattern is required when auto-detect is off" }, { status: 400 });
   }
 
   const result = await tenantQuery(
     tenant.schemaName,
-    `INSERT INTO otp_extract_rules (name, mcc, mnc, regex_pattern, otp_group_index, forward_supplier_id, forward_sender, forward_template)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-    [name, mcc || null, mnc || null, regexPattern, otpGroupIndex || 1, forwardSupplierId || null, forwardSender || null, forwardTemplate || "{otp}"]
+    `INSERT INTO otp_extract_rules (name, mcc, mnc, regex_pattern, otp_group_index, forward_supplier_id, forward_sender, forward_template, auto_detect)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [name, mcc || null, mnc || null, regexPattern || "(\\d{4,8})", otpGroupIndex || 1, forwardSupplierId || null, forwardSender || null, forwardTemplate || "{otp}", autoDetect === true]
   );
 
   return NextResponse.json({ rule: result.rows[0] }, { status: 201 });

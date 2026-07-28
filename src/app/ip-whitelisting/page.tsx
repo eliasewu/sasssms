@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+
 export const metadata: Metadata = {
   title: "IP Whitelisting — API Security & Access Control | Net2APP",
   description:

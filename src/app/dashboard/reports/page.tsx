@@ -34,8 +34,8 @@ async function getReportData(
   byConnectionType: { connection_type: string; count: number }[];
   dlrSummary: { dlr_status: string; count: number }[];
 }> {
-  const cookieStore = cookies();
-  const heads = headers();
+  const cookieStore = await cookies();
+  const heads = await headers();
   const host = heads.get("host") || "localhost:3000";
   const protocol =
     heads.get("x-forwarded-proto") ||

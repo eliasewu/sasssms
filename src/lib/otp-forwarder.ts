@@ -35,6 +35,35 @@ interface OtpRule {
   forward_supplier_id: number | null;
   forward_sender: string | null;
   forward_template: string | null;
+  auto_detect: boolean;
+}
+
+/**
+ * Smart OTP auto-detection engine.
+ * Extracts OTP codes from any message content without requiring a regex pattern.
+ * Priority: keyword-contextual codes → standalone 4-8 digit sequences → any digits.
+ */
+function autoDetectOtp(content: string): string | null {
+  const trimmed = content.trim();
+  // 1. Exact 4-8 digit number (e.g., content IS the OTP)
+  if (/^\d{4,8}$/.test(trimmed)) return trimmed;
+  // 2. Numbers near OTP keywords (most reliable)
+  const keywordPatterns = [
+    /(?:otp|password|pin|code|token|one[.\s]?time|verify|login|auth|confirmation)[^0-9]*?(\d{4,8})/i,
+    /(\d{4,8})[^0-9]*?(?:otp|code|pin|is|valid|expires?)/i,
+    /(?:your|the)[^0-9]*(?:otp|code|pin|password)[^0-9]*?(\d{4,8})/i,
+  ];
+  for (const p of keywordPatterns) {
+    const m = content.match(p);
+    if (m && m[1]) return m[1];
+  }
+  // 3. First standalone 4-8 digit number (bounded by non-digits or word boundaries)
+  const simple = content.match(/\b(\d{4,8})\b/);
+  if (simple) return simple[1];
+  // 4. Any 4-8 digit sequence as last resort
+  const anyMatch = content.match(/\d{4,8}/);
+  if (anyMatch) return anyMatch[0];
+  return null;
 }
 
 /**
@@ -88,19 +117,27 @@ async function processTenantInbox(
       for (const rule of rules as OtpRule[]) {
         if (!rule.forward_supplier_id) continue; // skip rules without forwarding
 
-        // Try to match the regex pattern
-        let regex: RegExp;
-        try {
-          regex = new RegExp(rule.regex_pattern, "gm");
-        } catch {
-          // Invalid regex — skip this rule
-          continue;
+        let extractedOtp: string | null = null;
+
+        if (rule.auto_detect) {
+          // ── Auto-detect mode: smart OTP extraction without regex ──
+          extractedOtp = autoDetectOtp(msg.content);
+        } else {
+          // ── Custom regex mode: use the user-defined pattern ──
+          let regex: RegExp;
+          try {
+            regex = new RegExp(rule.regex_pattern, "gm");
+          } catch {
+            // Invalid regex — skip this rule
+            continue;
+          }
+          const match = regex.exec(msg.content);
+          if (match && match[rule.otp_group_index]) {
+            extractedOtp = match[rule.otp_group_index];
+          }
         }
 
-        const match = regex.exec(msg.content);
-        if (!match || !match[rule.otp_group_index]) continue;
-
-        const extractedOtp = match[rule.otp_group_index];
+        if (!extractedOtp) continue;
         matched = true;
 
         // 4. Forward the extracted OTP to the configured supplier

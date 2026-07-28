@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+
 export const metadata: Metadata = {
   title: "Enterprise SMS Gateway — Dedicated Infrastructure, White-Label, SLA | Net2APP",
   description:

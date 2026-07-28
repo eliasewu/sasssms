@@ -9,59 +9,67 @@ import { eq, sql } from "drizzle-orm";
 async function main() {
   console.log("🌱 Seeding billing packages and updating tenant defaults...\n");
 
-  // 1. Seed packages
+  // 1. Seed packages (create if missing, always reactivate)
   const existing = await db.select({ name: packages.name }).from(packages);
   const existingNames = new Set(existing.map(p => p.name));
 
-  if (!existingNames.has("Starter")) {
-    await db.insert(packages).values({
-      name: "Starter",
-      description: "Pay-as-you-go SMS platform",
-      price: "0",
-      monthlyFee: "0",
-      smsCredits: 0,
-      freeSmsPerMonth: false,
-      requiresLicense: false,
-      isActive: true,
-      features: '["Isolated database","50 TPS","HTTP API","Basic routing","5 sub-clients","Email support"]',
-    });
-    console.log("  ✅ Seeded: Starter package");
-  } else {
-    console.log("  ⏭️  Skipped: Starter (already exists)");
-  }
+  const pkgClient = await pool.connect();
+  try {
+    if (!existingNames.has("Starter")) {
+      await db.insert(packages).values({
+        name: "Starter",
+        description: "Pay-as-you-go SMS platform",
+        price: "0",
+        monthlyFee: "0",
+        smsCredits: 0,
+        freeSmsPerMonth: false,
+        requiresLicense: false,
+        isActive: true,
+        features: '["Isolated database","50 TPS","HTTP API","Basic routing","5 sub-clients","Email support"]',
+      });
+      console.log("  ✅ Seeded: Starter package");
+    } else {
+      await pkgClient.query("UPDATE packages SET is_active = true WHERE name = 'Starter'");
+      console.log("  ✅ Reactivated: Starter package");
+    }
 
-  if (!existingNames.has("Professional")) {
-    await db.insert(packages).values({
-      name: "Professional",
-      description: "Dedicated server • 200 TPS • 10M SMS/month • No per-SMS charge",
-      price: "0",
-      monthlyFee: "150",
-      smsCredits: 10_000_000,
-      freeSmsPerMonth: true,
-      requiresLicense: true,
-      isActive: true,
-      features: '["Everything in Starter","200 TPS","10M monthly SMS included","NO per-SMS charge","SMPP support","Voice OTP","Unlimited clients","Priority support","Campaigns"]',
-    });
-    console.log("  ✅ Seeded: Professional package");
-  } else {
-    console.log("  ⏭️  Skipped: Professional (already exists)");
-  }
+    if (!existingNames.has("Professional")) {
+      await db.insert(packages).values({
+        name: "Professional",
+        description: "Dedicated server • 200 TPS • 10M SMS/month • No per-SMS charge",
+        price: "0",
+        monthlyFee: "150",
+        smsCredits: 10_000_000,
+        freeSmsPerMonth: true,
+        requiresLicense: true,
+        isActive: true,
+        features: '["Everything in Starter","200 TPS","10M monthly SMS included","NO per-SMS charge","SMPP support","Voice OTP","Unlimited clients","Priority support","Campaigns"]',
+      });
+      console.log("  ✅ Seeded: Professional package");
+    } else {
+      await pkgClient.query("UPDATE packages SET is_active = true WHERE name = 'Professional'");
+      console.log("  ✅ Reactivated: Professional package");
+    }
 
-  if (!existingNames.has("Enterprise")) {
-    await db.insert(packages).values({
-      name: "Enterprise",
-      description: "Unlimited volume • All services included",
-      price: "0",
-      monthlyFee: "399",
-      smsCredits: 0,
-      freeSmsPerMonth: true,
-      requiresLicense: true,
-      isActive: true,
-      features: '["Everything in Pro","Unlimited TPS","Unlimited volume","All connection types","RCS & OTT","WhatsApp","White-label","24/7 support","SLA guarantee"]',
-    });
-    console.log("  ✅ Seeded: Enterprise package");
-  } else {
-    console.log("  ⏭️  Skipped: Enterprise (already exists)");
+    if (!existingNames.has("Enterprise")) {
+      await db.insert(packages).values({
+        name: "Enterprise",
+        description: "Unlimited volume • All services included",
+        price: "0",
+        monthlyFee: "399",
+        smsCredits: 0,
+        freeSmsPerMonth: true,
+        requiresLicense: true,
+        isActive: true,
+        features: '["Everything in Pro","Unlimited TPS","Unlimited volume","All connection types","RCS & OTT","WhatsApp","White-label","24/7 support","SLA guarantee"]',
+      });
+      console.log("  ✅ Seeded: Enterprise package");
+    } else {
+      await pkgClient.query("UPDATE packages SET is_active = true WHERE name = 'Enterprise'");
+      console.log("  ✅ Reactivated: Enterprise package");
+    }
+  } finally {
+    pkgClient.release();
   }
 
   // 2. Get platform rate for fallback

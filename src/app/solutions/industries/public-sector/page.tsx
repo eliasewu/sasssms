@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "SMS Solutions for Public Sector — Emergency Alerts & Citizen Notifications | Net2APP",
   description: "Emergency alerts, citizen notifications, public service updates, and government communications via reliable SMS and Voice infrastructure.",

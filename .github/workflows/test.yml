@@ -1,0 +1,119 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit Tests (id-generators + voice-otp-dlr)
+        run: npm run test:unit
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: test
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+
+      - name: Setup DB schema
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/app_db
+        run: |
+          npx drizzle-kit push 2>&1 | tail -5
+
+      - name: Seed minimal test tenant
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/app_db
+        run: |
+          psql "$DATABASE_URL" << 'SQL'
+          -- Create a minimal test tenant if none exists
+          INSERT INTO tenants (company_name, email, schema_name, is_active, sms_counter, sms_limit)
+          SELECT 'E2E Test Tenant', 'e2e@test.local', 'tenant_e2e_test', true, 0, 1000
+          WHERE NOT EXISTS (SELECT 1 FROM tenants WHERE is_active = true LIMIT 1);
+
+          -- Create the tenant schema
+          DO $$
+          DECLARE
+            schema_name text;
+          BEGIN
+            SELECT t.schema_name INTO schema_name FROM tenants WHERE is_active = true LIMIT 1;
+            IF schema_name IS NOT NULL THEN
+              EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I', schema_name);
+            END IF;
+          END $$;
+
+          -- Create a minimal client in the tenant schema for routing tests
+          DO $$
+          DECLARE
+            schema_name text;
+            tenant_id int;
+          BEGIN
+            SELECT t.id, t.schema_name INTO tenant_id, schema_name FROM tenants WHERE is_active = true LIMIT 1;
+            IF schema_name IS NOT NULL THEN
+              EXECUTE format('SET search_path TO %I', schema_name);
+              -- Create minimal tables needed by the E2E test (drizzle push may handle most, but ensure core ones exist)
+              EXECUTE 'CREATE TABLE IF NOT EXISTS suppliers (id SERIAL PRIMARY KEY, name VARCHAR(255), connection_type VARCHAR(50), connection_mode VARCHAR(50), bind_status VARCHAR(50) DEFAULT ''UNBOUND'', is_active BOOLEAN DEFAULT true, force_dlr BOOLEAN DEFAULT false, config JSONB)';
+              EXECUTE 'CREATE TABLE IF NOT EXISTS trunks (id SERIAL PRIMARY KEY, name VARCHAR(255), supplier_id INTEGER, capacity INTEGER DEFAULT 100, is_active BOOLEAN DEFAULT true)';
+              EXECUTE 'CREATE TABLE IF NOT EXISTS routes (id SERIAL PRIMARY KEY, name VARCHAR(255), trunk_id INTEGER, priority INTEGER DEFAULT 1, is_active BOOLEAN DEFAULT true)';
+              EXECUTE 'CREATE TABLE IF NOT EXISTS route_plans (id SERIAL PRIMARY KEY, name VARCHAR(255), is_active BOOLEAN DEFAULT true)';
+              EXECUTE 'CREATE TABLE IF NOT EXISTS route_plan_routes (id SERIAL PRIMARY KEY, route_plan_id INTEGER, route_id INTEGER, priority INTEGER DEFAULT 1)';
+              EXECUTE 'CREATE TABLE IF NOT EXISTS clients (id SERIAL PRIMARY KEY, name VARCHAR(255), smpp_username VARCHAR(100), smpp_password VARCHAR(100), http_api_key VARCHAR(255), route_plan_id INTEGER, dlr_callback_url TEXT, is_active BOOLEAN DEFAULT true)';
+              EXECUTE 'CREATE TABLE IF NOT EXISTS messages (id SERIAL PRIMARY KEY, client_id INTEGER, sender VARCHAR(100), destination VARCHAR(20), content TEXT, status VARCHAR(20), connection_type VARCHAR(50), dlr_status VARCHAR(20), otp_code VARCHAR(10), language VARCHAR(50), cost DECIMAL(12,6), supplier_cost DECIMAL(12,6), profit DECIMAL(12,6), route_plan_id INTEGER, route_id INTEGER, trunk_id INTEGER, supplier_id INTEGER, message_id VARCHAR(255), dlr_callback_url TEXT, created_at TIMESTAMP DEFAULT NOW())';
+              EXECUTE 'CREATE TABLE IF NOT EXISTS voice_otp_call_logs (id SERIAL PRIMARY KEY, call_sid VARCHAR(255), destination VARCHAR(20), otp_code VARCHAR(10), language VARCHAR(50), status VARCHAR(20), attempt_count INTEGER DEFAULT 0, duration INTEGER DEFAULT 0, country VARCHAR(100), mcc VARCHAR(10), created_at TIMESTAMP DEFAULT NOW())';
+              -- Create test client if none exists
+              EXECUTE 'INSERT INTO clients (name, smpp_username, smpp_password, http_api_key, is_active)
+                       SELECT ''E2E Test Client'', ''e2eclient'', ''e2epass'', ''e2e-api-key-12345'', true
+                       WHERE NOT EXISTS (SELECT 1 FROM clients WHERE is_active = true LIMIT 1)';
+            END IF;
+          END $$;
+          SQL
+
+      - name: Voice OTP E2E Tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/app_db
+        run: npm run test:voice-otp-e2e

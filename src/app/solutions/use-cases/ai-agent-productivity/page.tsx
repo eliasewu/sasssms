@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "AI Agent Productivity — SMS, WhatsApp & Telegram AI Integration | Net2APP",
   description: "Power AI agents and chatbots with SMS, WhatsApp, and Telegram APIs. Automate customer interactions, qualify leads, answer FAQs, and route complex issues to human agents.",
