@@ -23,7 +23,7 @@ for REMOTE in "${REMOTES[@]}"; do
   echo "=== Syncing to $NAME ($IP) ==="
   
   # Check if remote server is reachable
-  HTTP=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "http://$IP:5555/" 2>/dev/null || echo "000")
+  HTTP=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "http://$IP:5556/" 2>/dev/null || echo "000")
   if [ "$HTTP" != "200" ]; then
     echo "  ⚠️  Server not reachable (HTTP $HTTP) — skipping"
     continue
@@ -47,7 +47,7 @@ for REMOTE in "${REMOTES[@]}"; do
     fi
     
     # Push via internal sync API
-    RESPONSE=$(curl -s -X POST "http://$IP:5555/api/internal/sync-tenant" \
+    RESPONSE=$(curl -s -X POST "http://$IP:5556/api/internal/sync-tenant" \
       -H "Content-Type: application/json" \
       -H "Authorization: Bearer $SYNC_SECRET" \
       -d "{\"companyName\":\"$companyName\",\"email\":\"$email\",\"phone\":\"$phone\",\"passwordHash\":\"$passwordHash\",\"schemaName\":\"$schemaName\",\"smppServerIp\":\"$smppServerIp\",\"serverLocation\":\"$serverLocation\",\"costPerSms\":\"$costPerSms\",\"smsLimit\":${smsLimit:-100}}" \
