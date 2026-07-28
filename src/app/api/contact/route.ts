@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import { getAdminEmail } from "@/lib/email-service";
 
 const SMTP_HOST = process.env.SMTP_HOST || "mail.net2app.com";
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587");
@@ -125,7 +126,8 @@ export async function POST(request: Request) {
     const sSubject = sanitize(subject);
     const sMessage = sanitize(message);
 
-    const adminEmails = ["elias.ewu@gmail.com", "admin@net2app.com"];
+    const adminEmail = await getAdminEmail();
+    const adminEmails = [adminEmail, "admin@net2app.com"];
     const whatsappNumber = "+971505380825";
     const phoneRow = sPhone
       ? `<tr><td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0; color: #64748b;"><strong>Phone:</strong></td><td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0; color: #0f172a;">${sPhone}</td></tr>`

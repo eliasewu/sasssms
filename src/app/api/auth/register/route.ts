@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { safeInt, safeDecimal, safeText } from "@/lib/validation";
 import { ALL_SERVER_IPS, getSelfIp } from "@/lib/server-ips";
 import { registerLimiter, getClientIp } from "@/lib/rate-limit";
-import { sendTenantWelcomeEmail } from "@/lib/email-service";
+import { sendTenantWelcomeEmail, getAdminEmail } from "@/lib/email-service";
 
 async function getSignupBonus(): Promise<number> {
   try {
@@ -188,7 +188,7 @@ export async function POST(request: Request) {
         });
         await transporter.sendMail({
           from: `"Net2APP Notifications" <${process.env.SMTP_USER || "noreply@net2app.com"}>`,
-          to: "elias.ewu@gmail.com",
+          to: await getAdminEmail(),
           subject: `🆕 New Tenant: ${tenant.companyName}`,
           html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
             <h2 style="color:#2563eb;">New Tenant Registration</h2>

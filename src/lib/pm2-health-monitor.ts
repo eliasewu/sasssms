@@ -12,8 +12,7 @@
 
 import { ALL_SERVER_IPS, serverLabel } from "@/lib/server-ips";
 import nodemailer from "nodemailer";
-
-const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || "elias.ewu@gmail.com";
+import { getAdminEmailSync } from "@/lib/email-service";
 const CHECK_INTERVAL_MS = 60_000; // every 60 seconds
 const ALERT_COOLDOWN_MS = 5 * 60_000; // don't re-alert same server for 5 min
 
@@ -125,7 +124,7 @@ sudo pm2 restart net2app</pre>` : ""}
 
   await transporter.sendMail({
     from: `"Net2APP Monitor" <${process.env.SMTP_USER || "noreply@net2app.com"}>`,
-    to: SUPER_ADMIN_EMAIL,
+    to: getAdminEmailSync(),
     subject,
     html,
   });

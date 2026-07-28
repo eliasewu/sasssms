@@ -5,7 +5,29 @@ import { and, eq, sql } from "drizzle-orm";
 import { deliverSmsWithFallback } from "@/lib/smpp-client";
 import type { RouteInfo } from "@/lib/smpp-client";
 
-const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || "elias.ewu@gmail.com";
+const SUPER_ADMIN_EMAIL_DEFAULT = process.env.SUPER_ADMIN_EMAIL || "elias.ewu@gmail.com";
+
+/**
+ * Resolve admin notification email.
+ * Priority: platform_settings.admin_notification_email → SUPER_ADMIN_EMAIL env → hardcoded fallback
+ */
+export async function getAdminEmail(): Promise<string> {
+  try {
+    const { rows } = await pool.query(
+      "SELECT value FROM platform_settings WHERE key = 'admin_notification_email'"
+    );
+    if (rows.length > 0 && rows[0].value && rows[0].value.includes("@")) {
+      return rows[0].value.trim();
+    }
+  } catch { /* fall through */ }
+  return SUPER_ADMIN_EMAIL_DEFAULT;
+}
+
+/** Sync version for places that can't use async (module-level constants, etc.) */
+export function getAdminEmailSync(): string {
+  return SUPER_ADMIN_EMAIL_DEFAULT;
+}
+
 const SMTP_HOST = process.env.SMTP_HOST || "127.0.0.1";
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || "25");
 const SMTP_USER = process.env.SMTP_USER || "noreply@net2app.com";
@@ -33,7 +55,7 @@ export async function notifyAdminNewPayment(payload: {
   try {
     await transporter.sendMail({
       from: `"Net2APP Payments" <${SMTP_USER}>`,
-      to: SUPER_ADMIN_EMAIL,
+      to: await getAdminEmail(),
       subject: `💰 New Payment: $${payload.amount} from ${payload.tenantName}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
