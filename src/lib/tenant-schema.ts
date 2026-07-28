@@ -309,7 +309,8 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       mcc VARCHAR(10), mnc VARCHAR(10),
       regex_pattern TEXT NOT NULL, otp_group_index INTEGER DEFAULT 1,
       forward_supplier_id INTEGER, forward_sender VARCHAR(20),
-      forward_template TEXT DEFAULT '{otp}', is_active BOOLEAN DEFAULT true,
+      forward_template TEXT DEFAULT '{otp}', auto_detect BOOLEAN DEFAULT false,
+      is_active BOOLEAN DEFAULT true,
       sort_order INTEGER DEFAULT 0,
       created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`);
 
