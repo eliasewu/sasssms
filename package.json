@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start -p 5555",
+    "start": "next start -p 5556",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "ott-worker": "npx tsx src/workers/ott-worker.ts",

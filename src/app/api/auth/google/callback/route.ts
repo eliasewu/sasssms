@@ -4,6 +4,10 @@ import { pool } from "@/db";
 import { createToken } from "@/lib/auth";
 import crypto from "crypto";
 
+// Build the public-facing base URL for redirects.
+// Hardcoded to prevent localhost:5556 leaking when behind nginx.
+const APP_BASE_URL = "https://net2app.com";
+
 function getOAuthClient(): OAuth2Client {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -24,13 +28,13 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     // Google returned an error (user denied consent, etc.)
     if (error) {
-      const redirectUrl = new URL("/", request.url);
+      const redirectUrl = new URL("/", APP_BASE_URL);
       redirectUrl.searchParams.set("auth_error", error);
       return NextResponse.redirect(redirectUrl);
     }
 
     if (!code) {
-      return NextResponse.redirect(new URL("/", request.url));
+      return NextResponse.redirect(new URL("/", APP_BASE_URL));
     }
 
     // Exchange authorization code for tokens
@@ -65,7 +69,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     if (existingByGoogle.length > 0) {
       const tenant = existingByGoogle[0];
       if (!tenant.is_active) {
-        const redirectUrl = new URL("/", request.url);
+        const redirectUrl = new URL("/", APP_BASE_URL);
         redirectUrl.searchParams.set("auth_error", "account_suspended");
         return NextResponse.redirect(redirectUrl);
       }
@@ -77,7 +81,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         companyName: tenant.company_name,
       });
 
-      const response = NextResponse.redirect(new URL("/dashboard", request.url));
+      const response = NextResponse.redirect(new URL("/dashboard", APP_BASE_URL));
       response.cookies.set("tenant_token", token, {
         httpOnly: true, secure: true, sameSite: "lax",
         maxAge: 60 * 60 * 24 * 30, path: "/",
@@ -94,7 +98,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     if (existingByEmail.length > 0) {
       const tenant = existingByEmail[0];
       if (!tenant.is_active) {
-        const redirectUrl = new URL("/", request.url);
+        const redirectUrl = new URL("/", APP_BASE_URL);
         redirectUrl.searchParams.set("auth_error", "account_suspended");
         return NextResponse.redirect(redirectUrl);
       }
@@ -111,7 +115,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         companyName: tenant.company_name,
       });
 
-      const response = NextResponse.redirect(new URL("/dashboard", request.url));
+      const response = NextResponse.redirect(new URL("/dashboard", APP_BASE_URL));
       response.cookies.set("tenant_token", token, {
         httpOnly: true, secure: true, sameSite: "lax",
         maxAge: 60 * 60 * 24 * 30, path: "/",
@@ -131,7 +135,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     );
 
     // Redirect to phone collection page — pass session token + profile data
-    const redirectUrl = new URL("/auth/google/complete", request.url);
+    const redirectUrl = new URL("/auth/google/complete", APP_BASE_URL);
     redirectUrl.searchParams.set("state", sessionToken);
     redirectUrl.searchParams.set("email", email);
     redirectUrl.searchParams.set("name", name);
@@ -140,7 +144,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   } catch (err: unknown) {
     console.error("Google callback error:", err);
-    const redirectUrl = new URL("/", request.url);
+    const redirectUrl = new URL("/", APP_BASE_URL);
     redirectUrl.searchParams.set("auth_error", "google_failed");
     return NextResponse.redirect(redirectUrl);
   }
