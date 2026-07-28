@@ -128,6 +128,11 @@ ENDENV
     pm2 delete net2app 2>/dev/null || true
     pm2 start npm --name net2app -- run start
     pm2 save
+
+    # Install PM2 watchdog (checks every 2 min, auto-restarts if unresponsive)
+    cp /opt/net2app/scripts/net2app-watchdog.sh /usr/local/bin/net2app-watchdog
+    chmod +x /usr/local/bin/net2app-watchdog
+    (crontab -l 2>/dev/null | grep -v net2app-watchdog; echo \"*/2 * * * * /usr/local/bin/net2app-watchdog\") | crontab -
   ' 2>&1"
 
   # Configure nginx

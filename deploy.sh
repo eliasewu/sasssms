@@ -370,6 +370,12 @@ set -e
 
 ok "Monitoring cron installed (every 1 min + @reboot + weekly MCC sync)"
 
+# Install PM2 watchdog (checks port 5556 every 2 min, restarts if unresponsive)
+cp "$APP_DIR/scripts/net2app-watchdog.sh" /usr/local/bin/net2app-watchdog
+chmod +x /usr/local/bin/net2app-watchdog
+(crontab -l 2>/dev/null | grep -v net2app-watchdog; echo "*/2 * * * * /usr/local/bin/net2app-watchdog") | crontab - 2>/dev/null || true
+ok "PM2 watchdog installed (every 2 min health check on port $APP_PORT)"
+
 # ── Nginx config (HTTP + HTTPS with Cloudflare-compatible origin cert) ──
 # Use Cloudflare origin cert (self-signed, works with Cloudflare "Full" SSL mode)
 # These certs don't need renewal and are more reliable with Cloudflare proxy
