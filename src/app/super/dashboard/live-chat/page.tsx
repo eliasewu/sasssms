@@ -54,6 +54,12 @@ export default function SuperLiveChatPage() {
   const [sending, setSending] = useState(false);
   const [addingNote, setAddingNote] = useState(false);
   const [transferring, setTransferring] = useState(false);
+  const [muted, setMuted] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("livechat-muted") === "true";
+    }
+    return false;
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMsgIdRef = useRef(Infinity);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -84,9 +90,19 @@ export default function SuperLiveChatPage() {
       .catch(() => {});
   }, []);
 
+  // Persist mute preference
+  const toggleMute = useCallback(() => {
+    setMuted((prev) => {
+      const next = !prev;
+      localStorage.setItem("livechat-muted", String(next));
+      return next;
+    });
+  }, []);
+
   // Fire a desktop notification for tenant messages in the active room
   const notifyTenantMessage = useCallback((room: ChatRoom, msg: ChatMessage) => {
     try {
+      if (muted) return;
       if (!("Notification" in window)) return;
       if (Notification.permission !== "granted") return;
       if (document.visibilityState === "visible") return;
@@ -103,11 +119,12 @@ export default function SuperLiveChatPage() {
         n.close();
       };
     } catch {}
-  }, []);
+  }, [muted]);
 
   // Fire a desktop notification for sidebar unread alerts (any room, not just active)
   const notifySidebarUnread = useCallback((room: ChatRoom) => {
     try {
+      if (muted) return;
       if (!("Notification" in window)) return;
       if (Notification.permission !== "granted") return;
       if (document.visibilityState === "visible") return;
@@ -125,11 +142,12 @@ export default function SuperLiveChatPage() {
         n.close();
       };
     } catch {}
-  }, []);
+  }, [muted]);
 
   // Play a short notification ping via Web Audio API
   const playPing = useCallback(() => {
     try {
+      if (muted) return;
       if (!audioCtxRef.current) {
         audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
@@ -151,7 +169,7 @@ export default function SuperLiveChatPage() {
         osc.stop(now + i * 0.15 + 0.25);
       });
     } catch {}
-  }, []);
+  }, [muted]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -405,6 +423,27 @@ export default function SuperLiveChatPage() {
                 <p className="text-xs text-gray-500 truncate">{activeRoom.tenantEmail}</p>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
+                {/* Mute toggle */}
+                <button
+                  onClick={toggleMute}
+                  title={muted ? "Unmute notifications" : "Mute notifications"}
+                  className={`p-1.5 rounded-lg transition ${
+                    muted
+                      ? "bg-red-50 text-red-600 hover:bg-red-100"
+                      : "bg-gray-50 text-gray-600 hover:bg-gray-100"
+                  }`}
+                >
+                  {muted ? (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    </svg>
+                  )}
+                </button>
                 {/* Transfer dropdown */}
                 {activeRoom.status === "OPEN" && admins.length > 0 && (
                   <div className="relative group">
