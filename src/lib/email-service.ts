@@ -16,6 +16,7 @@ const transporter = nodemailer.createTransport({
   port: SMTP_PORT,
   secure: SMTP_PORT === 465,
   ...(SMTP_PASS ? { auth: { user: SMTP_USER, pass: SMTP_PASS } } : {}),
+  tls: { rejectUnauthorized: false }, // allow self-signed certs on localhost
 });
 
 /**
