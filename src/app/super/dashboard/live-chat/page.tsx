@@ -58,6 +58,8 @@ export default function SuperLiveChatPage() {
   const lastMsgIdRef = useRef(Infinity);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const notifiedMsgIds = useRef<Set<number>>(new Set());
+  const prevUnreadRef = useRef<Map<number, number>>(new Map()); // roomId → last known unreadSuper
+  const notifiedUnreadRef = useRef<Set<string>>(new Set()); // "roomId:count" dedup keys
 
   // Clean up on unmount
   useEffect(() => {
@@ -82,7 +84,7 @@ export default function SuperLiveChatPage() {
       .catch(() => {});
   }, []);
 
-  // Fire a desktop notification for tenant messages
+  // Fire a desktop notification for tenant messages in the active room
   const notifyTenantMessage = useCallback((room: ChatRoom, msg: ChatMessage) => {
     try {
       if (!("Notification" in window)) return;
@@ -95,6 +97,28 @@ export default function SuperLiveChatPage() {
         body: msg.message.slice(0, 160),
         icon: "/favicon.ico",
         tag: `live-chat-${room.id}`,
+      });
+      n.onclick = () => {
+        window.focus();
+        n.close();
+      };
+    } catch {}
+  }, []);
+
+  // Fire a desktop notification for sidebar unread alerts (any room, not just active)
+  const notifySidebarUnread = useCallback((room: ChatRoom) => {
+    try {
+      if (!("Notification" in window)) return;
+      if (Notification.permission !== "granted") return;
+      if (document.visibilityState === "visible") return;
+      const key = `${room.id}:${room.unreadSuper}`;
+      if (notifiedUnreadRef.current.has(key)) return;
+      notifiedUnreadRef.current.add(key);
+
+      const n = new Notification(`📨 ${room.tenantName}`, {
+        body: `New message — ${room.unreadSuper} unread`,
+        icon: "/favicon.ico",
+        tag: `live-chat-sidebar-${room.id}`,
       });
       n.onclick = () => {
         window.focus();
@@ -133,15 +157,28 @@ export default function SuperLiveChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Fetch rooms
+  // Fetch rooms — also detects new unread messages in sidebar
   const fetchRooms = useCallback(async () => {
     try {
       const res = await fetch("/api/super/live-chat");
       if (!res.ok) return;
       const data = await res.json();
-      setRooms(data.rooms || []);
+      const newRooms: ChatRoom[] = data.rooms || [];
+
+      // Check every room for increased unread — fire notification + sound if so
+      // Skip first poll (prev === undefined) and skip active room (handled by its own polling)
+      for (const room of newRooms) {
+        const prev = prevUnreadRef.current.get(room.id);
+        if (prev !== undefined && room.unreadSuper > prev && room.id !== activeRoom?.id) {
+          playPing();
+          notifySidebarUnread(room);
+        }
+        prevUnreadRef.current.set(room.id, room.unreadSuper);
+      }
+
+      setRooms(newRooms);
     } catch {}
-  }, []);
+  }, [playPing, notifySidebarUnread]);
 
   // Initial load
   useEffect(() => {
