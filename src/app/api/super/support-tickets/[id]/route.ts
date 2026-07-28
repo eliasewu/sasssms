@@ -9,11 +9,51 @@ async function getAdminName(adminId: number): Promise<string> {
   return r.rows[0]?.name || "Admin";
 }
 
+// Timeout promise that rejects after ms — used for real connection timeout
+function timeoutPromise(ms: number): Promise<never> {
+  return new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms)
+  );
+}
+
+// Fetch with true connection timeout using Promise.race
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 3000): Promise<Response> {
+  return Promise.race([
+    fetch(url, options),
+    timeoutPromise(timeoutMs),
+  ]) as Promise<Response>;
+}
+
 // GET /api/super/support-tickets/[id] — get ticket with all replies + attachments
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const admin = getSuperAdminFromRequest(request);
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
+
+  const url = new URL(request.url);
+  const serverIp = url.searchParams.get("_serverIp");
+
+  // If this is a remote ticket request, proxy to the correct server
+  if (serverIp) {
+    const authHdr = request.headers.get("authorization");
+    const cookie = request.headers.get("cookie") || "";
+    const tokenMatch = cookie.match(/super_admin_token=([^;]+)/);
+    const bearerToken = authHdr?.replace(/^Bearer\s+/i, "") || (tokenMatch ? tokenMatch[1] : "");
+    try {
+      const res = await fetchWithTimeout(
+        `http://${serverIp}:5555/api/super/support-tickets/${id}`,
+        { headers: { Authorization: `Bearer ${bearerToken}` } },
+        3000
+      );
+      if (!res.ok) {
+        return NextResponse.json({ error: `Remote server returned ${res.status}` }, { status: res.status });
+      }
+      const data = await res.json();
+      return NextResponse.json(data);
+    } catch (e: unknown) {
+      return NextResponse.json({ error: `Could not reach server: ${(e as Error).message}` }, { status: 502 });
+    }
+  }
 
   const ticket = await pool.query(
     `SELECT t.*, tn.company_name as tenant_name, tn.email as tenant_email
@@ -56,11 +96,47 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   return NextResponse.json({ ticket: ticket.rows[0], replies: repliesWithAttachments });
 }
 
-// POST /api/super/support-tickets/[id] — add a reply with optional file attachments
+// POST /api/super/support-tickets/[id] — add a reply with optional file attachments (supports cross-server)
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const admin = getSuperAdminFromRequest(request);
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
+
+  const url = new URL(request.url);
+  const serverIp = url.searchParams.get("_serverIp");
+
+  // If this is for a remote server, proxy the request as-is (multipart passthrough)
+  if (serverIp) {
+    const authHdr = request.headers.get("authorization");
+    const cookie = request.headers.get("cookie") || "";
+    const tokenMatch = cookie.match(/super_admin_token=([^;]+)/);
+    const bearerToken = authHdr?.replace(/^Bearer\s+/i, "") || (tokenMatch ? tokenMatch[1] : "");
+    try {
+      const clonedBody = request.clone();
+      const res = await fetchWithTimeout(
+        `http://${serverIp}:5555/api/super/support-tickets/${id}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${bearerToken}`,
+            "Content-Type": request.headers.get("content-type") || "application/json",
+          },
+          body: clonedBody.body,
+          // @ts-expect-error duplex is needed for streaming body
+          duplex: "half",
+        },
+        5000
+      );
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        return NextResponse.json(errData, { status: res.status });
+      }
+      const data = await res.json();
+      return NextResponse.json(data, { status: 201 });
+    } catch (e: unknown) {
+      return NextResponse.json({ error: `Could not reach server: ${(e as Error).message}` }, { status: 502 });
+    }
+  }
 
   let message: string;
   let files: File[] = [];

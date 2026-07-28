@@ -1,20 +1,84 @@
 import { NextResponse } from "next/server";
 import { getSuperAdminFromRequest } from "@/lib/auth";
 import { pool } from "@/db";
+import { ALL_SERVER_IPS, serverLabel, getSelfIp } from "@/lib/server-ips";
 
 async function getAdminName(adminId: number): Promise<string> {
   const r = await pool.query("SELECT name FROM super_admins WHERE id = $1", [adminId]);
   return r.rows[0]?.name || "Admin";
 }
 
-// GET /api/super/support-tickets — list all tickets across all tenants
+// Rate-limited error logging: log once per minute per server
+const lastErrorLog: Record<string, number> = {};
+function logErrorOnce(ip: string, msg: string) {
+  const now = Date.now();
+  if (!lastErrorLog[ip] || now - lastErrorLog[ip] > 60000) {
+    lastErrorLog[ip] = now;
+    console.error(`[Tickets] Failed to fetch from ${ip}: ${msg}`);
+  }
+}
+
+// Timeout promise that rejects after ms
+function timeoutPromise(ms: number): Promise<never> {
+  return new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms)
+  );
+}
+
+// Fetch with true connection timeout using Promise.race
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 3000): Promise<Response> {
+  return Promise.race([
+    fetch(url, options),
+    timeoutPromise(timeoutMs),
+  ]) as Promise<Response>;
+}
+
+// Fetch tickets from a single server
+async function fetchTicketsFromServer(
+  baseUrl: string,
+  bearerToken: string,
+  queryString: string
+): Promise<{ tickets: unknown[]; error?: string }> {
+  try {
+    const url = `${baseUrl}/api/super/support-tickets${queryString}`;
+    const res = await fetchWithTimeout(url, {
+      headers: { Authorization: `Bearer ${bearerToken}` },
+    }, 3000);
+
+    if (!res.ok) return { tickets: [], error: `HTTP ${res.status}` };
+    const data = await res.json();
+    const tagged = (data.tickets || []).map((t: Record<string, unknown>) => ({
+      ...t,
+      server: serverLabel(new URL(baseUrl).hostname),
+      _serverIp: new URL(baseUrl).hostname,
+    }));
+    return { tickets: tagged };
+  } catch (e: unknown) {
+    const ip = new URL(baseUrl).hostname;
+    logErrorOnce(ip, (e as Error).message);
+    return { tickets: [], error: (e as Error).message };
+  }
+}
+
+// GET /api/super/support-tickets — list all tickets across all tenants AND all servers
 export async function GET(request: Request) {
   const admin = getSuperAdminFromRequest(request);
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const authHdr = request.headers.get("authorization");
+  const cookie = request.headers.get("cookie") || "";
+  const tokenMatch = cookie.match(/super_admin_token=([^;]+)/);
+  const bearerToken = authHdr?.replace(/^Bearer\s+/i, "") || (tokenMatch ? tokenMatch[1] : "");
+
   const url = new URL(request.url);
   const status = url.searchParams.get("status");
   const tenantId = url.searchParams.get("tenantId");
+
+  const queryString = status ? `?status=${status}` : tenantId ? `?tenantId=${tenantId}` : "";
+
+  // 1. Detect self IP and fetch local tickets
+  const selfIp = await getSelfIp();
+  const localLabel = serverLabel(selfIp);
 
   let query = `
     SELECT t.*, tn.company_name as tenant_name, tn.email as tenant_email,
@@ -40,16 +104,81 @@ export async function GET(request: Request) {
   query += " ORDER BY t.updated_at DESC";
 
   const result = await pool.query(query, params);
-  return NextResponse.json({ tickets: result.rows });
+  const localTickets = result.rows.map((t) => ({ ...t, server: localLabel, _serverIp: selfIp }));
+
+  // 2. Fetch from all remote servers in parallel (with 3s hard timeout each)
+  const remoteIps = ALL_SERVER_IPS.filter((ip: string) => ip !== selfIp && ip !== "127.0.0.1");
+  const remotePromises = remoteIps.map((ip) =>
+    fetchTicketsFromServer(`http://${ip}:5555`, bearerToken, queryString)
+  );
+
+  const remoteResults = await Promise.all(remotePromises);
+
+  // Collect warnings (errors are rate-limited logged inside fetchTicketsFromServer)
+  const errors: string[] = [];
+  remoteResults.forEach((r, i) => {
+    if (r.error) {
+      errors.push(`${serverLabel(remoteIps[i])}: ${r.error}`);
+    }
+  });
+
+  // 3. Merge all tickets
+  const allTickets = [
+    ...localTickets,
+    ...remoteResults.flatMap((r) => r.tickets),
+  ];
+
+  allTickets.sort(
+    (a, b) =>
+      new Date(b.updated_at as string).getTime() -
+      new Date(a.updated_at as string).getTime()
+  );
+
+  return NextResponse.json({
+    tickets: allTickets,
+    ...(errors.length > 0 && { warnings: errors }),
+  });
 }
 
-// PATCH /api/super/support-tickets — update ticket status
+// PATCH /api/super/support-tickets — update ticket status (supports cross-server via ?_serverIp)
 export async function PATCH(request: Request) {
   const admin = getSuperAdminFromRequest(request);
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await request.json();
-  const { ticketId, status } = body;
+  const url = new URL(request.url);
+  const serverIp = url.searchParams.get("_serverIp");
+
+  if (serverIp) {
+    const authHdr = request.headers.get("authorization");
+    const cookie = request.headers.get("cookie") || "";
+    const tokenMatch = cookie.match(/super_admin_token=([^;]+)/);
+    const bearerToken = authHdr?.replace(/^Bearer\s+/i, "") || (tokenMatch ? tokenMatch[1] : "");
+    const body = await request.text();
+    try {
+      const res = await fetchWithTimeout(
+        `http://${serverIp}:5555/api/super/support-tickets`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${bearerToken}`,
+          },
+          body,
+        },
+        3000
+      );
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        return NextResponse.json(errData, { status: res.status });
+      }
+      const data = await res.json();
+      return NextResponse.json(data);
+    } catch (e: unknown) {
+      return NextResponse.json({ error: `Could not reach server: ${(e as Error).message}` }, { status: 502 });
+    }
+  }
+  const jsonBody = await request.json();
+  const { ticketId, status } = jsonBody;
 
   if (!ticketId || !status) {
     return NextResponse.json({ error: "ticketId and status are required" }, { status: 400 });
@@ -69,7 +198,6 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
   }
 
-  // Add a system-style reply noting the status change
   const adminName = await getAdminName(admin.adminId);
   await pool.query(
     `INSERT INTO support_ticket_replies (ticket_id, replied_by, replied_by_id, replied_by_name, message)

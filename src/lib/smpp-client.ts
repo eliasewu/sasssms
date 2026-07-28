@@ -419,6 +419,7 @@ function attemptBind(
     sess.on("error", (err: Error) => {
       if (settled) return;
       settled = true;
+      sess.socket?.destroy();
       sess.close();
       console.error(`[SMPP-CLIENT] ❌ TCP error connecting to ${host}:${port}: ${err.message}`);
       reject(new Error(`TCP error connecting to ${host}:${port}: ${err.message}`));
@@ -434,6 +435,7 @@ function attemptBind(
     setTimeout(() => {
       if (!settled) {
         settled = true;
+        sess.socket?.destroy();
         sess.close();
         reject(new Error(`Bind timeout to ${host}:${port}`));
       }
@@ -465,6 +467,13 @@ export async function connectToSupplier(
   systemType: string = "ESME",
   smppVersion: string = "3.4"
 ): Promise<boolean> {
+  // Null-guard: reject suppliers with missing host/port before passing to smpp library
+  if (!host || !port) {
+    console.error(`[SMPP-CLIENT] Skipping supplier ${supplierId}: missing host ("${host}") or port (${port})`);
+    updateSupplierBindStatus(schemaName, supplierId, "BIND_FAILED", `Missing host or port (host="${host}", port=${port})`);
+    return false;
+  }
+
   const key = `${tenantId}:${supplierId}`;
 
   // ── TX_RX mode: bind transmitter + receiver separately ──
@@ -663,6 +672,10 @@ async function reconnectToSupplier(tenantId: number, schemaName: string, supplie
     );
     if (rows.length === 0 || rows[0].connection_mode !== "CLIENT") return;
     const s = rows[0];
+    if (!s.host || !s.port) {
+      console.error(`[SMPP-CLIENT] Cannot reconnect TX to supplier ${supplierId}: missing host or port`);
+      return;
+    }
     console.log(`[SMPP-CLIENT] Reconnecting to supplier ${supplierId} @ ${s.host}:${s.port}`);
     const ok = await connectToSupplier(
       tenantId, schemaName, supplierId,
@@ -913,6 +926,7 @@ export function sendViaSupplierServerSession(
   // ── Try SUBMIT_SM first (standard MT — triggers proper DLR tracking) ──
   return new Promise((resolve) => {
     try {
+      console.log(`[SMPP-SRV-DEBUG] Sending SUBMIT_SM to supplier #${supplierId}: dst=${destination} msg=${content.substring(0, 30)} our_id=${messageId} registered_delivery=1`);
       sess.session.send(
         new smppLib.PDU("submit_sm", {
           source_addr_ton: determineTon(source),
@@ -1027,19 +1041,11 @@ export function deliverSmsWithFallback(
       return tryNextRoute(index + 1);
     }
 
-    // Attempt delivery: try CLIENT-mode connection first, then SERVER-mode
-    let result = await sendViaSupplierConnection(
-      tenantId,
-      route.supplierId,
-      source,
-      destination,
-      content,
-      messageId
-    );
-
-    // If CLIENT-mode failed and we have a server session, try SERVER-mode
-    if (!result.success && hasServerSession) {
-      console.log(`[SMPP-CLIENT] CLIENT-mode delivery failed for supplier ${route.supplierId}, trying SERVER-mode...`);
+    // Attempt delivery: prefer SERVER-mode if supplier has an active server session
+    // (avoids wasteful CLIENT-mode attempt for GSM modems that connect to us)
+    let result: { success: boolean; supplierMessageId: string; errorCode?: number };
+    if (hasServerSession) {
+      // Supplier is connected via SERVER-mode → use it directly (skip CLIENT-mode)
       result = await sendViaSupplierServerSession(
         tenantId,
         route.supplierId,
@@ -1048,6 +1054,16 @@ export function deliverSmsWithFallback(
         content,
         messageId,
         serverSessions
+      );
+    } else {
+      // Try CLIENT-mode connection
+      result = await sendViaSupplierConnection(
+        tenantId,
+        route.supplierId,
+        source,
+        destination,
+        content,
+        messageId
       );
     }
 
@@ -1217,6 +1233,11 @@ export async function initSupplierConnections() {
         );
 
         for (const s of suppliers) {
+          // Skip suppliers with null host/port — prevents smpp library crash
+          if (!s.host || !s.port) {
+            console.warn(`[SMPP-CLIENT] Skipping supplier ${s.id}: null host or port`);
+            continue;
+          }
           console.log(`[SMPP-CLIENT] Initializing connection to supplier ${s.id} (${s.host}:${s.port} v${s.smpp_version || "3.4"})`);
           connectToSupplier(
             t.id, t.schema_name, s.id,

@@ -18,9 +18,14 @@ _global.__serverStartTime = Date.now();
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    // Guard: only run background services on the main process, not worker threads
     const { isMainThread } = await import("node:worker_threads");
     if (!isMainThread) return;
+
+    // Emergency bypass: skip all background services (SMPP, DLR, etc.)
+    if (process.env.SKIP_BACKGROUND_SERVICES === "true") {
+      console.log("[instrumentation] SKIP_BACKGROUND_SERVICES=true — skipping all background services");
+      return;
+    }
     // ── Dynamic imports — all Node.js-only modules loaded lazily ──
     const [
       { startSmppServer },

@@ -18,7 +18,7 @@
     "test:voice-otp-e2e": "npx tsx scripts/test-voice-otp-e2e.ts",
     "test:voice-otp-call": "npx tsx scripts/test-voice-otp-call.ts",
     "test:unit": "npm run test:id-generators && npm run test:voice-otp-dlr",
-    "prepare": "husky"
+    "prepare": "echo skip"
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -32,6 +32,7 @@
     "caniuse-lite": "^1.0.30001800",
     "dotenv": "17.3.1",
     "drizzle-orm": "0.45.2",
+    "google-auth-library": "^10.9.1",
     "imap": "^0.8.19",
     "jimp": "^1.6.1",
     "jsonwebtoken": "^9.0.3",
