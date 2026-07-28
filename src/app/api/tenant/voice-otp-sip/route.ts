@@ -15,8 +15,8 @@ export async function POST(request: Request) {
   const body = await request.json();
   const result = await tenantQuery(
     tenant.schemaName,
-    `INSERT INTO voice_otp_sip_config (name, sip_host, sip_port, sip_username, sip_password, caller_id, max_retries, timeout) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-    [body.name, body.sipHost || null, parseInt(body.sipPort) || 5060, body.sipUsername || null, body.sipPassword || null, body.callerId || null, parseInt(body.maxRetries) || 3, parseInt(body.timeout) || 30]
+    `INSERT INTO voice_otp_sip_config (name, sip_host, sip_port, sip_username, sip_password, caller_id, max_retries, timeout, dial_prefix) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [body.name, body.sipHost || null, parseInt(body.sipPort) || 5060, body.sipUsername || null, body.sipPassword || null, body.callerId || null, parseInt(body.maxRetries) || 3, parseInt(body.timeout) || 30, body.dialPrefix || null]
   );
   return NextResponse.json({ config: result.rows[0] }, { status: 201 });
 }
@@ -29,8 +29,8 @@ export async function PUT(request: Request) {
 
   const result = await tenantQuery(
     tenant.schemaName,
-    `UPDATE voice_otp_sip_config SET name=$1, sip_host=$2, sip_port=$3, sip_username=$4, sip_password=$5, caller_id=$6, max_retries=$7, timeout=$8 WHERE id=$9 RETURNING *`,
-    [body.name, body.sipHost || null, parseInt(body.sipPort) || 5060, body.sipUsername || null, body.sipPassword || null, body.callerId || null, parseInt(body.maxRetries) || 3, parseInt(body.timeout) || 30, body.id]
+    `UPDATE voice_otp_sip_config SET name=$1, sip_host=$2, sip_port=$3, sip_username=$4, sip_password=$5, caller_id=$6, max_retries=$7, timeout=$8, dial_prefix=$9 WHERE id=$10 RETURNING *`,
+    [body.name, body.sipHost || null, parseInt(body.sipPort) || 5060, body.sipUsername || null, body.sipPassword || null, body.callerId || null, parseInt(body.maxRetries) || 3, parseInt(body.timeout) || 30, body.dialPrefix || null, body.id]
   );
 
   if (result.rows.length === 0) {

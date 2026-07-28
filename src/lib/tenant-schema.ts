@@ -190,6 +190,7 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       primary_audio_count INTEGER DEFAULT 0, secondary_audio_count INTEGER DEFAULT 0,
       play_count INTEGER DEFAULT 3, retry_count INTEGER DEFAULT 1,
       bilingual BOOLEAN DEFAULT false,
+      language_mode VARCHAR(20) DEFAULT 'local',
       is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`),
 
       safeQuery(`CREATE TABLE IF NOT EXISTS voice_otp_audio (
@@ -201,6 +202,7 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, sip_host VARCHAR(255),
       sip_port INTEGER DEFAULT 5060, sip_username VARCHAR(255), sip_password VARCHAR(255),
       caller_id VARCHAR(50), max_retries INTEGER DEFAULT 3, timeout INTEGER DEFAULT 30,
+      dial_prefix VARCHAR(20),
       is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`),
 
       safeQuery(`CREATE TABLE IF NOT EXISTS voice_otp_call_logs (

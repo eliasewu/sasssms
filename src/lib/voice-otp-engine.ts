@@ -337,6 +337,7 @@ export interface SipConfig {
   callerId: string;
   maxRetries: number;
   timeout: number;
+  dialPrefix: string | null;
   isActive: boolean;
 }
 
@@ -712,23 +713,36 @@ export async function executeVoiceOtpCall(params: {
   const retryCount = (votpConfig?.retry_count as number) || (activeSip?.maxRetries as number) || 3;
   const playCount = (votpConfig?.play_count as number) || 3;
   const bilingual = (votpConfig?.bilingual as boolean) || false;
+  const languageMode = (votpConfig?.language_mode as string) || 'local';
   const primaryLang = (votpConfig?.primary_language as string) || langResolution.primaryLanguage;
   const secondaryLang = (votpConfig?.secondary_language as string) || langResolution.fallbackLanguage;
 
   // ── 4. Build audio playlists for all attempts ──
-  const attemptLanguages = determineAttemptLanguages(langResolution, retryCount);
+  // language_mode: 'local' → local + English fallback, 'dual' → bilingual single call, 'international' → English only
+  const effectiveBilingual = languageMode === 'dual' ? true : bilingual;
+  const effectiveRetryCount = languageMode === 'international' ? 1 : (languageMode === 'dual' ? 1 : retryCount);
+  const effectivePrimaryLang = languageMode === 'international' ? 'English' : primaryLang;
+  const effectiveSecondaryLang = languageMode === 'international' ? 'English' : secondaryLang;
+
+  const attemptLanguages = languageMode === 'international'
+    ? ['English']
+    : determineAttemptLanguages(langResolution, effectiveRetryCount);
   let attemptPlaylists: Array<Array<AudioPlaylistItem>> = [];
   try {
     attemptPlaylists = await buildAttemptPlaylists(audioFiles, langResolution, otpCode, {
-      primaryLanguage: primaryLang,
-      secondaryLanguage: secondaryLang,
-      bilingual,
+      primaryLanguage: effectivePrimaryLang,
+      secondaryLanguage: effectiveSecondaryLang,
+      bilingual: effectiveBilingual,
       playCount,
-      retryCount,
+      retryCount: effectiveRetryCount,
     });
   } catch {
     attemptPlaylists = attemptLanguages.map(() => []);
   }
+
+  // Apply dial_prefix from SIP config (e.g. "99900" → "99900+8801712345678")
+  const dialPrefix = activeSip?.dialPrefix || null;
+  const dialDestination = dialPrefix ? dialPrefix + destination.replace(/^\+/, '') : destination;
 
   // ── 5. Call execution via Asterisk AMI ──
   // Retry delays: 0s (first call), 35s (retry 2), 70s (retry 3) — ~30-35s per spec
@@ -748,7 +762,7 @@ export async function executeVoiceOtpCall(params: {
      activeSip?.name || null, callSid, langResolution.country, mcc]
   );
 
-  for (let attempt = 1; attempt <= retryCount; attempt++) {
+  for (let attempt = 1; attempt <= effectiveRetryCount; attempt++) {
     const attLanguage = attemptLanguages[attempt - 1];
     const attPlaylist = attemptPlaylists[attempt - 1] || [];
     const startTime = new Date().toISOString();
@@ -767,7 +781,7 @@ export async function executeVoiceOtpCall(params: {
     if (activeSip) {
       try {
         sipResult = await amiExecutor.originateCall({
-          destination,
+          destination: dialDestination,
           callerId: activeSip.callerId || "Net2APP",
           sipHost: activeSip.sipHost || "", sipPort: activeSip.sipPort || 5060,
           sipUsername: activeSip.sipUsername || "", sipPassword: activeSip.sipPassword || "",
