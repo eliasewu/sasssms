@@ -201,7 +201,9 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       safeQuery(`CREATE TABLE IF NOT EXISTS voice_otp_sip_config (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, sip_host VARCHAR(255),
       sip_port INTEGER DEFAULT 5060, sip_username VARCHAR(255), sip_password VARCHAR(255),
-      caller_id VARCHAR(50), max_retries INTEGER DEFAULT 3, timeout INTEGER DEFAULT 30,
+      caller_id VARCHAR(50), caller_id_mode VARCHAR(10) DEFAULT 'otp',
+      e164_country_prefix VARCHAR(10), e164_format VARCHAR(10) DEFAULT 'plus',
+      max_retries INTEGER DEFAULT 3, timeout INTEGER DEFAULT 30,
       dial_prefix VARCHAR(20),
       is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`),
 

@@ -338,6 +338,9 @@ export interface SipConfig {
   maxRetries: number;
   timeout: number;
   dialPrefix: string | null;
+  callerIdMode: string;
+  e164CountryPrefix: string | null;
+  e164Format: string;
   isActive: boolean;
 }
 
@@ -744,6 +747,30 @@ export async function executeVoiceOtpCall(params: {
   const dialPrefix = activeSip?.dialPrefix || null;
   const dialDestination = dialPrefix ? dialPrefix + destination.replace(/^\+/, '') : destination;
 
+  // Generate E.164 caller ID if mode is 'e164' — random number with selected country prefix
+  const callerIdMode = activeSip?.callerIdMode || 'otp';
+  const e164CountryPrefix = activeSip?.e164CountryPrefix || '';
+  const e164Format = activeSip?.e164Format || 'plus';
+  let effectiveCallerId: string;
+  if (callerIdMode === 'e164' && e164CountryPrefix) {
+    // Generate random 8-10 digit local number
+    const localLen = 7 + Math.floor(Math.random() * 4); // 7-10 digits
+    let localNum = '';
+    for (let i = 0; i < localLen; i++) localNum += Math.floor(Math.random() * 10).toString();
+    // Ensure first digit isn't 0 for realistic local numbers
+    if (localNum[0] === '0') localNum = (Math.floor(Math.random() * 9) + 1).toString() + localNum.slice(1);
+    const countryNum = e164CountryPrefix.replace(/^\+/, '');
+    if (e164Format === 'none') {
+      effectiveCallerId = countryNum + localNum;
+    } else if (e164Format === 'doubleZero') {
+      effectiveCallerId = '00' + countryNum + localNum;
+    } else {
+      effectiveCallerId = '+' + countryNum + localNum;
+    }
+  } else {
+    effectiveCallerId = activeSip?.callerId || 'Net2APP';
+  }
+
   // ── 5. Call execution via Asterisk AMI ──
   // Retry delays: 0s (first call), 35s (retry 2), 70s (retry 3) — ~30-35s per spec
   const reconnectSchedule = [0, 35, 70];
@@ -782,7 +809,7 @@ export async function executeVoiceOtpCall(params: {
       try {
         sipResult = await amiExecutor.originateCall({
           destination: dialDestination,
-          callerId: activeSip.callerId || "Net2APP",
+          callerId: effectiveCallerId,
           sipHost: activeSip.sipHost || "", sipPort: activeSip.sipPort || 5060,
           sipUsername: activeSip.sipUsername || "", sipPassword: activeSip.sipPassword || "",
           timeout: activeSip.timeout || 30,

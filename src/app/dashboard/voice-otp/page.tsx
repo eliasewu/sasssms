@@ -34,7 +34,8 @@ interface VotpConfig {
 }
 interface SipConfig {
   id: number; name: string; sip_host: string; sip_port: number; sip_username: string;
-  caller_id: string; max_retries: number; timeout: number; dial_prefix: string | null; is_active: boolean;
+  caller_id: string; caller_id_mode: string; e164_country_prefix: string | null; e164_format: string;
+  max_retries: number; timeout: number; dial_prefix: string | null; is_active: boolean;
 }
 interface CallLog {
   id: number; destination: string; otp_code: string; language: string; status: string;
@@ -63,7 +64,7 @@ export default function VoiceOtpFullPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingUploadRef = useRef<{configId: number; lang: string; digit: string} | null>(null);
   const [form, setForm] = useState({ countryGroup: "", prefixes: "", primaryLanguage: "", secondaryLanguage: "English", playCount: "3", retryCount: "1", bilingual: false, languageMode: "local" });
-  const [sipForm, setSipForm] = useState({ name: "", sipHost: "", sipPort: "5060", sipUsername: "", sipPassword: "", callerId: "Net2APP", maxRetries: "3", timeout: "30", dialPrefix: "" });
+  const [sipForm, setSipForm] = useState({ name: "", sipHost: "", sipPort: "5060", sipUsername: "", sipPassword: "", callerId: "Net2APP", callerIdMode: "otp", e164CountryPrefix: "", e164Format: "plus", maxRetries: "3", timeout: "30", dialPrefix: "" });
   const [uploading, setUploading] = useState(false);
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const [audioSubTab, setAudioSubTab] = useState<"digits" | "letters">("digits");
@@ -730,7 +731,76 @@ export default function VoiceOtpFullPage() {
                 <Input label="SIP Port" value={sipForm.sipPort} onChange={v => setSipForm({...sipForm, sipPort: v})} />
                 <Input label="Username" value={sipForm.sipUsername} onChange={v => setSipForm({...sipForm, sipUsername: v})} />
                 <Input label="Password" type="password" value={sipForm.sipPassword} onChange={v => setSipForm({...sipForm, sipPassword: v})} />
-                <Input label="Caller ID" value={sipForm.callerId} onChange={v => setSipForm({...sipForm, callerId: v})} />
+                <div>
+                  <label className="block text-sm font-medium mb-1">Caller ID Mode</label>
+                  <select value={sipForm.callerIdMode} onChange={e => setSipForm({...sipForm, callerIdMode: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                    <option value="otp">📱 OTP / Text — fixed caller ID like "OTP", "Net2APP"</option>
+                    <option value="e164">🌍 E.164 — random number with country prefix</option>
+                  </select>
+                </div>
+                {sipForm.callerIdMode === 'otp' ? (
+                  <Input label="Caller ID Text" value={sipForm.callerId} onChange={v => setSipForm({...sipForm, callerId: v})} placeholder="e.g. OTP, Net2APP" />
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Country Prefix</label>
+                      <select value={sipForm.e164CountryPrefix} onChange={e => setSipForm({...sipForm, e164CountryPrefix: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                        <option value="">Select country…</option>
+                        <option value="+1">🇺🇸 USA / Canada (+1)</option>
+                        <option value="+44">🇬🇧 UK (+44)</option>
+                        <option value="+91">🇮🇳 India (+91)</option>
+                        <option value="+880">🇧🇩 Bangladesh (+880)</option>
+                        <option value="+92">🇵🇰 Pakistan (+92)</option>
+                        <option value="+86">🇨🇳 China (+86)</option>
+                        <option value="+55">🇧🇷 Brazil (+55)</option>
+                        <option value="+234">🇳🇬 Nigeria (+234)</option>
+                        <option value="+62">🇮🇩 Indonesia (+62)</option>
+                        <option value="+7">🇷🇺 Russia (+7)</option>
+                        <option value="+52">🇲🇽 Mexico (+52)</option>
+                        <option value="+81">🇯🇵 Japan (+81)</option>
+                        <option value="+49">🇩🇪 Germany (+49)</option>
+                        <option value="+33">🇫🇷 France (+33)</option>
+                        <option value="+39">🇮🇹 Italy (+39)</option>
+                        <option value="+34">🇪🇸 Spain (+34)</option>
+                        <option value="+90">🇹🇷 Turkey (+90)</option>
+                        <option value="+20">🇪🇬 Egypt (+20)</option>
+                        <option value="+27">🇿🇦 South Africa (+27)</option>
+                        <option value="+82">🇰🇷 South Korea (+82)</option>
+                        <option value="+84">🇻🇳 Vietnam (+84)</option>
+                        <option value="+63">🇵🇭 Philippines (+63)</option>
+                        <option value="+98">🇮🇷 Iran (+98)</option>
+                        <option value="+66">🇹🇭 Thailand (+66)</option>
+                        <option value="+60">🇲🇾 Malaysia (+60)</option>
+                        <option value="+966">🇸🇦 Saudi Arabia (+966)</option>
+                        <option value="+971">🇦🇪 UAE (+971)</option>
+                        <option value="+254">🇰🇪 Kenya (+254)</option>
+                        <option value="+351">🇵🇹 Portugal (+351)</option>
+                        <option value="+48">🇵🇱 Poland (+48)</option>
+                        <option value="+31">🇳🇱 Netherlands (+31)</option>
+                        <option value="+32">🇧🇪 Belgium (+32)</option>
+                        <option value="+41">🇨🇭 Switzerland (+41)</option>
+                        <option value="+46">🇸🇪 Sweden (+46)</option>
+                        <option value="+61">🇦🇺 Australia (+61)</option>
+                        <option value="+64">🇳🇿 New Zealand (+64)</option>
+                        <option value="+65">🇸🇬 Singapore (+65)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Number Format</label>
+                      <select value={sipForm.e164Format} onChange={e => setSipForm({...sipForm, e164Format: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                        <option value="plus">+ (e.g. +8801712345678)</option>
+                        <option value="none">None (e.g. 8801712345678)</option>
+                        <option value="doubleZero">00 (e.g. 008801712345678)</option>
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="block text-xs text-slate-400 mt-1">
+                        🔀 Each call gets a <strong>random</strong> local number with this country prefix.
+                        Preview: <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">{sipForm.e164CountryPrefix ? (sipForm.e164Format === 'none' ? sipForm.e164CountryPrefix.replace('+','') : sipForm.e164Format === 'doubleZero' ? '00' + sipForm.e164CountryPrefix.replace('+','') : sipForm.e164CountryPrefix) + 'XXXXXXXX' : '— select country'}</code>
+                      </span>
+                    </div>
+                  </>
+                )}
                 <Input label="Max Retries" value={sipForm.maxRetries} onChange={v => setSipForm({...sipForm, maxRetries: v})} />
                 <Input label="Timeout (s)" value={sipForm.timeout} onChange={v => setSipForm({...sipForm, timeout: v})} />
                 <Input label="Dial Prefix" value={sipForm.dialPrefix} onChange={v => setSipForm({...sipForm, dialPrefix: v})} placeholder="e.g. 99900" />
@@ -748,12 +818,12 @@ export default function VoiceOtpFullPage() {
                   <h4 className="font-semibold">{s.name}</h4>
                   <div className="flex items-center gap-2">
                     <span className={`px-2 py-0.5 rounded-full text-xs ${s.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{s.is_active ? "Active" : "Inactive"}</span>
-                    <button onClick={() => { setSipForm({ name: s.name, sipHost: s.sip_host || "", sipPort: String(s.sip_port || 5060), sipUsername: s.sip_username || "", sipPassword: "", callerId: s.caller_id || "Net2APP", maxRetries: String(s.max_retries || 3), timeout: String(s.timeout || 30), dialPrefix: s.dial_prefix || "" }); setEditingSipId(s.id); setShowSipForm(true); }} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-blue-500 text-xs transition" title="Edit">✏️</button>
+                    <button onClick={() => { setSipForm({ name: s.name, sipHost: s.sip_host || "", sipPort: String(s.sip_port || 5060), sipUsername: s.sip_username || "", sipPassword: "", callerId: s.caller_id || "Net2APP", callerIdMode: s.caller_id_mode || "otp", e164CountryPrefix: s.e164_country_prefix || "", e164Format: s.e164_format || "plus", maxRetries: String(s.max_retries || 3), timeout: String(s.timeout || 30), dialPrefix: s.dial_prefix || "" }); setEditingSipId(s.id); setShowSipForm(true); }} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-blue-500 text-xs transition" title="Edit">✏️</button>
                     <button onClick={async () => { if (await confirmDelete(`Delete SIP endpoint "${s.name}"?`)) { await fetch(`/api/tenant/voice-otp-sip?id=${s.id}`, { method: "DELETE" }); flash("SIP endpoint deleted."); load(); } }} className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs transition" title="Delete">🗑️</button>
                   </div>
                 </div>
                 <p className="text-sm font-mono text-slate-600">sip:{s.sip_host}:{s.sip_port || 5060}</p>
-                <p className="text-xs text-slate-500">Retries: {s.max_retries || 3} · Timeout: {s.timeout || 30}s{s.dial_prefix ? ` · Prefix: ${s.dial_prefix}` : ""}</p>
+                <p className="text-xs text-slate-500">Caller: {s.caller_id_mode === 'e164' && s.e164_country_prefix ? `🌍 E164 ${s.e164_country_prefix} (random)` : `📱 ${s.caller_id || 'Net2APP'}`} · Retries: {s.max_retries || 3} · Timeout: {s.timeout || 30}s{s.dial_prefix ? ` · Prefix: ${s.dial_prefix}` : ""}</p>
               </div>
             ))}
             {sipConfigs.length === 0 && (
