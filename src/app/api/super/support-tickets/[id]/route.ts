@@ -41,7 +41,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const bearerToken = authHdr?.replace(/^Bearer\s+/i, "") || (tokenMatch ? tokenMatch[1] : "");
     try {
       const res = await fetchWithTimeout(
-        `http://${serverIp}:5555/api/super/support-tickets/${id}`,
+        `http://${serverIp}:5556/api/super/support-tickets/${id}`,
         { headers: { Authorization: `Bearer ${bearerToken}` } },
         3000
       );
@@ -114,7 +114,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     try {
       const clonedBody = request.clone();
       const res = await fetchWithTimeout(
-        `http://${serverIp}:5555/api/super/support-tickets/${id}`,
+        `http://${serverIp}:5556/api/super/support-tickets/${id}`,
         {
           method: "POST",
           headers: {

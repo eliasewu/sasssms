@@ -131,7 +131,7 @@ async function healthCheckServer(loc: ServerLocation): Promise<{
     'echo "UPTIME:$(uptime -p)"',
     'PM2_HOME=/root/.pm2 pm2 list --no-color 2>&1 | grep -E "online|errored|stopped" | head -5',
     'echo "PORTS:"',
-    'ss -tlnp 2>/dev/null | grep -E "5555|2775|80|443" | awk \'{print $4}\'',
+    'ss -tlnp 2>/dev/null | grep -E "5556|2775|80|443" | awk \'{print $4}\'',
   ].join(" && ");
 
   const { output, error } = sshExecSafe(loc.ipAddress, loc.sshUser, sshPass, healthCmd);

@@ -168,7 +168,7 @@ export async function POST(request: Request) {
     const SYNC_SECRET = process.env.INTERNAL_SYNC_SECRET || "net2app-internal-sync-2024";
     const selfIp = await getSelfIp();
     ALL_SERVER_IPS.filter((ip: string) => ip !== selfIp && ip !== "127.0.0.1").forEach(ip => {
-      fetch(`http://${ip}:5555/api/internal/sync-tenant`, {
+      fetch(`http://${ip}:5556/api/internal/sync-tenant`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${SYNC_SECRET}` },
         body: JSON.stringify(tenantData),

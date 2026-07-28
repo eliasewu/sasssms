@@ -109,7 +109,7 @@ export async function GET(request: Request) {
   // 2. Fetch from all remote servers in parallel (with 3s hard timeout each)
   const remoteIps = ALL_SERVER_IPS.filter((ip: string) => ip !== selfIp && ip !== "127.0.0.1");
   const remotePromises = remoteIps.map((ip) =>
-    fetchTicketsFromServer(`http://${ip}:5555`, bearerToken, queryString)
+    fetchTicketsFromServer(`http://${ip}:5556`, bearerToken, queryString)
   );
 
   const remoteResults = await Promise.all(remotePromises);
@@ -156,7 +156,7 @@ export async function PATCH(request: Request) {
     const body = await request.text();
     try {
       const res = await fetchWithTimeout(
-        `http://${serverIp}:5555/api/super/support-tickets`,
+        `http://${serverIp}:5556/api/super/support-tickets`,
         {
           method: "PATCH",
           headers: {

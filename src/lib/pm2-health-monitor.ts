@@ -57,7 +57,7 @@ async function getSelfIp(): Promise<string | null> {
   return selfIp;
 }
 
-async function checkOneServer(ip: string, port: number = 5555): Promise<Pm2HealthResult> {
+async function checkOneServer(ip: string, port: number = 5556): Promise<Pm2HealthResult> {
   const label = serverLabel(ip);
   const result: Pm2HealthResult = {
     ip,
