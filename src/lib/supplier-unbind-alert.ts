@@ -248,10 +248,10 @@ async function handleSupplierUnbound(event: BindEvent): Promise<void> {
                 host: process.env.SMTP_HOST || "mail.net2app.com",
                 port: parseInt(process.env.SMTP_PORT || "587"),
                 secure: parseInt(process.env.SMTP_PORT || "587") === 465,
-                auth: { user: process.env.SMTP_USER || "noreply@net2app.com", pass: process.env.SMTP_PASS || "" },
+                auth: { user: process.env.SMTP_USER || "welcome@net2app.com", pass: process.env.SMTP_PASS || "" },
               });
               await transporter.sendMail({
-                from: `"Net2APP Alerts" <${process.env.SMTP_USER || "noreply@net2app.com"}>`,
+                from: `"Net2APP Alerts" <${process.env.SMTP_USER || "welcome@net2app.com"}>`,
                 to: escTenantEmail,
                 subject: `🚨 ESCALATED: Supplier "${escSupplierName}" UNBOUND for ${PEAK_ESCALATION_MS / 60000}min — ${escTenantName}`,
                 html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;border:3px solid #991b1b;border-radius:8px;">
@@ -304,10 +304,10 @@ async function handleSupplierUnbound(event: BindEvent): Promise<void> {
           host: process.env.SMTP_HOST || "mail.net2app.com",
           port: parseInt(process.env.SMTP_PORT || "587"),
           secure: parseInt(process.env.SMTP_PORT || "587") === 465,
-          auth: { user: process.env.SMTP_USER || "noreply@net2app.com", pass: process.env.SMTP_PASS || "" },
+          auth: { user: process.env.SMTP_USER || "welcome@net2app.com", pass: process.env.SMTP_PASS || "" },
         });
         await transporter.sendMail({
-          from: `"Net2APP Alerts" <${process.env.SMTP_USER || "noreply@net2app.com"}>`,
+          from: `"Net2APP Alerts" <${process.env.SMTP_USER || "welcome@net2app.com"}>`,
           to: tenantEmail,
           subject: `🔴 PEAK ALERT: Supplier "${supplierName}" UNBOUND — ${tenantName}`,
           html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;border:2px solid #dc2626;border-radius:8px;">

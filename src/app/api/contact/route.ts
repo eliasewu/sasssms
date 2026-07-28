@@ -4,7 +4,7 @@ import { getAdminEmail } from "@/lib/email-service";
 
 const SMTP_HOST = process.env.SMTP_HOST || "mail.net2app.com";
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587");
-const SMTP_USER = process.env.SMTP_USER || "noreply@net2app.com";
+const SMTP_USER = process.env.SMTP_USER || "welcome@net2app.com";
 const SMTP_PASS = process.env.SMTP_PASS || "";
 
 const transporter = nodemailer.createTransport({

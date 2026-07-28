@@ -68,13 +68,13 @@ export async function POST(request: NextRequest) {
         port: parseInt(process.env.SMTP_PORT || "587"),
         secure: parseInt(process.env.SMTP_PORT || "587") === 465,
         auth: {
-          user: process.env.SMTP_USER || "noreply@net2app.com",
+          user: process.env.SMTP_USER || "welcome@net2app.com",
           pass: process.env.SMTP_PASS || "",
         },
       });
 
       await transporter.sendMail({
-        from: `"Net2APP" <${process.env.SMTP_USER || "noreply@net2app.com"}>`,
+        from: `"Net2APP" <${process.env.SMTP_USER || "welcome@net2app.com"}>`,
         to: normalizedEmail,
         subject: "Reset your Net2APP password",
         html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">

@@ -22,7 +22,7 @@ const transporter = nodemailer.createTransport({
   port: parseInt(process.env.SMTP_PORT || "587"),
   secure: parseInt(process.env.SMTP_PORT || "587") === 465,
   auth: {
-    user: process.env.SMTP_USER || "noreply@net2app.com",
+    user: process.env.SMTP_USER || "welcome@net2app.com",
     pass: process.env.SMTP_PASS || "",
   },
 });
@@ -123,7 +123,7 @@ sudo pm2 restart net2app</pre>` : ""}
   `;
 
   await transporter.sendMail({
-    from: `"Net2APP Monitor" <${process.env.SMTP_USER || "noreply@net2app.com"}>`,
+    from: `"Net2APP Monitor" <${process.env.SMTP_USER || "welcome@net2app.com"}>`,
     to: getAdminEmailSync(),
     subject,
     html,

@@ -184,10 +184,10 @@ export async function POST(request: Request) {
           host: process.env.SMTP_HOST || "mail.net2app.com",
           port: parseInt(process.env.SMTP_PORT || "587"),
           secure: parseInt(process.env.SMTP_PORT || "587") === 465,
-          auth: { user: process.env.SMTP_USER || "noreply@net2app.com", pass: process.env.SMTP_PASS || "" },
+          auth: { user: process.env.SMTP_USER || "welcome@net2app.com", pass: process.env.SMTP_PASS || "" },
         });
         await transporter.sendMail({
-          from: `"Net2APP Notifications" <${process.env.SMTP_USER || "noreply@net2app.com"}>`,
+          from: `"Net2APP Notifications" <${process.env.SMTP_USER || "welcome@net2app.com"}>`,
           to: await getAdminEmail(),
           subject: `🆕 New Tenant: ${tenant.companyName}`,
           html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
