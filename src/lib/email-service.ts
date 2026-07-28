@@ -333,6 +333,92 @@ export async function notifyTenantAutoRenewFailed(payload: {
 }
 
 /**
+ * Send welcome email to newly registered tenant with server details and getting started guide.
+ */
+export async function sendTenantWelcomeEmail(payload: {
+  tenantEmail: string;
+  tenantName: string;
+  serverIp: string;
+  smppPort: number;
+  httpPort: number;
+}): Promise<boolean> {
+  try {
+    await transporter.sendMail({
+      from: `"Net2APP" <${SMTP_USER}>`,
+      to: payload.tenantEmail,
+      subject: `🎉 Welcome to Net2APP — Your SMS Platform is Ready!`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #2563eb, #7c3aed); padding: 40px 20px; text-align: center; border-radius: 12px 12px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">🎉 Welcome to Net2APP!</h1>
+            <p style="color: #c7d2fe; margin: 10px 0 0 0; font-size: 16px;">Your SMS platform is ready to go</p>
+          </div>
+          <div style="padding: 30px 20px; background: #ffffff; border-radius: 0 0 12px 12px; border: 1px solid #e5e7eb; border-top: none;">
+            <p>Dear <strong>${payload.tenantName}</strong>,</p>
+            <p>Your Net2APP account has been created successfully. You can now send SMS, Voice OTP, and more through your own dedicated platform.</p>
+
+            <div style="background: #f0f9ff; border-left: 4px solid #2563eb; padding: 16px; margin: 20px 0; border-radius: 4px;">
+              <h3 style="margin: 0 0 10px 0; color: #1e40af;">🔌 Your Server Connection Details</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 6px 8px; color: #4b5563;"><strong>SMPP Server IP:</strong></td>
+                  <td style="padding: 6px 8px; font-family: monospace; font-size: 15px; color: #1e40af;">${payload.serverIp}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 8px; color: #4b5563;"><strong>SMPP Port:</strong></td>
+                  <td style="padding: 6px 8px; font-family: monospace; font-size: 15px; color: #1e40af;">${payload.smppPort}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 8px; color: #4b5563;"><strong>HTTP API Port:</strong></td>
+                  <td style="padding: 6px 8px; font-family: monospace; font-size: 15px; color: #1e40af;">${payload.httpPort}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 8px; color: #4b5563;"><strong>Dashboard:</strong></td>
+                  <td style="padding: 6px 8px;"><a href="https://net2app.com/dashboard" style="color: #2563eb;">https://net2app.com/dashboard</a></td>
+                </tr>
+              </table>
+            </div>
+
+            <div style="background: #fefce8; border-left: 4px solid #eab308; padding: 16px; margin: 20px 0; border-radius: 4px;">
+              <h3 style="margin: 0 0 10px 0; color: #92400e;">🚀 Quick Start Guide</h3>
+              <ol style="margin: 0; padding-left: 20px; color: #78350f;">
+                <li style="margin-bottom: 8px;"><strong>Add a Client</strong> — Go to Dashboard → Clients → Add Client. Each client gets their own SMPP username/password.</li>
+                <li style="margin-bottom: 8px;"><strong>Configure Routes</strong> — Set up routing via Dashboard → Routing to direct SMS traffic to suppliers.</li>
+                <li style="margin-bottom: 8px;"><strong>Add Suppliers</strong> — Connect to SMS carriers via Dashboard → Suppliers. Supports SMPP, HTTP API, Voice OTP, and more.</li>
+                <li style="margin-bottom: 8px;"><strong>Send a Test</strong> — Use Dashboard → Messages → Test SMS to verify everything works.</li>
+                <li><strong>Go Live!</strong> — Whitelist client IPs, assign rate plans, and start sending.</li>
+              </ol>
+            </div>
+
+            <div style="text-align: center; margin: 25px 0;">
+              <a href="https://net2app.com/dashboard/guide" style="display: inline-block; background: #2563eb; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">📖 View Full Getting Started Guide</a>
+            </div>
+
+            <div style="margin-top: 20px;">
+              <p style="color: #4b5563;"><strong>📱 Connection Types Available:</strong></p>
+              <p style="color: #6b7280; font-size: 14px;">
+                SMPP v3.4 · HTTP/REST API · RCS · Flash SMS · Voice OTP (Asterisk AMI) · WhatsApp Business API · Telegram · Email SMTP · SIP Trunking
+              </p>
+            </div>
+
+            <hr style="margin: 25px 0; border: none; border-top: 1px solid #e5e7eb;" />
+
+            <p style="color: #9ca3af; font-size: 12px; text-align: center;">
+              Need help? Reply to this email or contact support at <a href="mailto:support@net2app.com" style="color: #2563eb;">support@net2app.com</a><br/>
+              📱 WhatsApp: +971505380825
+            </p>
+          </div>
+        </div>
+      `,
+    });
+    return true;
+  } catch (e) {
+    console.error("Failed to send tenant welcome email:", e);
+    return false;
+  }
+}
+
+/**
  * Scheduled check: find Professional/Enterprise tenants whose package expires
  * within 14, 7, or 3 days and send email notifications + create dashboard alerts.
  * Deduplicates via subscription_reminders table to prevent repeat sends.

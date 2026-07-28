@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { safeInt, safeDecimal, safeText } from "@/lib/validation";
 import { ALL_SERVER_IPS, getSelfIp } from "@/lib/server-ips";
 import { registerLimiter, getClientIp } from "@/lib/rate-limit";
+import { sendTenantWelcomeEmail } from "@/lib/email-service";
 
 async function getSignupBonus(): Promise<number> {
   try {
@@ -202,6 +203,17 @@ export async function POST(request: Request) {
           </div>`,
         });
       } catch { /* notification is best-effort */ }
+    })();
+
+    // ── Send welcome email to tenant (best-effort, non-blocking) ──
+    (async () => {
+      sendTenantWelcomeEmail({
+        tenantEmail: tenant.email,
+        tenantName: tenant.companyName,
+        serverIp: assignedServerIp,
+        smppPort: 2775,
+        httpPort: 5556,
+      }).catch(e => console.error("Welcome email failed:", e));
     })();
     // ──────────────────────────────────────────
 
