@@ -243,6 +243,7 @@ export default function LandingPage() {
             <form onSubmit={handleLogin} className="space-y-4">
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Email</label><input name="email" type="email" required className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Password</label><input name="password" type="password" required className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition" /></div>
+              <div className="text-right"><Link href="/auth/forgot-password" className="text-xs text-blue-600 hover:text-blue-700 font-medium">Forgot password?</Link></div>
               <button disabled={loading} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 rounded-lg font-semibold disabled:opacity-50 shadow-lg">{loading ? "Signing in..." : "Sign In"}</button>
             </form>
           ) : (

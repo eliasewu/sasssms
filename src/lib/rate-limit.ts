@@ -70,6 +70,9 @@ export const registerLimiter = new RateLimiter(3, 3_600_000);
 /** General API: 100 requests per IP per minute */
 export const apiLimiter = new RateLimiter(100, 60_000);
 
+/** Forgot password: 3 attempts per IP per 15 minutes */
+export const forgotLimiter = new RateLimiter(3, 900_000);
+
 /** Tawk.to chat persistence: 30 messages per IP per minute */
 export const tawkLimiter = new RateLimiter(30, 60_000);
 

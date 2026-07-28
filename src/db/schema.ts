@@ -568,6 +568,16 @@ export const liveChatMessages = pgTable("live_chat_messages", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// ── Password Reset Tokens (public schema, 1-hour expiry) ──
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: serial("id").primaryKey(),
+  email: varchar("email", { length: 255 }).notNull(),
+  token: varchar("token", { length: 100 }).notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  used: boolean("used").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // ── Live Chat Internal Notes — visible only to super admins ──
 export const liveChatNotes = pgTable("live_chat_notes", {
   id: serial("id").primaryKey(),
