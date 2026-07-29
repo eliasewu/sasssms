@@ -694,6 +694,39 @@ export async function executeVoiceOtpCall(params: {
     };
   }
 
+  // ── 2b. Per-destination guard: prevent overlapping calls to the same number ──
+  // If a call is already IN_PROGRESS for this destination (including during retry delays),
+  // reject the new request to avoid double-calling the user.
+  const existingCall = await tenantQuery(
+    schemaName,
+    `SELECT id, call_sid, created_at FROM voice_otp_call_logs
+     WHERE destination = $1 AND status = 'IN_PROGRESS'
+     ORDER BY created_at DESC LIMIT 1`,
+    [destination]
+  );
+  if (existingCall.rows.length > 0) {
+    const existing = existingCall.rows[0];
+    const ageSeconds = (Date.now() - new Date(existing.created_at as string).getTime()) / 1000;
+    // If the existing in-progress call is older than 5 minutes, it's likely stale
+    // (process crashed). Mark it FAILED and allow the new call through.
+    if (ageSeconds > 300) {
+      console.log(`[VOICE-OTP] Cleaning up stale IN_PROGRESS call for ${destination} (age=${ageSeconds.toFixed(0)}s)`);
+      tenantQuery(
+        schemaName,
+        "UPDATE voice_otp_call_logs SET status = 'FAILED' WHERE id = $1",
+        [existing.id]
+      ).catch(() => {});
+      // Fall through — allow the new call
+    } else {
+      return {
+        success: false,
+        callSid: "", language, langResolution,
+        callAttempts: [], totalDuration: 0, sipConfigName: null,
+        errorMessage: `A call is already in progress for ${destination}. Please wait for it to complete before retrying.`,
+      };
+    }
+  }
+
   // ── 3. Fetch audio files, SIP configs & voice OTP language config ──
   const [audioResult, sipResult, votpConfigResult] = await Promise.all([
     tenantQuery(schemaName, "SELECT * FROM voice_otp_audio ORDER BY id").catch(() => ({ rows: [] as AudioFile[] })),
