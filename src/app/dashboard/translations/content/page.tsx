@@ -218,7 +218,7 @@ export default function ContentTranslationPage() {
     const otp = extractOtpWithCustom(sample, rule.customRegex, rule.otpMinLength, rule.otpMaxLength);
     let transformed = sample;
     try {
-      transformed = transformed.replace(new RegExp(rule.matchPattern, "gm"), rule.replacementFixed);
+      transformed = transformed.replace(buildRegex(rule.matchPattern, "gm"), rule.replacementFixed);
       if (otp) transformed = transformed.replace(/\{\{OTP\}\}/g, otp);
     } catch { /* skip */ }
     setTestRowIdx(idx);
@@ -323,20 +323,20 @@ export default function ContentTranslationPage() {
   const extractOtpWithCustom = (content: string, customRegex: string, minLen: number, maxLen: number): string | null => {
     if (customRegex) {
       try {
-        const regex = new RegExp(customRegex);
+        const regex = buildRegex(customRegex);
         const m = content.match(regex);
         // Return capture group 1 if present, else full match. Return null on no match — no fallback.
         return m ? (m[1] || m[0]) : null;
       } catch { /* fall through to length-based */ }
     }
     // Length-based extraction (only when no custom regex)
-    const regex = new RegExp(`\\b(\\d{${minLen},${maxLen}})\\b`);
+    const regex = buildRegex(`\\b(\\d{${minLen},${maxLen}})\\b`);
     const m = content.match(regex);
     return m ? m[1] : null;
   };
 
   const extractOtp = (content: string, minLen: number, maxLen: number): string | null => {
-    const regex = new RegExp(`\\b(\\d{${minLen},${maxLen}})\\b`);
+    const regex = buildRegex(`\\b(\\d{${minLen},${maxLen}})\\b`);
     const m = content.match(regex);
     return m ? m[1] : null;
   };
@@ -347,7 +347,7 @@ export default function ContentTranslationPage() {
     setExtractedOtp(otp);
     let result = sampleContent;
     try {
-      result = result.replace(new RegExp(sampleMatch, "gm"), sampleReplace);
+      result = result.replace(buildRegex(sampleMatch, "gm"), sampleReplace);
       if (otp) result = result.replace(/\{\{OTP\}\}/g, otp);
     } catch { /* skip */ }
     setPreviewResult(result);
@@ -355,7 +355,7 @@ export default function ContentTranslationPage() {
 
   const previewTransform = (content: string, match: string, replace: string, minOtp: number, maxOtp: number, customRegex?: string): string => {
     try {
-      let result = content.replace(new RegExp(match, "gm"), replace);
+      let result = content.replace(buildRegex(match, "gm"), replace);
       const otp = extractOtpWithCustom(content, customRegex || "", minOtp, maxOtp);
       if (otp) result = result.replace(/\{\{OTP\}\}/g, otp);
       return result;
