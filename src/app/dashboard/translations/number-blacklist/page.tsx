@@ -5,9 +5,34 @@ import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
 import { buildRegex } from "@/lib/regex-utils";
 
+// Escape regex-special characters so an exact phone number becomes a literal match pattern
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Detect if a stored regex pattern represents a simple exact match:
+// starts with ^, ends with $, and the middle contains no regex special chars
+function isExactMatchPattern(pattern: string): boolean {
+  if (!pattern.startsWith("^") || !pattern.endsWith("$")) return false;
+  const inner = pattern.slice(1, -1);
+  // If inner still contains unescaped regex special chars, it's not a simple exact match
+  const specialChars = /(?<!\\)[.*+?{}()|[\]\\]/;
+  return !specialChars.test(inner);
+}
+
+// Extract the raw number from an exact-match regex pattern like "^\+971501234567$"
+function extractExactNumber(pattern: string): string {
+  // Unescape the inner portion
+  let inner = pattern.slice(1, -1);
+  // Reverse common regex escapes: \+, \., \\ etc.
+  return inner.replace(/\\(.)/g, "$1");
+}
+
 interface BlacklistRule {
   ruleId: number | null;
   name: string;
+  matchMode: "exact" | "regex";
+  exactNumber: string;
   matchPattern: string;
   scope: "client" | "supplier" | "both";
   entityId: number | null;
@@ -58,10 +83,14 @@ export default function NumberBlacklistPage() {
 
       const parsed: BlacklistRule[] = profiles.map((p: any) => {
         const a = (p.assignments || []).find((x: any) => x.isActive !== false);
+        const rawPattern: string = p.match_pattern || p.matchPattern || "^880";
+        const exact = isExactMatchPattern(rawPattern);
         return {
           ruleId: p.id,
           name: p.name,
-          matchPattern: p.match_pattern || p.matchPattern || "^880",
+          matchMode: exact ? "exact" : "regex",
+          exactNumber: exact ? extractExactNumber(rawPattern) : "",
+          matchPattern: rawPattern,
           scope: a?.clientId ? "client" : a?.supplierId ? "supplier" : "both",
           entityId: a?.clientId || a?.supplierId || null,
           entityName: a?.clientId ? loadedClients.find((c: ClientSupplier) => c.id === a.clientId)?.name || `Client #${a.clientId}` : a?.supplierId ? loadedSuppliers.find((s: ClientSupplier) => s.id === a.supplierId)?.name || `Supplier #${a.supplierId}` : null,
@@ -102,9 +131,18 @@ export default function NumberBlacklistPage() {
     });
   }, [rules, clients, suppliers]);
 
+  // Build the effective regex pattern for saving — exact mode wraps in ^...$
+  const effectivePattern = (rule: BlacklistRule): string => {
+    if (rule.matchMode === "exact") {
+      return "^" + escapeRegex(rule.exactNumber || "") + "$";
+    }
+    return rule.matchPattern;
+  };
+
   const addRule = () => {
     const newRule: BlacklistRule = {
       ruleId: null, name: `Blacklist ${rules.length + 1}`,
+      matchMode: "regex", exactNumber: "",
       matchPattern: "^8801[3-9]", scope: "both", entityId: null, entityName: null,
       priority: rules.length + 1, isActive: true, mcc: selection.mcc || "", mnc: selection.mnc || "",
     };
@@ -155,11 +193,12 @@ export default function NumberBlacklistPage() {
   };
 
   const saveRuleToApi = async (rule: BlacklistRule): Promise<number | null> => {
+    const finalPattern = effectivePattern(rule);
     if (rule.ruleId) {
       const res = await fetch(`/api/tenant/sms-translations/${rule.ruleId}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: rule.name, matchPattern: rule.matchPattern,
+          name: rule.name, matchPattern: finalPattern,
           mcc: rule.mcc || null, mnc: rule.mnc || null,
           scope: rule.scope, entityId: rule.entityId, priority: rule.priority,
           isActive: rule.isActive,
@@ -172,7 +211,7 @@ export default function NumberBlacklistPage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: rule.name, targetField: "DESTINATION", category: "NUMBER_BLACKLIST", mode: "FIXED",
-          matchPattern: rule.matchPattern,
+          matchPattern: finalPattern,
           mcc: rule.mcc || null, mnc: rule.mnc || null,
           scope: rule.scope, entityId: rule.entityId, priority: rule.priority,
         }),
@@ -212,20 +251,27 @@ export default function NumberBlacklistPage() {
     loadRules(clients, suppliers);
   };
 
+  // Test a single rule against the quick test number
+  const testRuleAgainstNumber = (rule: BlacklistRule): boolean => {
+    try {
+      return buildRegex(effectivePattern(rule)).test(quickTestNumber);
+    } catch { return false; }
+  };
+
   const runQuickTest = () => {
     for (const rule of rules) {
       if (!rule.isActive) continue;
-      try {
-        if (buildRegex(rule.matchPattern).test(quickTestNumber)) {
-          setQuickTestResult({ blocked: true, matchedRule: rule.name });
-          return;
-        }
-      } catch { /* skip */ }
+      if (testRuleAgainstNumber(rule)) {
+        setQuickTestResult({ blocked: true, matchedRule: rule.name });
+        return;
+      }
     }
     setQuickTestResult({ blocked: false, matchedRule: null });
   };
 
   const assignedRules = rules.filter(r => r.scope !== "both" && r.entityId);
+  const exactCount = rules.filter(r => r.matchMode === "exact").length;
+  const regexCount = rules.filter(r => r.matchMode === "regex").length;
 
   if (loading) return <Spinner />;
 
@@ -242,8 +288,8 @@ export default function NumberBlacklistPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-lg font-bold text-slate-800">Number Series Blacklist</h2>
-          <p className="text-xs text-slate-400">Block SMS to destination numbers matching regex patterns — applied per client or supplier</p>
+          <h2 className="text-lg font-bold text-slate-800">Number Blacklist</h2>
+          <p className="text-xs text-slate-400">Block SMS to specific numbers or number series — supports exact match &amp; regex patterns</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-slate-500">Scope: <strong>{selection.label}</strong></span>
@@ -316,9 +362,11 @@ export default function NumberBlacklistPage() {
           <div className="flex items-center gap-4 text-[10px] text-slate-500">
             <span>{rules.filter(r => r.isActive).length} active rules</span>
             <span>•</span>
-            <span>First match wins</span>
+            <span>{exactCount} exact</span>
             <span>•</span>
-            <span>SMS to blocked numbers is rejected</span>
+            <span>{regexCount} regex</span>
+            <span>•</span>
+            <span>First match wins</span>
           </div>
         </div>
       </div>
@@ -356,7 +404,8 @@ export default function NumberBlacklistPage() {
               <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider">
                 <th className="text-left px-4 py-2.5 font-medium w-8">#</th>
                 <th className="text-left px-3 py-2.5 font-medium">Rule Name</th>
-                <th className="text-left px-3 py-2.5 font-medium">Match Number (Regex)</th>
+                <th className="text-left px-3 py-2.5 font-medium w-24">Mode</th>
+                <th className="text-left px-3 py-2.5 font-medium">Match Number</th>
                 <th className="text-left px-3 py-2.5 font-medium w-48">Applies To</th>
                 <th className="text-left px-3 py-2.5 font-medium w-16">Priority</th>
                 <th className="text-center px-3 py-2.5 font-medium w-12">Active</th>
@@ -366,10 +415,10 @@ export default function NumberBlacklistPage() {
             <tbody className="divide-y divide-slate-100">
               {rules.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                  <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
                     <p className="text-2xl mb-2">🚫</p>
                     <p className="text-sm">No number blacklist rules yet</p>
-                    <p className="text-xs mt-1">Click "+ Add Blacklist" to block number series</p>
+                    <p className="text-xs mt-1">Click &quot;+ Add Blacklist&quot; to block numbers or number series</p>
                   </td>
                 </tr>
               )}
@@ -396,9 +445,49 @@ export default function NumberBlacklistPage() {
                         className="w-full border-0 bg-transparent focus:bg-white focus:border focus:border-red-300 rounded px-1 py-0.5 text-xs font-medium text-slate-800 focus:outline-none" />
                     </td>
                     <td className="px-3 py-2">
-                      <input value={rule.matchPattern} onChange={e => updateRule(idx, "matchPattern", e.target.value)}
-                        placeholder="^8801[3-9]"
-                        className="w-40 border rounded px-2 py-1 font-mono text-xs focus:ring-2 focus:ring-red-500 focus:outline-none" />
+                      <select value={rule.matchMode} onChange={e => {
+                        const mode = e.target.value as "exact" | "regex";
+                        updateRule(idx, "matchMode", mode);
+                        // When switching to exact, pre-fill from existing pattern if detected
+                        if (mode === "exact" && !rule.exactNumber && isExactMatchPattern(rule.matchPattern)) {
+                          updateRule(idx, "exactNumber", extractExactNumber(rule.matchPattern));
+                        }
+                      }}
+                        className={`border rounded px-1.5 py-1 text-[10px] font-medium focus:ring-2 focus:ring-red-500 focus:outline-none ${rule.matchMode === "exact" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-purple-50 text-purple-700 border-purple-200"}`}>
+                        <option value="exact">🎯 Exact</option>
+                        <option value="regex">.* Regex</option>
+                      </select>
+                    </td>
+                    <td className="px-3 py-2">
+                      {rule.matchMode === "exact" ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            value={rule.exactNumber}
+                            onChange={e => updateRule(idx, "exactNumber", e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                // Notify user of effective pattern
+                                const ep = effectivePattern(rule);
+                                setMsg(`Exact match → regex: ${ep}`);
+                                setTimeout(() => setMsg(""), 3000);
+                              }
+                            }}
+                            placeholder="+971501234567"
+                            className="w-44 border rounded px-2 py-1 font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none bg-blue-50/30"
+                          />
+                          <span
+                            className="text-[9px] text-slate-400 cursor-help"
+                            title={`Stored as: ${effectivePattern(rule)}`}
+                          >
+                            🔒
+                          </span>
+                        </div>
+                      ) : (
+                        <input value={rule.matchPattern} onChange={e => updateRule(idx, "matchPattern", e.target.value)}
+                          placeholder="^8801[3-9]"
+                          className="w-44 border rounded px-2 py-1 font-mono text-xs focus:ring-2 focus:ring-red-500 focus:outline-none" />
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1">
@@ -450,12 +539,12 @@ export default function NumberBlacklistPage() {
                       <div className="flex items-center justify-end gap-1 flex-wrap">
                         <button onClick={() => {
                           try {
-                            if (buildRegex(rule.matchPattern).test(quickTestNumber)) {
+                            if (testRuleAgainstNumber(rule)) {
                               setQuickTestResult({ blocked: true, matchedRule: rule.name });
                             } else {
                               setQuickTestResult({ blocked: false, matchedRule: null });
                             }
-                          } catch { setMsg("Invalid regex pattern"); setTimeout(() => setMsg(""), 2000); }
+                          } catch { setMsg("Invalid pattern"); setTimeout(() => setMsg(""), 2000); }
                         }}
                           className="bg-slate-600 text-white px-2 py-1 rounded text-[10px] font-medium hover:bg-slate-700 transition" title="Test this rule">▶️ Test</button>
                         <button onClick={() => saveRule(idx)}
@@ -514,7 +603,7 @@ export default function NumberBlacklistPage() {
                   </td>
                   <td className="px-3 py-2 font-medium text-slate-600">{rule.entityName || `#${rule.entityId}`}</td>
                   <td className="px-3 py-2 text-slate-500">{rule.priority}</td>
-                  <td className="px-3 py-2 text-slate-500 font-mono text-[10px]">{rule.matchPattern}</td>
+                  <td className="px-3 py-2 text-slate-500 font-mono text-[10px]">{effectivePattern(rule)}</td>
                 </tr>
               ))}
             </tbody>
@@ -526,7 +615,8 @@ export default function NumberBlacklistPage() {
       <div className="mt-4 bg-slate-50 border rounded-xl p-4 text-xs text-slate-500">
         <p className="font-medium text-slate-700 mb-2">💡 How Number Blacklist Works</p>
         <ul className="space-y-1 list-disc list-inside">
-          <li><strong>Match Number:</strong> Regex pattern to match destination numbers. Prefix patterns like <code className="bg-slate-200 px-1 rounded text-[10px]">^880</code> block all numbers starting with 880.</li>
+          <li><strong>🎯 Exact Match:</strong> Enter a single phone number (e.g. <code className="bg-slate-200 px-1 rounded text-[10px]">+971501234567</code>). Automatically escaped &amp; wrapped as regex. Simplest way to block one number.</li>
+          <li><strong>.* Regex:</strong> Use regex patterns to block number series. Prefix patterns like <code className="bg-slate-200 px-1 rounded text-[10px]">^880</code> block all numbers starting with 880.</li>
           <li><strong>Blocking:</strong> When an SMS destination matches any active blacklist rule, the SMS is rejected before routing.</li>
           <li><strong>Quick Test:</strong> Enter a number and click Check to see if it gets blocked.</li>
           <li><strong>Update / Cancel:</strong> Save or revert changes per rule.</li>
