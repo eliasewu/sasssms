@@ -18,15 +18,17 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$APP_DIR"
 
-# All known server IPs with credentials
-declare -A SERVERS
+# All known server IPs (SSH key auth preferred, password as fallback)
 SERVERS=(
-  ["149.56.22.232"]="ubuntu:Telco1988"   # Canada Origin (Cloudflare)
-  ["15.235.35.125"]="ubuntu:Telco1988"   # Canada
-  ["54.37.252.5"]="ubuntu:Telco1988"     # France
-  ["145.239.1.7"]="ubuntu:Telco1988"     # Germany
-  ["146.59.47.22"]="ubuntu:Telco1988"    # Poland
+  "149.56.22.232"   # Canada — Toronto (Origin)
+  "15.235.35.125"   # Canada — Toronto
+  "54.37.252.5"     # France — Paris
+  "145.239.1.7"     # Germany — Frankfurt
+  "146.59.47.22"    # Poland — Warsaw
 )
+SSH_USER="ubuntu"
+SSH_PASS="Telco1988"
+DEPLOY_PORT="5556"
 
 SELF_IP=$(curl -s --max-time 3 ifconfig.me 2>/dev/null || echo "127.0.0.1")
 echo "🌍 Self IP: $SELF_IP"
@@ -49,32 +51,52 @@ echo "📡 [3/4] Syncing to all remote servers..."
 
 FAILED_SERVERS=""
 
-for IP in "${!SERVERS[@]}"; do
+# Helper: try SSH key first, fall back to sshpass
+ssh_do() {
+  local ip=$1; shift
+  ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "$SSH_USER@$ip" "$@" 2>/dev/null || \
+    SSHPASS="$SSH_PASS" sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$SSH_USER@$ip" "$@" 2>/dev/null
+}
+
+rsync_do() {
+  local ip=$1
+  rsync -avz --delete \
+    --exclude node_modules --exclude .next --exclude .git --exclude .server-creds \
+    -e 'ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes' \
+    "$APP_DIR/" "$SSH_USER@$ip:/opt/net2app/" 2>/dev/null || \
+  SSHPASS="$SSH_PASS" sshpass -e rsync -avz --delete \
+    --exclude node_modules --exclude .next --exclude .git --exclude .server-creds \
+    -e 'ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10' \
+    "$APP_DIR/" "$SSH_USER@$ip:/opt/net2app/" 2>/dev/null
+}
+
+for IP in "${SERVERS[@]}"; do
   # Skip self
   if [ "$IP" = "$SELF_IP" ]; then
     echo "  ⏭️  $IP (self — skipping)"
     continue
   fi
 
-  IFS=':' read -r USER PASS <<< "${SERVERS[$IP]}"
-  export SSHPASS="$PASS"
-
   echo -n "  📤 $IP... "
 
   # Sync source (exclude heavy dirs)
-  if sshpass -e rsync -avz --delete \
-    --exclude node_modules --exclude .next --exclude .git --exclude .server-creds \
-    -e 'ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10' \
-    "$APP_DIR/" "$USER@$IP:/opt/net2app/" 2>&1 | tail -1 | grep -q "speedup"; then
+  if rsync_do "$IP" 2>&1 | tail -1 | grep -q "speedup"; then
     echo -n "synced, "
 
-    # Rebuild on remote
-    sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$USER@$IP" \
-      "cd /opt/net2app && rm -rf .next && npm run build 2>&1 | tail -1" 2>/dev/null
+    # Install + rebuild on remote
+    ssh_do "$IP" "cd /opt/net2app && npm install 2>&1 | tail -1 && rm -rf .next && npm run build 2>&1 | tail -1" 2>/dev/null
+
+    # Ensure port 5556 in .env
+    ssh_do "$IP" "grep -q 'PORT=5556' /opt/net2app/.env 2>/dev/null || echo 'PORT=5556' >> /opt/net2app/.env" 2>/dev/null
+
+    # Kill old port 5555 if still running
+    ssh_do "$IP" "sudo fuser -k 5555/tcp 2>/dev/null; true" 2>/dev/null
 
     # Restart PM2
-    sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$USER@$IP" \
-      "sudo pm2 restart net2app 2>/dev/null || sudo pm2 start npm --name net2app -- run start" 2>/dev/null
+    ssh_do "$IP" "pm2 delete net2app 2>/dev/null; cd /opt/net2app && pm2 start npm --name net2app -- run start && pm2 save" 2>/dev/null
+
+    # Install watchdog
+    ssh_do "$IP" "sudo cp /opt/net2app/scripts/net2app-watchdog.sh /usr/local/bin/net2app-watchdog 2>/dev/null; sudo chmod +x /usr/local/bin/net2app-watchdog 2>/dev/null; (crontab -l 2>/dev/null | grep -v net2app-watchdog; echo '*/2 * * * * /usr/local/bin/net2app-watchdog') | crontab - 2>/dev/null" 2>/dev/null
 
     echo "restarted ✅"
   else
@@ -87,18 +109,22 @@ done
 echo ""
 echo "🔍 [4/4] Verifying..."
 
-sleep 8
+sleep 15  # Give servers more time to start up
 
 ALL_OK=true
-for IP in "${!SERVERS[@]}"; do
+for IP in "${SERVERS[@]}"; do
   if [ "$IP" = "$SELF_IP" ]; then
     echo -n "  $IP (local): "
-    curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://localhost:5556" 2>/dev/null
+    curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://localhost:$DEPLOY_PORT" 2>/dev/null
     echo ""
   else
     echo -n "  $IP: "
-    curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://$IP:5556" 2>/dev/null || { echo "DOWN"; ALL_OK=false; }
-    echo ""
+    if ssh_do "$IP" "curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://localhost:$DEPLOY_PORT/" 2>/dev/null | grep -q "200"; then
+      echo "200 ✅"
+    else
+      echo "DOWN ❌"
+      ALL_OK=false
+    fi
   fi
 done
 

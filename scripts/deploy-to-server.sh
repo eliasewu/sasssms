@@ -30,22 +30,43 @@ scp_cmd() {
   sshpass -e scp -o StrictHostKeyChecking=no "$@"
 }
 
-export SSHPASS="$SSH_PASS"
-
 log "Deploying Net2APP to $IP ($LOCATION_ID) as $SSH_USER..."
 
-# ── 1. Check connectivity ──
+# ── 1. Check connectivity (try SSH key first, then password) ──
 log "Checking SSH connectivity..."
-if ! ssh_cmd "echo CONNECTED" 2>/dev/null; then
-  echo "FAILED: Cannot SSH into $IP as $SSH_USER"
-  exit 1
-fi
-log "SSH connection OK"
+SSH_OK=false
 
-# ── 2. Check/install sshpass locally ──
-if ! command -v sshpass &>/dev/null; then
-  log "Installing sshpass locally..."
-  sudo apt-get update -qq && sudo apt-get install -y -qq sshpass 2>/dev/null || true
+# Try key-based auth first
+if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "$SSH_USER@$IP" "echo KEY_OK" 2>/dev/null; then
+  log "SSH key auth OK"
+  SSH_OK=true
+  # Redefine ssh_cmd to use key-only (no sshpass)
+  ssh_cmd() { ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o BatchMode=yes "$SSH_USER@$IP" "$@"; }
+  scp_cmd() { scp -o StrictHostKeyChecking=no -o BatchMode=yes "$@"; }
+fi
+
+# Fall back to password if key auth failed
+if [ "$SSH_OK" != true ]; then
+  if [ -n "$SSH_PASS" ]; then
+    log "Trying password auth..."
+    export SSHPASS="$SSH_PASS"
+    if ! ssh_cmd "echo CONNECTED" 2>/dev/null; then
+      echo "FAILED: Cannot SSH into $IP as $SSH_USER (key + password both failed)"
+      exit 1
+    fi
+    log "SSH password auth OK"
+  else
+    echo "FAILED: Cannot SSH into $IP — no SSH key and no password provided"
+    exit 1
+  fi
+fi
+
+# ── 2. Check/install sshpass locally (only needed if password auth is used) ──
+if [ "$SSH_OK" != true ] && [ -n "$SSH_PASS" ]; then
+  if ! command -v sshpass &>/dev/null; then
+    log "Installing sshpass locally..."
+    sudo apt-get update -qq && sudo apt-get install -y -qq sshpass 2>/dev/null || true
+  fi
 fi
 
 # ── 3. Copy install.sh to remote server ──
@@ -129,10 +150,12 @@ ENDENV
     pm2 start npm --name net2app -- run start
     pm2 save
 
-    # Install PM2 watchdog (checks every 2 min, auto-restarts if unresponsive)
-    cp /opt/net2app/scripts/net2app-watchdog.sh /usr/local/bin/net2app-watchdog
-    chmod +x /usr/local/bin/net2app-watchdog
-    (crontab -l 2>/dev/null | grep -v net2app-watchdog; echo \"*/2 * * * * /usr/local/bin/net2app-watchdog\") | crontab -
+    # Install PM2 watchdog (checks localhost:5556 every 2 min, auto-restarts if unresponsive)
+    if [ -f /opt/net2app/scripts/net2app-watchdog.sh ]; then
+      cp /opt/net2app/scripts/net2app-watchdog.sh /usr/local/bin/net2app-watchdog
+      chmod +x /usr/local/bin/net2app-watchdog
+      (crontab -l 2>/dev/null | grep -v net2app-watchdog; echo \"*/2 * * * * /usr/local/bin/net2app-watchdog\") | crontab -
+    fi
   ' 2>&1"
 
   # Configure nginx
@@ -157,6 +180,13 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
     client_max_body_size 100M;
+    location /uploads/ {
+        alias /opt/net2app/public/uploads/;
+        try_files \\$uri =404;
+        expires 1h;
+        add_header Cache-Control \"public\";
+    }
+
     location / {
         proxy_pass http://127.0.0.1:5556;
         proxy_http_version 1.1;
