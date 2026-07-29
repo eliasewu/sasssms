@@ -50,6 +50,7 @@ export default function ContentFilterPage() {
 
   // Test All — run test content against every rule and collect results
   const [testAllResults, setTestAllResults] = useState<{ name: string; result: "blocked" | "allowed" | "none"; mode: string; idx: number }[] | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const loadRules = useCallback(async (loadedClients: ClientSupplier[], loadedSuppliers: ClientSupplier[]) => {
     try {
@@ -274,6 +275,19 @@ export default function ContentFilterPage() {
     setQuickTestResult({ action: "none", matchedRule: null });
   };
 
+  const copyResultsAsCsv = () => {
+    if (!testAllResults) return;
+    const header = "Rule,Mode,Result,Active";
+    const rows = testAllResults.map(r =>
+      `"${r.name.replace(/"/g, '""')}",${r.mode},${r.result.toUpperCase()},${rules[r.idx]?.isActive ? "Yes" : "No"}`
+    );
+    const csv = [header, ...rows].join("\n");
+    navigator.clipboard.writeText(csv).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  };
+
   const runTestAll = () => {
     setQuickTestResult(null);
     const results = rules.map((rule, i) => {
@@ -357,12 +371,17 @@ export default function ContentFilterPage() {
             <div className="rounded-xl border border-slate-600 bg-slate-800/40 p-4">
               <div className="flex items-center gap-2 mb-3">
                 <span className="text-lg">🔍</span>
-                <div>
+                <div className="flex-1">
                   <p className="text-sm font-bold text-white">Test All — all filter rules</p>
                   <p className="text-[10px] text-slate-400">
                     {testAllResults.filter(r => r.result === "blocked").length} blocked, {testAllResults.filter(r => r.result === "allowed").length} allowed, {testAllResults.filter(r => r.result === "none").length} no match
                   </p>
                 </div>
+                <button onClick={copyResultsAsCsv}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition shrink-0 ${copied ? 'bg-emerald-700 text-emerald-200' : 'bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white'}`}
+                  title="Copy results as CSV">
+                  {copied ? '✅ Copied!' : '📋 Copy CSV'}
+                </button>
               </div>
               <div className="max-h-64 overflow-y-auto">
                 <table className="w-full text-[10px]">

@@ -74,6 +74,7 @@ export default function NumberBlacklistPage() {
 
   // Test All — run the test number against every rule and collect results
   const [testAllResults, setTestAllResults] = useState<{ name: string; matched: boolean; idx: number }[] | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const loadRules = useCallback(async (loadedClients: ClientSupplier[], loadedSuppliers: ClientSupplier[]) => {
     try {
@@ -295,6 +296,19 @@ export default function NumberBlacklistPage() {
     setQuickTestResult({ blocked: false, matchedRule: null });
   };
 
+  const copyResultsAsCsv = () => {
+    if (!testAllResults) return;
+    const header = "Rule,Result,Active";
+    const rows = testAllResults.map(r =>
+      `"${r.name.replace(/"/g, '""')}",${r.matched ? "BLOCKED" : "PASS"},${rules[r.idx]?.isActive ? "Yes" : "No"}`
+    );
+    const csv = [header, ...rows].join("\n");
+    navigator.clipboard.writeText(csv).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  };
+
   const runTestAll = () => {
     setQuickTestResult(null); // clear single-test result
     const results = rules.map((rule, i) => ({
@@ -368,12 +382,17 @@ export default function NumberBlacklistPage() {
             <div className="rounded-xl border border-slate-600 bg-slate-800/40 p-4">
               <div className="flex items-center gap-2 mb-3">
                 <span className="text-lg">🔍</span>
-                <div>
+                <div className="flex-1">
                   <p className="text-sm font-bold text-white">Test All — {quickTestNumber}</p>
                   <p className="text-[10px] text-slate-400">
                     {testAllResults.filter(r => r.matched).length} of {testAllResults.length} rules match
                   </p>
                 </div>
+                <button onClick={copyResultsAsCsv}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition shrink-0 ${copied ? 'bg-emerald-700 text-emerald-200' : 'bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white'}`}
+                  title="Copy results as CSV">
+                  {copied ? '✅ Copied!' : '📋 Copy CSV'}
+                </button>
               </div>
               <div className="max-h-64 overflow-y-auto">
                 <table className="w-full text-[10px]">
