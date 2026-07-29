@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
+import { buildRegex } from "@/lib/regex-utils";
 
 interface AliasRule {
   ruleId: number | null;
@@ -42,6 +43,9 @@ export default function SidAliasPage() {
   // Quick Test
   const [quickTestSender, setQuickTestSender] = useState("Borno_TriAngle");
   const [quickTestResult, setQuickTestResult] = useState<{ matchedAlias: string | null; aliasName: string | null } | null>(null);
+  // Test All — run test sender against every rule and collect results
+  const [testAllResults, setTestAllResults] = useState<{ name: string; matched: boolean; idx: number }[] | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const loadRules = useCallback(async (loadedClients: ClientSupplier[], loadedSuppliers: ClientSupplier[]) => {
     try {
@@ -218,11 +222,35 @@ export default function SidAliasPage() {
   };
 
   // Quick test: runs all active rules, first match wins
+  const copyResultsAsCsv = () => {
+    if (!testAllResults) return;
+    const header = "Rule,Result,Active";
+    const rows = testAllResults.map(r =>
+      `"${r.name.replace(/"/g, '""')}",${r.matched ? "MATCHED" : "NO MATCH"},${rules[r.idx]?.isActive ? "Yes" : "No"}`
+    );
+    const csv = [header, ...rows].join("\n");
+    navigator.clipboard.writeText(csv).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  };
+
+  const runTestAll = () => {
+    setQuickTestResult(null);
+    const results = rules.map((rule, idx) => {
+      let matched = false;
+      try { matched = buildRegex(rule.matchPattern).test(quickTestSender); } catch { /* skip */ }
+      return { name: rule.aliasName, matched: matched && rule.isActive, idx };
+    });
+    setTestAllResults(results);
+  };
+
   const runQuickTest = () => {
+    setTestAllResults(null);
     const active = rules.filter(r => r.isActive);
     for (const rule of active) {
       try {
-        if (new RegExp(rule.matchPattern).test(quickTestSender)) {
+        if (buildRegex(rule.matchPattern).test(quickTestSender)) {
           setQuickTestResult({ matchedAlias: rule.aliasName, aliasName: rule.aliasName });
           return;
         }
@@ -273,15 +301,69 @@ export default function SidAliasPage() {
           <div>
             <label className="text-xs font-medium text-slate-300 mb-1.5 block">Enter sender ID to test</label>
             <div className="flex items-center gap-3">
-              <input value={quickTestSender} onChange={e => { setQuickTestSender(e.target.value); setQuickTestResult(null); }}
+              <input value={quickTestSender} onChange={e => { setQuickTestSender(e.target.value); setQuickTestResult(null); setTestAllResults(null); }}
                 onKeyDown={e => { if (e.key === "Enter") runQuickTest(); }}
                 className="flex-1 bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-sm font-mono text-white placeholder:text-slate-500 focus:ring-2 focus:ring-violet-500 focus:outline-none transition" />
               <button onClick={runQuickTest} disabled={!quickTestSender.trim()}
                 className="bg-violet-600 hover:bg-violet-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-5 py-3 rounded-xl text-sm font-semibold transition shadow-lg shadow-violet-600/25">
                 🔍 Transform
               </button>
+              <button onClick={runTestAll} disabled={!quickTestSender.trim() || rules.length === 0}
+                className="bg-slate-600 hover:bg-slate-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-4 py-3 rounded-xl text-sm font-semibold transition">
+                🔍 Test All
+              </button>
             </div>
           </div>
+          {/* Test All — per-rule breakdown */}
+          {testAllResults && (
+            <div className="rounded-xl border border-slate-600 bg-slate-800/40 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">🔍</span>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-white">Test All — {quickTestSender}</p>
+                  <p className="text-[10px] text-slate-400">
+                    {testAllResults.filter(r => r.matched).length} of {testAllResults.length} aliases match
+                  </p>
+                </div>
+                <button onClick={copyResultsAsCsv}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition shrink-0 ${copied ? 'bg-emerald-700 text-emerald-200' : 'bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white'}`}
+                  title="Copy results as CSV">
+                  {copied ? '✅ Copied!' : '📋 Copy CSV'}
+                </button>
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="text-slate-400 uppercase tracking-wider">
+                      <th className="text-left py-1 px-2 font-medium">Alias</th>
+                      <th className="text-center py-1 px-2 font-medium w-20">Result</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700/50">
+                    {testAllResults.map((r) => (
+                      <tr key={r.idx} className={r.matched ? "bg-violet-900/20" : ""}>
+                        <td className="py-1.5 px-2">
+                          <span className={`font-mono ${r.matched ? "text-violet-300 font-bold" : "text-slate-400"}`}>
+                            {r.name}
+                          </span>
+                          {!rules[r.idx]?.isActive && (
+                            <span className="ml-1 text-[8px] text-slate-500">(inactive)</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 px-2 text-center">
+                          {r.matched ? (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-violet-600/30 text-violet-300">🏷️ MATCHED</span>
+                          ) : (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-slate-600/30 text-slate-400">— NONE</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
           {quickTestResult && (
             <div className={`rounded-xl border p-4 ${quickTestResult.matchedAlias !== null ? "bg-emerald-900/30 border-emerald-700/50" : "bg-red-900/20 border-red-700/50"}`}>
               {quickTestResult.matchedAlias !== null ? (
@@ -325,6 +407,12 @@ export default function SidAliasPage() {
             <span>{rules.filter(r => r.isActive).length} active aliases</span>
             <span>•</span>
             <span>First match wins</span>
+            {testAllResults && (
+              <>
+                <span>•</span>
+                <span className="text-violet-400">{testAllResults.filter(r => r.matched).length} matched</span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -386,8 +474,7 @@ export default function SidAliasPage() {
                   : "—";
                 const isDirty = originalRules[idx]
                   ? JSON.stringify(rule) !== JSON.stringify(originalRules[idx])
-                  : false;
-                const matched = rule.isActive && (() => { try { return new RegExp(rule.matchPattern).test("Borno_TriAngle"); } catch { return false; } })();
+                  : false;                    const matched = rule.isActive && (() => { try { return buildRegex(rule.matchPattern).test("Borno_TriAngle"); } catch { return false; } })();
                 return (
                   <tr key={idx}
                     className={`hover:bg-violet-50/40 transition-colors ${!rule.isActive ? "opacity-50" : ""} ${dropTargetIdx === idx ? "bg-violet-50 ring-2 ring-violet-200" : ""} ${isDirty ? "bg-yellow-50/30" : ""}`}
@@ -467,8 +554,9 @@ export default function SidAliasPage() {
                     <td className="px-4 py-2 text-right">
                       <div className="flex items-center justify-end gap-1 flex-wrap">
                         <button onClick={() => {
+                          setTestAllResults(null);
                           try {
-                            if (new RegExp(rule.matchPattern).test(quickTestSender)) {
+                            if (buildRegex(rule.matchPattern).test(quickTestSender)) {
                               setQuickTestResult({ matchedAlias: rule.aliasName, aliasName: rule.aliasName });
                             } else {
                               setQuickTestResult({ matchedAlias: null, aliasName: null });
