@@ -72,6 +72,9 @@ export default function NumberBlacklistPage() {
   const [quickTestNumber, setQuickTestNumber] = useState("8801700000000");
   const [quickTestResult, setQuickTestResult] = useState<{ blocked: boolean; matchedRule: string | null } | null>(null);
 
+  // Test All — run the test number against every rule and collect results
+  const [testAllResults, setTestAllResults] = useState<{ name: string; matched: boolean; idx: number }[] | null>(null);
+
   const loadRules = useCallback(async (loadedClients: ClientSupplier[], loadedSuppliers: ClientSupplier[]) => {
     try {
       setLoading(true);
@@ -281,6 +284,7 @@ export default function NumberBlacklistPage() {
   };
 
   const runQuickTest = () => {
+    setTestAllResults(null); // clear previous test-all results
     for (const rule of rules) {
       if (!rule.isActive) continue;
       if (testRuleAgainstNumber(rule)) {
@@ -289,6 +293,16 @@ export default function NumberBlacklistPage() {
       }
     }
     setQuickTestResult({ blocked: false, matchedRule: null });
+  };
+
+  const runTestAll = () => {
+    setQuickTestResult(null); // clear single-test result
+    const results = rules.map((rule, i) => ({
+      name: rule.name,
+      matched: rule.isActive && testRuleAgainstNumber(rule),
+      idx: i,
+    }));
+    setTestAllResults(results);
   };
 
   const assignedRules = rules.filter(r => r.scope !== "both" && r.entityId);
@@ -335,15 +349,70 @@ export default function NumberBlacklistPage() {
           <div>
             <label className="text-xs font-medium text-slate-300 mb-1.5 block">Destination Number</label>
             <div className="flex items-center gap-3">
-              <input value={quickTestNumber} onChange={e => { setQuickTestNumber(e.target.value); setQuickTestResult(null); }}
+              <input value={quickTestNumber}
+                onChange={e => { setQuickTestNumber(e.target.value); setQuickTestResult(null); setTestAllResults(null); }}
                 onKeyDown={e => { if (e.key === "Enter") runQuickTest(); }}
                 className="flex-1 bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-sm font-mono text-white placeholder:text-slate-500 focus:ring-2 focus:ring-red-500 focus:outline-none transition" />
               <button onClick={runQuickTest} disabled={!quickTestNumber.trim()}
                 className="bg-red-600 hover:bg-red-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-5 py-3 rounded-xl text-sm font-semibold transition shadow-lg shadow-red-600/25">
                 🚫 Check
               </button>
+              <button onClick={runTestAll} disabled={!quickTestNumber.trim() || rules.length === 0}
+                className="bg-slate-600 hover:bg-slate-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-5 py-3 rounded-xl text-sm font-semibold transition shadow-lg shadow-slate-600/25">
+                🔍 Test All
+              </button>
             </div>
           </div>
+          {/* Test All — per-rule breakdown */}
+          {testAllResults && (
+            <div className="rounded-xl border border-slate-600 bg-slate-800/40 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">🔍</span>
+                <div>
+                  <p className="text-sm font-bold text-white">Test All — {quickTestNumber}</p>
+                  <p className="text-[10px] text-slate-400">
+                    {testAllResults.filter(r => r.matched).length} of {testAllResults.length} rules match
+                  </p>
+                </div>
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="text-slate-400 uppercase tracking-wider">
+                      <th className="text-left py-1 px-2 font-medium">Rule</th>
+                      <th className="text-center py-1 px-2 font-medium w-16">Result</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700/50">
+                    {testAllResults.map((r) => (
+                      <tr key={r.idx} className={r.matched ? "bg-red-900/20" : ""}>
+                        <td className="py-1.5 px-2">
+                          <span className={`font-mono ${r.matched ? "text-red-300 font-bold" : "text-slate-400"}`}>
+                            {r.name}
+                          </span>
+                          {!rules[r.idx]?.isActive && (
+                            <span className="ml-1 text-[8px] text-slate-500">(inactive)</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 px-2 text-center">
+                          {r.matched ? (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-red-600/30 text-red-300">
+                              🚫 BLOCKED
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-emerald-600/20 text-emerald-400">
+                              ✅ PASS
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {quickTestResult && (
             <div className={`rounded-xl border p-4 ${quickTestResult.blocked ? "bg-red-900/30 border-red-700/50" : "bg-emerald-900/30 border-emerald-700/50"}`}>
               {quickTestResult.blocked ? (
