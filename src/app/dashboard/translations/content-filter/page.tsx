@@ -48,6 +48,9 @@ export default function ContentFilterPage() {
   const [quickTestContent, setQuickTestContent] = useState("Your OTP code is 252525");
   const [quickTestResult, setQuickTestResult] = useState<{ action: "blocked" | "allowed" | "none"; matchedRule: string | null } | null>(null);
 
+  // Test All — run test content against every rule and collect results
+  const [testAllResults, setTestAllResults] = useState<{ name: string; result: "blocked" | "allowed" | "none"; mode: string; idx: number }[] | null>(null);
+
   const loadRules = useCallback(async (loadedClients: ClientSupplier[], loadedSuppliers: ClientSupplier[]) => {
     try {
       setLoading(true);
@@ -240,8 +243,8 @@ export default function ContentFilterPage() {
     loadRules(clients, suppliers);
   };
 
-  // Quick test: check content against all active filter rules
   const runQuickTest = () => {
+    setTestAllResults(null);
     // Check blacklist rules first (blocking takes priority)
     const blacklist = rules.filter(r => r.isActive && r.filterMode === "blacklist");
     for (const rule of blacklist) {
@@ -269,6 +272,28 @@ export default function ContentFilterPage() {
       return;
     }
     setQuickTestResult({ action: "none", matchedRule: null });
+  };
+
+  const runTestAll = () => {
+    setQuickTestResult(null);
+    const results = rules.map((rule, i) => {
+      let result: "blocked" | "allowed" | "none" = "none";
+      if (!rule.isActive) {
+        result = "none";
+      } else {
+        try {
+          const matched = buildRegex(rule.matchPattern).test(quickTestContent);
+          if (rule.filterMode === "blacklist") {
+            result = matched ? "blocked" : "none";
+          } else {
+            // whitelist
+            result = matched ? "allowed" : "blocked";
+          }
+        } catch { result = "none"; }
+      }
+      return { name: rule.name, result, mode: rule.filterMode, idx: i };
+    });
+    setTestAllResults(results);
   };
 
   const assignedRules = rules.filter(r => r.scope !== "both" && r.entityId);
@@ -313,15 +338,74 @@ export default function ContentFilterPage() {
           <div>
             <label className="text-xs font-medium text-slate-300 mb-1.5 block">Message Content</label>
             <div className="flex items-center gap-3">
-              <input value={quickTestContent} onChange={e => { setQuickTestContent(e.target.value); setQuickTestResult(null); }}
+              <input value={quickTestContent}
+                onChange={e => { setQuickTestContent(e.target.value); setQuickTestResult(null); setTestAllResults(null); }}
                 onKeyDown={e => { if (e.key === "Enter") runQuickTest(); }}
                 className="flex-1 bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-sm font-mono text-white placeholder:text-slate-500 focus:ring-2 focus:ring-orange-500 focus:outline-none transition" />
               <button onClick={runQuickTest} disabled={!quickTestContent.trim()}
                 className="bg-orange-600 hover:bg-orange-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-5 py-3 rounded-xl text-sm font-semibold transition shadow-lg shadow-orange-600/25">
                 🛡️ Check
               </button>
+              <button onClick={runTestAll} disabled={!quickTestContent.trim() || rules.length === 0}
+                className="bg-slate-600 hover:bg-slate-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-5 py-3 rounded-xl text-sm font-semibold transition shadow-lg shadow-slate-600/25">
+                🔍 Test All
+              </button>
             </div>
           </div>
+          {/* Test All — per-rule breakdown */}
+          {testAllResults && (
+            <div className="rounded-xl border border-slate-600 bg-slate-800/40 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">🔍</span>
+                <div>
+                  <p className="text-sm font-bold text-white">Test All — all filter rules</p>
+                  <p className="text-[10px] text-slate-400">
+                    {testAllResults.filter(r => r.result === "blocked").length} blocked, {testAllResults.filter(r => r.result === "allowed").length} allowed, {testAllResults.filter(r => r.result === "none").length} no match
+                  </p>
+                </div>
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="text-slate-400 uppercase tracking-wider">
+                      <th className="text-left py-1 px-2 font-medium">Rule</th>
+                      <th className="text-center py-1 px-2 font-medium w-16">Mode</th>
+                      <th className="text-center py-1 px-2 font-medium w-20">Result</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700/50">
+                    {testAllResults.map((r) => (
+                      <tr key={r.idx} className={r.result === "blocked" ? "bg-red-900/20" : r.result === "allowed" ? "bg-emerald-900/20" : ""}>
+                        <td className="py-1.5 px-2">
+                          <span className={`font-mono ${r.result === "blocked" ? "text-red-300 font-bold" : r.result === "allowed" ? "text-emerald-300" : "text-slate-400"}`}>
+                            {r.name}
+                          </span>
+                          {!rules[r.idx]?.isActive && (
+                            <span className="ml-1 text-[8px] text-slate-500">(inactive)</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 px-2 text-center">
+                          <span className={`inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-medium ${r.mode === "blacklist" ? "bg-red-600/20 text-red-300" : "bg-emerald-600/20 text-emerald-300"}`}>
+                            {r.mode}
+                          </span>
+                        </td>
+                        <td className="py-1.5 px-2 text-center">
+                          {r.result === "blocked" ? (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-red-600/30 text-red-300">🚫 BLOCKED</span>
+                          ) : r.result === "allowed" ? (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-600/30 text-emerald-300">✅ ALLOWED</span>
+                          ) : (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-slate-600/20 text-slate-400">— NONE</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {quickTestResult && (
             <div className={`rounded-xl border p-4 ${quickTestResult.action === "blocked" ? "bg-red-900/30 border-red-700/50" : quickTestResult.action === "allowed" ? "bg-emerald-900/30 border-emerald-700/50" : "bg-slate-800/30 border-slate-600/50"}`}>
               {quickTestResult.action === "blocked" ? (
