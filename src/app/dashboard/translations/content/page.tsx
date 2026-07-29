@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
+import { buildRegex } from "@/lib/regex-utils";
+import { useTestAll } from "@/lib/use-test-all";
 
 interface ContentRule {
   ruleId: number | null;
@@ -179,7 +181,32 @@ export default function ContentTranslationPage() {
     setTimeout(() => setMsg(""), 2000);
   };
 
-  // Test a single rule with sample input
+  // Test All — run sample content against every rule and collect results
+  const { testAllResults, copied, runTestAll, copyResultsAsCsv, clearTestAll } = useTestAll(
+    () => rules.map((rule, idx) => {
+      let matched = false;
+      let transformed = sampleContent;
+      let otp: string | null = null;
+      if (rule.isActive) {
+        try {
+          matched = buildRegex(rule.matchPattern).test(sampleContent);
+          if (matched) {
+            transformed = previewTransform(sampleContent, rule.matchPattern, rule.replacementFixed, rule.otpMinLength, rule.otpMaxLength, rule.customRegex);
+            otp = extractOtpWithCustom(sampleContent, rule.customRegex, rule.otpMinLength, rule.otpMaxLength);
+          }
+        } catch { /* skip */ }
+      }
+      return { name: rule.name, matched, transformed, otp, idx };
+    }),
+    "Rule,Match,Transformed,OTP,Active",
+    (r) => `"${r.name.replace(/\"/g, '""')}",${r.matched ? "MATCHED" : "NO MATCH"},"${r.transformed.replace(/\"/g, '""')}",${r.otp || "N/A"},${rules[r.idx]?.isActive ? "Yes" : "No"}`,
+  );
+
+  const handleTestAll = () => {
+    setPreviewResult(null);
+    setExtractedOtp(null);
+    runTestAll(sampleContent);
+  };
   const testRule = (idx: number) => {
     const rule = rules[idx];
     if (!rule.isActive) {
@@ -315,6 +342,7 @@ export default function ContentTranslationPage() {
   };
 
   const runPreview = () => {
+    clearTestAll();
     const otp = extractOtp(sampleContent, sampleMinOtp, sampleMaxOtp);
     setExtractedOtp(otp);
     let result = sampleContent;
@@ -375,7 +403,7 @@ export default function ContentTranslationPage() {
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="text-xs text-slate-500 w-16">Sample:</span>
-            <input value={sampleContent} onChange={e => setSampleContent(e.target.value)}
+            <input value={sampleContent} onChange={e => { setSampleContent(e.target.value); setPreviewResult(null); setExtractedOtp(null); clearTestAll(); }}
               className="flex-1 min-w-[200px] border rounded-lg px-3 py-2 font-mono text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none bg-white" />
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -401,7 +429,74 @@ export default function ContentTranslationPage() {
               className="bg-teal-600 text-white px-3 py-1 rounded-lg text-xs font-medium hover:bg-teal-700 transition">
               Preview
             </button>
+            <button onClick={handleTestAll} disabled={!sampleContent.trim() || rules.length === 0}
+              className="bg-slate-600 hover:bg-slate-500 disabled:bg-slate-400 disabled:cursor-not-allowed text-white px-3 py-1 rounded-lg text-xs font-medium transition">
+              🔍 Test All
+            </button>
           </div>
+          {/* Test All — per-rule breakdown */}
+          {testAllResults && (
+            <div className="rounded-xl border border-slate-300 bg-slate-50 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">🔍</span>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-slate-800">Test All — all content rules</p>
+                  <p className="text-[10px] text-slate-500">
+                    {testAllResults.filter(r => r.matched).length} of {testAllResults.length} rules match
+                  </p>
+                </div>
+                <button onClick={copyResultsAsCsv}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition shrink-0 ${copied ? 'bg-emerald-600 text-white' : 'bg-slate-200 hover:bg-slate-300 text-slate-600 hover:text-slate-800'}`}
+                  title="Copy results as CSV">
+                  {copied ? '✅ Copied!' : '📋 Copy CSV'}
+                </button>
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="text-slate-400 uppercase tracking-wider">
+                      <th className="text-left py-1 px-2 font-medium">Rule</th>
+                      <th className="text-center py-1 px-2 font-medium w-16">Match</th>
+                      <th className="text-left py-1 px-2 font-medium">Transformed</th>
+                      <th className="text-center py-1 px-2 font-medium w-16">OTP</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {testAllResults.map((r) => (
+                      <tr key={r.idx} className={r.matched ? "bg-teal-50" : ""}>
+                        <td className="py-1.5 px-2">
+                          <span className={`font-mono ${r.matched ? "text-teal-700 font-bold" : "text-slate-500"}`}>
+                            {r.name}
+                          </span>
+                          {!rules[r.idx]?.isActive && (
+                            <span className="ml-1 text-[8px] text-slate-400">(inactive)</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 px-2 text-center">
+                          {r.matched ? (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-teal-100 text-teal-700">✅ YES</span>
+                          ) : (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-slate-100 text-slate-400">— NO</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <code className={`text-[9px] font-mono ${r.matched ? "text-teal-700" : "text-slate-400"}`}>
+                            {r.transformed.length > 60 ? r.transformed.slice(0, 60) + "…" : r.transformed}
+                          </code>
+                        </td>
+                        <td className="py-1.5 px-2 text-center">
+                          <code className={`text-[9px] font-mono font-bold ${r.otp ? "text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded" : "text-slate-400"}`}>
+                            {r.otp || "—"}
+                          </code>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {(previewResult !== null || extractedOtp !== null) && (
             <div className="bg-white rounded-lg p-3 border border-teal-100 space-y-1">
               {extractedOtp !== null && (
