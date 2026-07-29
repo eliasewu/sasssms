@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
 import { buildRegex } from "@/lib/regex-utils";
+import { useTestAll } from "@/lib/use-test-all";
 
 interface AliasRule {
   ruleId: number | null;
@@ -44,8 +45,14 @@ export default function SidAliasPage() {
   const [quickTestSender, setQuickTestSender] = useState("Borno_TriAngle");
   const [quickTestResult, setQuickTestResult] = useState<{ matchedAlias: string | null; aliasName: string | null } | null>(null);
   // Test All — run test sender against every rule and collect results
-  const [testAllResults, setTestAllResults] = useState<{ name: string; matched: boolean; idx: number }[] | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { testAllResults, copied, runTestAll, copyResultsAsCsv, clearTestAll } = useTestAll(
+    () => rules.map((rule, idx) => {
+      let matched = false;
+      try { matched = buildRegex(rule.matchPattern).test(quickTestSender); } catch { /* skip */ }
+      return { name: rule.aliasName, matched: matched && rule.isActive, idx };
+    }),
+    "Rule,Result,Active",
+    (r) => `"${r.name.replace(/\"/g, '""')}",${r.matched ? "MATCHED" : "NO MATCH"},${rules[r.idx]?.isActive ? "Yes" : "No"}`,);
 
   const loadRules = useCallback(async (loadedClients: ClientSupplier[], loadedSuppliers: ClientSupplier[]) => {
     try {
@@ -221,32 +228,14 @@ export default function SidAliasPage() {
     loadRules(clients, suppliers);
   };
 
-  // Quick test: runs all active rules, first match wins
-  const copyResultsAsCsv = () => {
-    if (!testAllResults) return;
-    const header = "Rule,Result,Active";
-    const rows = testAllResults.map(r =>
-      `"${r.name.replace(/"/g, '""')}",${r.matched ? "MATCHED" : "NO MATCH"},${rules[r.idx]?.isActive ? "Yes" : "No"}`
-    );
-    const csv = [header, ...rows].join("\n");
-    navigator.clipboard.writeText(csv).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }).catch(() => {});
-  };
 
-  const runTestAll = () => {
+  /** Trigger Test All (wraps hook to clear single-test result first) */
+  const handleTestAll = () => {
     setQuickTestResult(null);
-    const results = rules.map((rule, idx) => {
-      let matched = false;
-      try { matched = buildRegex(rule.matchPattern).test(quickTestSender); } catch { /* skip */ }
-      return { name: rule.aliasName, matched: matched && rule.isActive, idx };
-    });
-    setTestAllResults(results);
+    runTestAll(quickTestSender);
   };
-
   const runQuickTest = () => {
-    setTestAllResults(null);
+    clearTestAll();
     const active = rules.filter(r => r.isActive);
     for (const rule of active) {
       try {
@@ -301,14 +290,14 @@ export default function SidAliasPage() {
           <div>
             <label className="text-xs font-medium text-slate-300 mb-1.5 block">Enter sender ID to test</label>
             <div className="flex items-center gap-3">
-              <input value={quickTestSender} onChange={e => { setQuickTestSender(e.target.value); setQuickTestResult(null); setTestAllResults(null); }}
+              <input value={quickTestSender} onChange={e => { setQuickTestSender(e.target.value); setQuickTestResult(null); clearTestAll(); }}
                 onKeyDown={e => { if (e.key === "Enter") runQuickTest(); }}
                 className="flex-1 bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-sm font-mono text-white placeholder:text-slate-500 focus:ring-2 focus:ring-violet-500 focus:outline-none transition" />
               <button onClick={runQuickTest} disabled={!quickTestSender.trim()}
                 className="bg-violet-600 hover:bg-violet-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-5 py-3 rounded-xl text-sm font-semibold transition shadow-lg shadow-violet-600/25">
                 🔍 Transform
               </button>
-              <button onClick={runTestAll} disabled={!quickTestSender.trim() || rules.length === 0}
+              <button onClick={handleTestAll} disabled={!quickTestSender.trim() || rules.length === 0}
                 className="bg-slate-600 hover:bg-slate-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-4 py-3 rounded-xl text-sm font-semibold transition">
                 🔍 Test All
               </button>

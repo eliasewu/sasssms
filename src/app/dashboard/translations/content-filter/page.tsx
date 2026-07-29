@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
 import { buildRegex } from "@/lib/regex-utils";
+import { useTestAll } from "@/lib/use-test-all";
 
 interface FilterRule {
   ruleId: number | null;
@@ -49,8 +50,26 @@ export default function ContentFilterPage() {
   const [quickTestResult, setQuickTestResult] = useState<{ action: "blocked" | "allowed" | "none"; matchedRule: string | null } | null>(null);
 
   // Test All — run test content against every rule and collect results
-  const [testAllResults, setTestAllResults] = useState<{ name: string; result: "blocked" | "allowed" | "none"; mode: string; idx: number }[] | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { testAllResults, copied, runTestAll, copyResultsAsCsv, clearTestAll } = useTestAll(
+    () => rules.map((rule, i) => {
+      let result: "blocked" | "allowed" | "none" = "none";
+      if (!rule.isActive) {
+        result = "none";
+      } else {
+        try {
+          const matched = buildRegex(rule.matchPattern).test(quickTestContent);
+          if (rule.filterMode === "blacklist") {
+            result = matched ? "blocked" : "none";
+          } else {
+            result = matched ? "allowed" : "blocked";
+          }
+        } catch { result = "none"; }
+      }
+      return { name: rule.name, result, mode: rule.filterMode, idx: i };
+    }),
+    "Rule,Mode,Result,Active",
+    (r) => `"${r.name.replace(/"/g, '""')}",${r.mode},${r.result.toUpperCase()},${rules[r.idx]?.isActive ? "Yes" : "No"}`,
+  );
 
   const loadRules = useCallback(async (loadedClients: ClientSupplier[], loadedSuppliers: ClientSupplier[]) => {
     try {
@@ -245,7 +264,7 @@ export default function ContentFilterPage() {
   };
 
   const runQuickTest = () => {
-    setTestAllResults(null);
+    clearTestAll();
     // Check blacklist rules first (blocking takes priority)
     const blacklist = rules.filter(r => r.isActive && r.filterMode === "blacklist");
     for (const rule of blacklist) {
@@ -275,39 +294,10 @@ export default function ContentFilterPage() {
     setQuickTestResult({ action: "none", matchedRule: null });
   };
 
-  const copyResultsAsCsv = () => {
-    if (!testAllResults) return;
-    const header = "Rule,Mode,Result,Active";
-    const rows = testAllResults.map(r =>
-      `"${r.name.replace(/"/g, '""')}",${r.mode},${r.result.toUpperCase()},${rules[r.idx]?.isActive ? "Yes" : "No"}`
-    );
-    const csv = [header, ...rows].join("\n");
-    navigator.clipboard.writeText(csv).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }).catch(() => {});
-  };
-
-  const runTestAll = () => {
+  /** Trigger Test All (wraps hook to clear single-test result first) */
+  const handleTestAll = () => {
     setQuickTestResult(null);
-    const results = rules.map((rule, i) => {
-      let result: "blocked" | "allowed" | "none" = "none";
-      if (!rule.isActive) {
-        result = "none";
-      } else {
-        try {
-          const matched = buildRegex(rule.matchPattern).test(quickTestContent);
-          if (rule.filterMode === "blacklist") {
-            result = matched ? "blocked" : "none";
-          } else {
-            // whitelist
-            result = matched ? "allowed" : "blocked";
-          }
-        } catch { result = "none"; }
-      }
-      return { name: rule.name, result, mode: rule.filterMode, idx: i };
-    });
-    setTestAllResults(results);
+    runTestAll(quickTestContent);
   };
 
   const assignedRules = rules.filter(r => r.scope !== "both" && r.entityId);
@@ -353,14 +343,14 @@ export default function ContentFilterPage() {
             <label className="text-xs font-medium text-slate-300 mb-1.5 block">Message Content</label>
             <div className="flex items-center gap-3">
               <input value={quickTestContent}
-                onChange={e => { setQuickTestContent(e.target.value); setQuickTestResult(null); setTestAllResults(null); }}
+                onChange={e => { setQuickTestContent(e.target.value); setQuickTestResult(null); clearTestAll(); }}
                 onKeyDown={e => { if (e.key === "Enter") runQuickTest(); }}
                 className="flex-1 bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-sm font-mono text-white placeholder:text-slate-500 focus:ring-2 focus:ring-orange-500 focus:outline-none transition" />
               <button onClick={runQuickTest} disabled={!quickTestContent.trim()}
                 className="bg-orange-600 hover:bg-orange-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-5 py-3 rounded-xl text-sm font-semibold transition shadow-lg shadow-orange-600/25">
                 🛡️ Check
               </button>
-              <button onClick={runTestAll} disabled={!quickTestContent.trim() || rules.length === 0}
+              <button onClick={handleTestAll} disabled={!quickTestContent.trim() || rules.length === 0}
                 className="bg-slate-600 hover:bg-slate-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-5 py-3 rounded-xl text-sm font-semibold transition shadow-lg shadow-slate-600/25">
                 🔍 Test All
               </button>

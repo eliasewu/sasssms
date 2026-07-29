@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
 import { buildRegex } from "@/lib/regex-utils";
+import { useTestAll } from "@/lib/use-test-all";
 
 // Escape regex-special characters so an exact phone number becomes a literal match pattern
 function escapeRegex(str: string): string {
@@ -73,8 +74,17 @@ export default function NumberBlacklistPage() {
   const [quickTestResult, setQuickTestResult] = useState<{ blocked: boolean; matchedRule: string | null } | null>(null);
 
   // Test All — run the test number against every rule and collect results
-  const [testAllResults, setTestAllResults] = useState<{ name: string; matched: boolean; idx: number }[] | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { testAllResults, copied, runTestAll, copyResultsAsCsv, clearTestAll } = useTestAll(
+    () => rules.map((rule, idx) => {
+      let matched = false;
+      if (rule.isActive) {
+        try { matched = buildRegex(effectivePattern(rule)).test(quickTestNumber); } catch { /* skip */ }
+      }
+      return { name: rule.name, matched, idx };
+    }),
+    "Rule,Result,Active",
+    (r) => `"${r.name.replace(/\"/g, '""')}",${r.matched ? "BLOCKED" : "PASS"},${rules[r.idx]?.isActive ? "Yes" : "No"}`,
+  );
 
   const loadRules = useCallback(async (loadedClients: ClientSupplier[], loadedSuppliers: ClientSupplier[]) => {
     try {
@@ -285,7 +295,7 @@ export default function NumberBlacklistPage() {
   };
 
   const runQuickTest = () => {
-    setTestAllResults(null); // clear previous test-all results
+    clearTestAll(); // clear previous test-all results
     for (const rule of rules) {
       if (!rule.isActive) continue;
       if (testRuleAgainstNumber(rule)) {
@@ -296,30 +306,12 @@ export default function NumberBlacklistPage() {
     setQuickTestResult({ blocked: false, matchedRule: null });
   };
 
-  const copyResultsAsCsv = () => {
-    if (!testAllResults) return;
-    const header = "Rule,Result,Active";
-    const rows = testAllResults.map(r =>
-      `"${r.name.replace(/"/g, '""')}",${r.matched ? "BLOCKED" : "PASS"},${rules[r.idx]?.isActive ? "Yes" : "No"}`
-    );
-    const csv = [header, ...rows].join("\n");
-    navigator.clipboard.writeText(csv).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }).catch(() => {});
+  /** Trigger Test All (wraps hook to clear single-test result first) */
+  const handleTestAll = () => {
+    setQuickTestResult(null);
+    runTestAll(quickTestNumber);
   };
 
-  const runTestAll = () => {
-    setQuickTestResult(null); // clear single-test result
-    const results = rules.map((rule, i) => ({
-      name: rule.name,
-      matched: rule.isActive && testRuleAgainstNumber(rule),
-      idx: i,
-    }));
-    setTestAllResults(results);
-  };
-
-  const assignedRules = rules.filter(r => r.scope !== "both" && r.entityId);
   const exactCount = rules.filter(r => r.matchMode === "exact").length;
   const regexCount = rules.filter(r => r.matchMode === "regex").length;
 
@@ -364,14 +356,14 @@ export default function NumberBlacklistPage() {
             <label className="text-xs font-medium text-slate-300 mb-1.5 block">Destination Number</label>
             <div className="flex items-center gap-3">
               <input value={quickTestNumber}
-                onChange={e => { setQuickTestNumber(e.target.value); setQuickTestResult(null); setTestAllResults(null); }}
+                onChange={e => { setQuickTestNumber(e.target.value); setQuickTestResult(null); clearTestAll(); }}
                 onKeyDown={e => { if (e.key === "Enter") runQuickTest(); }}
                 className="flex-1 bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-sm font-mono text-white placeholder:text-slate-500 focus:ring-2 focus:ring-red-500 focus:outline-none transition" />
               <button onClick={runQuickTest} disabled={!quickTestNumber.trim()}
                 className="bg-red-600 hover:bg-red-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-5 py-3 rounded-xl text-sm font-semibold transition shadow-lg shadow-red-600/25">
                 🚫 Check
               </button>
-              <button onClick={runTestAll} disabled={!quickTestNumber.trim() || rules.length === 0}
+              <button onClick={handleTestAll} disabled={!quickTestNumber.trim() || rules.length === 0}
                 className="bg-slate-600 hover:bg-slate-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-5 py-3 rounded-xl text-sm font-semibold transition shadow-lg shadow-slate-600/25">
                 🔍 Test All
               </button>
