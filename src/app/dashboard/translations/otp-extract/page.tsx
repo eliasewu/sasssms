@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
+import { buildRegex } from "@/lib/regex-utils";
+import { useTestAll } from "@/lib/use-test-all";
 
 interface OtpExtractRule {
   ruleId: number | null;
@@ -270,7 +272,7 @@ export default function OtpExtractPage() {
   // Extract OTP using effective regex
   const extractOtp = (content: string, regexStr: string, groupIdx: number): string | null => {
     try {
-      const re = new RegExp(regexStr, "gm");
+      const re = buildRegex(regexStr, "gm");
       const m = re.exec(content);
       if (m) {
         // If there are capture groups, use the specified one; otherwise use full match
@@ -281,8 +283,38 @@ export default function OtpExtractPage() {
     return null;
   };
 
+  // Test All — run the test message against every rule and collect results
+  const { testAllResults, copied, runTestAll, copyResultsAsCsv, clearTestAll } = useTestAll(
+    () => rules.map((rule, idx) => {
+      const effectiveRegex = buildEffectiveRegex(rule);
+      const otp = extractOtp(quickTestMessage, effectiveRegex, rule.otpGroupIndex);
+      const template = otp ? (rule.forwardTemplate || "{otp}").replace(/\{otp\}/g, otp) : "(no match)";
+      return {
+        name: rule.name,
+        otp,
+        template,
+        supplierName: rule.forwardSupplierName,
+        supplierId: rule.forwardSupplierId,
+        isActive: rule.isActive,
+        idx,
+      };
+    }),
+    "Rule,OTP Found,Extracted OTP,Template,Forward To,Active",
+    (r) => {
+      const safe = (s: string) => `"${s.replace(/"/g, '""')}"`;
+      return `${safe(r.name)},${r.otp ? "YES" : "NO"},${safe(r.otp || "—")},${safe(r.template)},${safe(r.supplierName || "—")},${r.isActive ? "Yes" : "No"}`;
+    },
+  );
+
+  /** Trigger Test All — clears single-test result first */
+  const handleTestAll = () => {
+    setQuickTestResult(null);
+    runTestAll(quickTestMessage);
+  };
+
   // Quick OTP Extraction Test — runs all active rules and returns first match
   const runQuickTest = () => {
+    clearTestAll();
     const msg = quickTestMessage.trim();
     if (!msg) { setMsg("Paste a message first"); setTimeout(() => setMsg(""), 2000); return; }
     setQuickTestLoading(true);
@@ -367,7 +399,7 @@ export default function OtpExtractPage() {
             <label className="text-xs font-medium text-slate-300 mb-1.5 block">Test Message</label>
             <textarea
               value={quickTestMessage}
-              onChange={e => { setQuickTestMessage(e.target.value); setQuickTestResult(null); }}
+              onChange={e => { setQuickTestMessage(e.target.value); setQuickTestResult(null); clearTestAll(); }}
               onKeyDown={e => { if (e.key === "Enter" && e.ctrlKey) runQuickTest(); }}
               placeholder="Paste your test message here... e.g. &#34;Your OTP code is 252525. Valid for 5 min.&#34;"
               rows={3}
@@ -383,7 +415,13 @@ export default function OtpExtractPage() {
               🔍 Extract OTP
             </button>
             <button
-              onClick={() => { setQuickTestMessage(""); setQuickTestResult(null); }}
+              onClick={handleTestAll}
+              disabled={!quickTestMessage.trim() || rules.length === 0}
+              className="bg-violet-600 hover:bg-violet-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition flex items-center gap-2 shadow-lg shadow-violet-600/25">
+              🧪 Test All
+            </button>
+            <button
+              onClick={() => { setQuickTestMessage(""); setQuickTestResult(null); clearTestAll(); }}
               className="text-slate-400 hover:text-slate-200 text-xs transition">Clear</button>
           </div>
 
@@ -452,6 +490,75 @@ export default function OtpExtractPage() {
                     </div>
                   </div>
               )}
+            </div>
+          )}
+
+          {/* Test All results panel */}
+          {testAllResults && (
+            <div className="rounded-xl border border-violet-700/50 bg-violet-900/20 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-violet-200">🧪 Test All — {testAllResults.length} rules</span>
+                  <span className="text-[10px] text-violet-400">
+                    ({testAllResults.filter(r => r.otp).length} matched, {testAllResults.filter(r => !r.otp).length} no match)
+                  </span>
+                </div>
+                <button onClick={copyResultsAsCsv}
+                  className="text-[10px] font-medium px-2.5 py-1.5 rounded-lg transition flex items-center gap-1 border border-violet-500/30 hover:bg-violet-500/20 text-violet-300 hover:text-violet-100">
+                  {copied ? "✅ Copied!" : "📋 Copy CSV"}
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="text-violet-300/70 uppercase tracking-wider border-b border-violet-700/30">
+                      <th className="text-left py-1.5 px-2 font-medium">Rule</th>
+                      <th className="text-center py-1.5 px-2 font-medium w-14">Match</th>
+                      <th className="text-left py-1.5 px-2 font-medium w-28">Extracted OTP</th>
+                      <th className="text-left py-1.5 px-2 font-medium">Template</th>
+                      <th className="text-left py-1.5 px-2 font-medium">Forward To</th>
+                      <th className="text-center py-1.5 px-2 font-medium w-12">Active</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-violet-700/20">
+                    {testAllResults.map((r, i) => (
+                      <tr key={i} className={!r.isActive ? "opacity-40" : ""}>
+                        <td className="py-1.5 px-2 text-violet-200">
+                          {r.name}
+                          {!r.isActive && <span className="ml-1 text-[8px] text-violet-500">(inactive)</span>}
+                        </td>
+                        <td className="py-1.5 px-2 text-center">
+                          {r.otp ? (
+                            <span className="text-emerald-400 text-xs">✅</span>
+                          ) : (
+                            <span className="text-red-400 text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <code className={`font-mono font-bold px-1.5 py-0.5 rounded ${r.otp ? "text-emerald-300 bg-emerald-900/40" : "text-slate-500"}`}>
+                            {r.otp || "—"}
+                          </code>
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <code className="font-mono text-violet-200 bg-slate-800/50 px-1.5 py-0.5 rounded break-all">
+                            {r.template.length > 60 ? r.template.slice(0, 60) + "…" : r.template}
+                          </code>
+                        </td>
+                        <td className="py-1.5 px-2 text-violet-300">
+                          {r.supplierName || <span className="text-slate-500">—</span>}
+                        </td>
+                        <td className="py-1.5 px-2 text-center">
+                          {r.isActive ? (
+                            <span className="text-emerald-400 text-xs">✅</span>
+                          ) : (
+                            <span className="text-slate-600 text-xs">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
