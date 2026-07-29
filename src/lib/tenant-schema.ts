@@ -326,6 +326,16 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       extracted_otp VARCHAR(20), destination VARCHAR(20),
       forward_status VARCHAR(30), forward_message_id VARCHAR(100),
       error_message TEXT, created_at TIMESTAMP DEFAULT NOW())`),
+
+    // ── Blacklist / Content Filter block log ──
+      safeQuery(`CREATE TABLE IF NOT EXISTS blocked_sms_log (
+      id SERIAL PRIMARY KEY,
+      rule_name VARCHAR(255) NOT NULL,
+      category VARCHAR(30) NOT NULL,
+      destination VARCHAR(20) NOT NULL,
+      content TEXT,
+      client_id INTEGER,
+      created_at TIMESTAMP DEFAULT NOW())`),
     ]);
 
     // Seed 80+ API connectors into new tenant

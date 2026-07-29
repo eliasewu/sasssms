@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
 import { buildRegex } from "@/lib/regex-utils";
@@ -39,6 +39,10 @@ export default function ContentFilterPage() {
   const [dragEntity, setDragEntity] = useState<{ type: "client" | "supplier"; id: number; name: string } | null>(null);
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
   const [unassignedEntities, setUnassignedEntities] = useState<{ clients: ClientSupplier[]; suppliers: ClientSupplier[] }>({ clients: [], suppliers: [] });
+
+  // Per-rule block stats (24h)
+  const [blockStats, setBlockStats] = useState<Record<string, number>>({});
+  const [totalBlocks, setTotalBlocks] = useState(0);
 
   // Quick Test
   const [quickTestContent, setQuickTestContent] = useState("Your OTP code is 252525");
@@ -106,6 +110,24 @@ export default function ContentFilterPage() {
       suppliers: suppliers.filter(s => !assignedSupplierIds.has(s.id)),
     });
   }, [rules, clients, suppliers]);
+
+  // Fetch block stats (only once on initial load)
+  const statsLoaded = useRef(false);
+  useEffect(() => {
+    if (statsLoaded.current) return;
+    fetch("/api/tenant/sms-translations/stats?category=CONTENT_FILTER")
+      .then(r => r.json())
+      .then(data => {
+        const map: Record<string, number> = {};
+        for (const s of data.stats || []) {
+          map[s.rule_name] = s.block_count;
+        }
+        setBlockStats(map);
+        setTotalBlocks(data.total || 0);
+        statsLoaded.current = true;
+      })
+      .catch(() => {});
+  }, []);
 
   const addRule = () => {
     const newRule: FilterRule = {
@@ -360,6 +382,8 @@ export default function ContentFilterPage() {
             <span>•</span>
             <span>{rules.filter(r => r.isActive && r.filterMode === "whitelist").length} whitelist</span>
             <span>•</span>
+            <span>🚫 {totalBlocks} blocked (24h)</span>
+            <span>•</span>
             <span>Blacklist checked first</span>
           </div>
         </div>
@@ -400,6 +424,7 @@ export default function ContentFilterPage() {
                 <th className="text-left px-3 py-2.5 font-medium">Rule Name</th>
                 <th className="text-left px-3 py-2.5 font-medium">Match Content</th>
                 <th className="text-left px-3 py-2.5 font-medium w-24">Mode</th>
+                <th className="text-center px-3 py-2.5 font-medium w-20">Blocks (24h)</th>
                 <th className="text-left px-3 py-2.5 font-medium w-48">Applies To</th>
                 <th className="text-left px-3 py-2.5 font-medium w-16">Priority</th>
                 <th className="text-center px-3 py-2.5 font-medium w-12">Active</th>
@@ -409,7 +434,7 @@ export default function ContentFilterPage() {
             <tbody className="divide-y divide-slate-100">
               {rules.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
+                  <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
                     <p className="text-2xl mb-2">🛡️</p>
                     <p className="text-sm">No content filter rules yet</p>
                     <p className="text-xs mt-1">Click "+ Add Filter" to create blacklist or whitelist rules</p>
@@ -442,6 +467,15 @@ export default function ContentFilterPage() {
                       <input value={rule.matchPattern} onChange={e => updateRule(idx, "matchPattern", e.target.value)}
                         placeholder="(?i)(spam|scam|fraud)"
                         className="w-44 border rounded px-2 py-1 font-mono text-xs focus:ring-2 focus:ring-orange-500 focus:outline-none" />
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {blockStats[rule.name] ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700">
+                          🚫 {blockStats[rule.name]}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-300">—</span>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <select value={rule.filterMode} onChange={e => updateRule(idx, "filterMode", e.target.value)}

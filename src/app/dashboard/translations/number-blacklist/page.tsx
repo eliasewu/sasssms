@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
 import { buildRegex } from "@/lib/regex-utils";
@@ -63,6 +63,10 @@ export default function NumberBlacklistPage() {
   const [dragEntity, setDragEntity] = useState<{ type: "client" | "supplier"; id: number; name: string } | null>(null);
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
   const [unassignedEntities, setUnassignedEntities] = useState<{ clients: ClientSupplier[]; suppliers: ClientSupplier[] }>({ clients: [], suppliers: [] });
+
+  // Per-rule block stats (24h)
+  const [blockStats, setBlockStats] = useState<Record<string, number>>({});
+  const [totalBlocks, setTotalBlocks] = useState(0);
 
   // Quick Test
   const [quickTestNumber, setQuickTestNumber] = useState("8801700000000");
@@ -130,6 +134,24 @@ export default function NumberBlacklistPage() {
       suppliers: suppliers.filter(s => !assignedSupplierIds.has(s.id)),
     });
   }, [rules, clients, suppliers]);
+
+  // Fetch block stats (only once on initial load, not on every keystroke)
+  const statsLoaded = useRef(false);
+  useEffect(() => {
+    if (statsLoaded.current) return;
+    fetch("/api/tenant/sms-translations/stats?category=NUMBER_BLACKLIST")
+      .then(r => r.json())
+      .then(data => {
+        const map: Record<string, number> = {};
+        for (const s of data.stats || []) {
+          map[s.rule_name] = s.block_count;
+        }
+        setBlockStats(map);
+        setTotalBlocks(data.total || 0);
+        statsLoaded.current = true;
+      })
+      .catch(() => {});
+  }, []);
 
   // Build the effective regex pattern for saving — exact mode wraps in ^...$
   const effectivePattern = (rule: BlacklistRule): string => {
@@ -366,6 +388,8 @@ export default function NumberBlacklistPage() {
             <span>•</span>
             <span>{regexCount} regex</span>
             <span>•</span>
+            <span>🚫 {totalBlocks} blocked (24h)</span>
+            <span>•</span>
             <span>First match wins</span>
           </div>
         </div>
@@ -406,6 +430,7 @@ export default function NumberBlacklistPage() {
                 <th className="text-left px-3 py-2.5 font-medium">Rule Name</th>
                 <th className="text-left px-3 py-2.5 font-medium w-24">Mode</th>
                 <th className="text-left px-3 py-2.5 font-medium">Match Number</th>
+                <th className="text-center px-3 py-2.5 font-medium w-20">Blocks (24h)</th>
                 <th className="text-left px-3 py-2.5 font-medium w-48">Applies To</th>
                 <th className="text-left px-3 py-2.5 font-medium w-16">Priority</th>
                 <th className="text-center px-3 py-2.5 font-medium w-12">Active</th>
@@ -415,7 +440,7 @@ export default function NumberBlacklistPage() {
             <tbody className="divide-y divide-slate-100">
               {rules.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
+                  <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
                     <p className="text-2xl mb-2">🚫</p>
                     <p className="text-sm">No number blacklist rules yet</p>
                     <p className="text-xs mt-1">Click &quot;+ Add Blacklist&quot; to block numbers or number series</p>
@@ -440,9 +465,27 @@ export default function NumberBlacklistPage() {
                       {idx + 1}
                       {isDirty && <span className="ml-1 text-[8px] text-amber-500 align-top">•</span>}
                     </td>
+                    <td className="px-3 py-2 text-center">
+                      {blockStats[rule.name] ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
+                          🚫 {blockStats[rule.name]}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-300">—</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2">
                       <input value={rule.name} onChange={e => updateRule(idx, "name", e.target.value)}
                         className="w-full border-0 bg-transparent focus:bg-white focus:border focus:border-red-300 rounded px-1 py-0.5 text-xs font-medium text-slate-800 focus:outline-none" />
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {blockStats[rule.name] ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
+                          🚫 {blockStats[rule.name]}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-300">—</span>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <select value={rule.matchMode} onChange={e => {
@@ -457,6 +500,15 @@ export default function NumberBlacklistPage() {
                         <option value="exact">🎯 Exact</option>
                         <option value="regex">.* Regex</option>
                       </select>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {blockStats[rule.name] ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
+                          🚫 {blockStats[rule.name]}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-300">—</span>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       {rule.matchMode === "exact" ? (
@@ -487,6 +539,15 @@ export default function NumberBlacklistPage() {
                         <input value={rule.matchPattern} onChange={e => updateRule(idx, "matchPattern", e.target.value)}
                           placeholder="^8801[3-9]"
                           className="w-44 border rounded px-2 py-1 font-mono text-xs focus:ring-2 focus:ring-red-500 focus:outline-none" />
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {blockStats[rule.name] ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
+                          🚫 {blockStats[rule.name]}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-300">—</span>
                       )}
                     </td>
                     <td className="px-3 py-2">
@@ -526,6 +587,15 @@ export default function NumberBlacklistPage() {
                           <button onClick={() => clearAssignment(idx)} className="text-red-400 hover:text-red-600 text-[10px] px-0.5" title="Clear">✕</button>
                         )}
                       </div>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {blockStats[rule.name] ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
+                          🚫 {blockStats[rule.name]}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-300">—</span>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <input type="number" min={1} max={99} value={rule.priority} onChange={e => updateRule(idx, "priority", parseInt(e.target.value) || 1)}

@@ -320,6 +320,12 @@ export async function POST(request: Request) {
     for (const row of blResult.rows) {
       try {
         if (buildRegex(row.match_pattern as string).test(destination)) {
+          // Log the blocked attempt
+          tenantQuery(tenant.schemaName,
+            `INSERT INTO blocked_sms_log (rule_name, category, destination, content, client_id)
+             VALUES ($1, 'NUMBER_BLACKLIST', $2, $3, $4)`,
+            [row.name as string, destination, content || null, clientId]
+          ).catch(e => console.error("Block log insert error:", e));
           return NextResponse.json({
             error: `SMS blocked: destination number matches blacklist rule "${row.name}"`,
             blockedBy: row.name,
@@ -351,6 +357,12 @@ export async function POST(request: Request) {
     for (const row of blacklistRules) {
       try {
         if (buildRegex(row.match_pattern as string).test(content)) {
+          // Log the blocked attempt
+          tenantQuery(tenant.schemaName,
+            `INSERT INTO blocked_sms_log (rule_name, category, destination, content, client_id)
+             VALUES ($1, 'CONTENT_FILTER', $2, $3, $4)`,
+            [row.name as string, destination, content, clientId]
+          ).catch(e => console.error("Block log insert error:", e));
           return NextResponse.json({
             error: `SMS blocked: content matches blacklist rule "${row.name}"`,
             blockedBy: row.name,
@@ -371,6 +383,12 @@ export async function POST(request: Request) {
         } catch { /* invalid regex — skip */ }
       }
       if (!whitelistMatch) {
+        // Log the blocked attempt
+        tenantQuery(tenant.schemaName,
+          `INSERT INTO blocked_sms_log (rule_name, category, destination, content, client_id)
+           VALUES ($1, 'CONTENT_FILTER', $2, $3, $4)`,
+          ['whitelist (no match)', destination, content, clientId]
+        ).catch(e => console.error("Block log insert error:", e));
         return NextResponse.json({
           error: "SMS blocked: content does not match any whitelist rule",
           whitelistRules: whitelistRules.map((r: Record<string,unknown>) => r.name),
