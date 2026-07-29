@@ -653,6 +653,29 @@ function getAmiExecutor(): AsteriskAmiExecutor {
   return _sharedAmiExecutor;
 }
 
+// ── In-memory active-destination lock (prevents race conditions) ──
+// Key = `${schemaName}:${destination}`, auto-cleaned after 360s to prevent leaks
+const _activeCalls = new Map<string, number>(); // value = Date.now()
+
+/** Periodic cleanup of stale entries (crashes/process restarts). Runs every 60s. */
+setInterval(() => {
+  const cutoff = Date.now() - 360_000; // 6 min
+  for (const [key, ts] of _activeCalls) {
+    if (ts < cutoff) _activeCalls.delete(key);
+  }
+}, 60_000).unref();
+
+function tryAcquireCallLock(schemaName: string, destination: string): boolean {
+  const key = `${schemaName}:${destination}`;
+  if (_activeCalls.has(key)) return false;
+  _activeCalls.set(key, Date.now());
+  return true;
+}
+
+function releaseCallLock(schemaName: string, destination: string): void {
+  _activeCalls.delete(`${schemaName}:${destination}`);
+}
+
 /**
  * Execute a full Voice OTP call with retry logic.
  * Called by both the HTTP API (send-sms/route.ts) and the SMPP server (smpp-server.ts).
@@ -694,7 +717,24 @@ export async function executeVoiceOtpCall(params: {
     };
   }
 
-  // ── 2b. Per-destination guard: prevent overlapping calls to the same number ──
+  // ── 2b. In-memory lock: fastest first-line defense against concurrent calls ──
+  // Prevents the race condition where two requests for the same destination
+  // both pass the DB SELECT before either does the INSERT.
+  if (!tryAcquireCallLock(schemaName, destination)) {
+    return {
+      success: false,
+      callSid: "", language, langResolution,
+      callAttempts: [], totalDuration: 0, sipConfigName: null,
+      errorMessage: `A call is already in progress for ${destination}. Please wait for it to complete before retrying.`,
+    };
+  }
+
+  // ── All code after lock acquisition is wrapped in try/finally ──
+  // This ensures the lock is released even if any await throws an exception
+  // (DB connection failure, AMI error, etc.).
+  try {
+
+  // ── 2c. Per-destination DB guard: cross-process protection ──
   // If a call is already IN_PROGRESS for this destination (including during retry delays),
   // reject the new request to avoid double-calling the user.
   const existingCall = await tenantQuery(
@@ -711,7 +751,7 @@ export async function executeVoiceOtpCall(params: {
     // (process crashed). Mark it FAILED and allow the new call through.
     if (ageSeconds > 300) {
       console.log(`[VOICE-OTP] Cleaning up stale IN_PROGRESS call for ${destination} (age=${ageSeconds.toFixed(0)}s)`);
-      tenantQuery(
+      await tenantQuery(
         schemaName,
         "UPDATE voice_otp_call_logs SET status = 'FAILED' WHERE id = $1",
         [existing.id]
@@ -899,6 +939,10 @@ export async function executeVoiceOtpCall(params: {
     sipConfigName: activeSip?.name || null,
     errorMessage: callSuccess ? undefined : `Call failed after ${callAttempts.length} attempt(s)`,
   };
+
+  } finally {
+    releaseCallLock(schemaName, destination);
+  }
 }
 
 
