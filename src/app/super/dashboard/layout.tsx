@@ -94,6 +94,8 @@ export default function SuperDashboardLayout({ children }: { children: React.Rea
               <a
                 key={item.href}
                 href={item.href}
+                target="_blank"
+                rel="noopener noreferrer"
                 className={`flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm transition-colors text-slate-300 hover:bg-white/10 hover:text-white`}
               >
                 <span className="text-lg">{item.icon}</span>

@@ -184,6 +184,26 @@ export default function LandingPage() {
   const router = useRouter();
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  // Determine the safe redirect target after login
+  const getRedirectPath = (): string => {
+    const params = new URLSearchParams(window.location.search);
+    const redirect = params.get("redirect");
+    if (redirect) {
+      try {
+        const url = new URL(redirect, window.location.origin);
+        if (url.origin !== window.location.origin) return "/dashboard";
+        const path = url.pathname + url.search + url.hash;
+        // n8n paths are served by nginx, not Next.js — use full navigation instead of router.push
+        if (path.startsWith("/n8n")) {
+          window.location.href = path;
+          return ""; // caller will see empty string and skip router.push
+        }
+        return path;
+      } catch { /* invalid URL, ignore */ }
+    }
+    return "/dashboard";
+  };
+
   // Handle auth_error from Google callback redirect
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -195,6 +215,10 @@ export default function LandingPage() {
       setMode("login");
       // Clear the URL param
       window.history.replaceState({}, "", "/");
+    }
+    // Auto-show login form if there's a redirect param (user was sent here from a protected page)
+    if (params.has("redirect")) {
+      setMode("login");
     }
   }, []);
 
@@ -235,7 +259,8 @@ export default function LandingPage() {
     const data = await res.json();
     setLoading(false);
     if (!res.ok) return setError(data.error);
-    router.push("/dashboard");
+    const redirect = getRedirectPath();
+    if (redirect) router.push(redirect);
   };
 
   const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -257,7 +282,8 @@ export default function LandingPage() {
     const data = await res.json();
     setLoading(false);
     if (!res.ok) return setError(data.error);
-    router.push("/dashboard");
+    const redirect = getRedirectPath();
+    if (redirect) router.push(redirect);
   };
 
   if (mode !== "landing") {
