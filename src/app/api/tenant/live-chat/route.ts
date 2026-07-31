@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { liveChatRooms, liveChatMessages } from "@/db/schema";
 import { getTenantFromRequest } from "@/lib/auth";
-import { eq, asc, desc } from "drizzle-orm";
+import { eq, asc, desc, and, sql } from "drizzle-orm";
 
 // GET /api/tenant/live-chat — get the tenant's chat room and messages
 export async function GET(request: NextRequest) {
   try {
     const tenant = getTenantFromRequest(request);
     if (!tenant) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    const tenantId = tenant.id;
+    const tenantId = tenant.tenantId;
 
     // Find existing open room or return null
     const rooms = await db
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
   try {
     const tenant = getTenantFromRequest(request);
     if (!tenant) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    const tenantId = tenant.id;
+    const tenantId = tenant.tenantId;
     const body = await request.json();
     const { action, message, subject } = body;
 
@@ -61,8 +61,7 @@ export async function POST(request: NextRequest) {
       const existing = await db
         .select()
         .from(liveChatRooms)
-        .where(eq(liveChatRooms.tenantId, tenantId))
-        .where(eq(liveChatRooms.status, "OPEN"))
+        .where(and(eq(liveChatRooms.tenantId, tenantId), eq(liveChatRooms.status, "OPEN")))
         .limit(1);
 
       if (existing.length > 0) {
@@ -102,10 +101,7 @@ export async function POST(request: NextRequest) {
         .returning();
 
       // Update last message time + increment unread for super
-      await db.execute(
-        `UPDATE live_chat_rooms SET unread_super = unread_super + 1, last_message_at = NOW() WHERE id = $1`,
-        [roomId]
-      );
+      await db.execute(sql`UPDATE live_chat_rooms SET unread_super = unread_super + 1, last_message_at = NOW() WHERE id = ${roomId}`);
 
       return NextResponse.json({ message: msg });
     }

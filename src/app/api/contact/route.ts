@@ -15,6 +15,7 @@ const transporter = nodemailer.createTransport({
     user: SMTP_USER,
     pass: SMTP_PASS,
   },
+  tls: { rejectUnauthorized: false }, // allow self-signed certs on localhost
 });
 
 // ── In-memory rate limiter: max 3 submissions per IP per 60s ──

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { liveChatRooms, liveChatMessages, liveChatNotes, superAdmins } from "@/db/schema";
 import { getSuperAdminFromRequest } from "@/lib/auth";
-import { eq, asc, desc } from "drizzle-orm";
+import { eq, asc, desc, sql } from "drizzle-orm";
 
 // GET /api/super/live-chat — get rooms, messages, notes, or admins list
 export async function GET(request: NextRequest) {
@@ -78,8 +78,8 @@ export async function POST(request: NextRequest) {
         .insert(liveChatNotes)
         .values({
           roomId,
-          adminId: admin.id,
-          adminName: admin.name || admin.email,
+          adminId: admin.adminId,
+          adminName: admin.email,
           note: safeNote,
         })
         .returning();
@@ -98,17 +98,14 @@ export async function POST(request: NextRequest) {
       .values({
         roomId,
         senderType: "super",
-        senderId: admin.id,
-        senderName: admin.name || admin.email,
+        senderId: admin.adminId,
+        senderName: admin.email,
         message: safeMsg,
       })
       .returning();
 
     // Increment unread_tenant and update last_message_at
-    await db.execute(
-      `UPDATE live_chat_rooms SET unread_tenant = unread_tenant + 1, last_message_at = NOW() WHERE id = $1`,
-      [roomId]
-    );
+    await db.execute(sql`UPDATE live_chat_rooms SET unread_tenant = unread_tenant + 1, last_message_at = NOW() WHERE id = ${roomId}`);
 
     return NextResponse.json({ message: msg });
   } catch (err: any) {
@@ -154,8 +151,8 @@ export async function PATCH(request: NextRequest) {
       // Post a system note about the transfer
       await db.insert(liveChatNotes).values({
         roomId,
-        adminId: admin.id,
-        adminName: admin.name || admin.email,
+        adminId: admin.adminId,
+        adminName: admin.email,
         note: `🔄 Transferred chat to ${targetName}`,
       });
 

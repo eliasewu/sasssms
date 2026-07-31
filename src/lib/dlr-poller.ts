@@ -19,6 +19,7 @@ import {
   parseHeaders,
 } from "@/lib/api-connector-parser";
 import { lookupClientRate, lookupSupplierCost } from "@/lib/rates";
+import { resolveChargingMode, isDlrCharged } from "@/lib/charging";
 
 const POLL_INTERVAL_MS = 5_000; // 5 seconds — fast enough for 4s connectors
 
@@ -238,20 +239,49 @@ async function pollDlrForMessage(
       : normalizeDlrStatus(rawStatus);
 
     // 11. Update message in DB
-    // Only set costs on DELIVERED if message was DLR-billed (cost=0 on submit)
+    // Check client and supplier charging modes to decide cost updates at DLR time
     let msgCost = 0;
+    let msgSuppCost = 0;
     try {
       const { rows: costCheck } = await client.query(
-        "SELECT cost FROM messages WHERE message_id = $1", [msg.message_id]
+        "SELECT cost, supplier_cost FROM messages WHERE message_id = $1", [msg.message_id]
       );
       msgCost = costCheck.length > 0 ? parseFloat(costCheck[0].cost) : 0;
+      msgSuppCost = costCheck.length > 0 ? parseFloat(costCheck[0].supplier_cost) : 0;
     } catch { /* keep 0 */ }
-    const needsCostUpdate = dlrStatus === 'DELIVERED' && msg.client_id && msgCost === 0;
+
+    // Determine if client or supplier is on_dlr (cost deferred to DLR time)
+    let clientOnDlr = false;
+    let supplierOnDlr = false;
+    if (msg.client_id && msgCost === 0) {
+      try {
+        const { rows: clientRows } = await client.query(
+          "SELECT charging_mode, billing_mode, force_dlr FROM clients WHERE id = $1",
+          [msg.client_id]
+        );
+        clientOnDlr = clientRows.length > 0 && isDlrCharged(resolveChargingMode(clientRows[0]));
+      } catch { /* best-effort */ }
+    }
+    if (msg.supplier_id && msgSuppCost === 0) {
+      try {
+        const { rows: suppRows } = await client.query(
+          "SELECT charging_mode, force_dlr FROM suppliers WHERE id = $1",
+          [msg.supplier_id]
+        );
+        supplierOnDlr = suppRows.length > 0 && isDlrCharged(resolveChargingMode(suppRows[0]));
+      } catch { /* best-effort */ }
+    }
+
+    const needsCostUpdate = dlrStatus === 'DELIVERED' && (clientOnDlr || supplierOnDlr);
 
     if (needsCostUpdate) {
       try {
-        const clientRate = await lookupClientRate(msg.destination, msg.client_id, schemaName, client);
-        const suppCost = await lookupSupplierCost(msg.destination, msg.supplier_id, schemaName, client);
+        const clientRate = clientOnDlr
+          ? await lookupClientRate(msg.destination, msg.client_id, schemaName, client)
+          : msgCost;
+        const suppCost = supplierOnDlr
+          ? await lookupSupplierCost(msg.destination, msg.supplier_id, schemaName, client)
+          : msgSuppCost;
         const msgProfit = clientRate - suppCost;
 
         await client.query(
@@ -262,7 +292,6 @@ async function pollDlrForMessage(
         );
       } catch (err) {
         console.error(`[DLR-POLL] Rate lookup failed for ${msg.message_id}:`, err);
-        // Fall back to zero-cost DELIVERED update
         await client.query(
           `UPDATE messages SET dlr_status = $1, dlr_timestamp = NOW(),
            status = 'DELIVERED' WHERE message_id = $3`,
@@ -278,11 +307,8 @@ async function pollDlrForMessage(
       );
     }
 
-    // 11b. SMS counter: charge ALL DLR-billed messages against credits,
-    // regardless of delivery status (FAILED, DELIVERED, EXPIRED, etc.).
-    // The submit-time isDlrBilling check deferred the counter increment to here.
-    // We check msgCost === 0 to identify DLR-billed messages (cost deferred to delivery).
-    if (msg.client_id && msgCost === 0) {
+    // 11b. SMS counter: charge on_dlr client messages against credits at DLR time
+    if (msg.client_id && clientOnDlr) {
       try {
         await client.query("SET search_path TO public");
         await client.query(

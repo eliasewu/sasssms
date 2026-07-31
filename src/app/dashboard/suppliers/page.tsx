@@ -26,7 +26,7 @@ interface Supplier {
   host: string; port: number; username: string; password?: string; system_id: string; system_type: string;
   smpp_version: string; bind_type: string; address_ton: number; address_npi: number;
   address_range: string; inbound_mode: boolean;  api_url: string; api_key?: string; connector_id: number;
-  currency: string; force_dlr: boolean;
+  currency: string; charging_mode: string; dlr_timeout: number; force_dlr: boolean;
   is_active: boolean; bind_status: string; bind_error?: string;
 }
 interface Connector { id: number; name: string; type: string; provider: string; region: string; api_url?: string; }
@@ -51,7 +51,7 @@ export default function SupplierPage() {
     inboundMode: false,
     apiUrl: "", apiKey: "",
     currency: "USD", initialBalance: "0", creditLimit: "0",
-    forceDlr: false,
+    chargingMode: "on_submit", dlrTimeout: "60",
   });
 
   const load = useCallback(async () => {
@@ -105,7 +105,9 @@ export default function SupplierPage() {
       currency: form.currency,
       initialBalance: form.initialBalance || "0",
       creditLimit: form.creditLimit || "0",
-        forceDlr: form.forceDlr,
+        forceDlr: form.chargingMode === "force_dlr" || form.chargingMode === "force_dlr_timeout",
+        chargingMode: form.chargingMode,
+        dlrTimeout: parseInt(form.dlrTimeout) || 60,
         connectorId: (form as any).connectorId ? parseInt((form as any).connectorId) : null,
         config: form.connectionType === "VOICE_OTP" ? JSON.stringify({ type: "voice_otp" }) : null,
       };
@@ -155,7 +157,9 @@ export default function SupplierPage() {
       addressRange: s.address_range || "", inboundMode: s.inbound_mode || false,
       apiUrl: s.api_url || "", apiKey: s.api_key ? "••••••••" : "",
       currency: s.currency || "USD",
-      initialBalance: "0", creditLimit: "0", forceDlr: s.force_dlr || false,
+      initialBalance: "0", creditLimit: "0",
+      chargingMode: s.charging_mode || (s.force_dlr ? "force_dlr" : "on_submit"),
+      dlrTimeout: (s.dlr_timeout || 60).toString(),
     });
     setShowForm(true);
   };
@@ -468,20 +472,29 @@ export default function SupplierPage() {
 
             {/* Billing */}
             <section className="bg-slate-50 rounded-xl p-5">
-              <h4 className="font-semibold mb-3">💰 Billing Settings</h4>
+              <h4 className="font-semibold mb-3">💰 Charging Mode</h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Charging Mode</label>
+                  <select value={form.chargingMode} onChange={e => setForm({...form, chargingMode: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
+                    <option value="on_submit">On Submit — charge immediately</option>
+                    <option value="on_dlr">On DLR — charge after delivery</option>
+                    <option value="force_dlr">Force DLR — charge + instant DLR</option>
+                    <option value="force_dlr_timeout">Force DLR Timeout — charge + timed DLR</option>
+                  </select>
+                </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Currency</label>
                   <select value={form.currency} onChange={e => setForm({...form, currency: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
                     <option value="USD">USD</option><option value="EUR">EUR</option><option value="INR">INR</option>
                   </select>
                 </div>
-                <F label="Initial Balance" type="number" step="0.0001" value={form.initialBalance} onChange={v => setForm({...form, initialBalance: v})} />
-                <F label="Credit Limit" type="number" step="0.0001" value={form.creditLimit} onChange={v => setForm({...form, creditLimit: v})} />
-                <div className="flex items-end pb-2">
-                  <label className="flex items-center gap-2"><input type="checkbox" checked={form.forceDlr} onChange={e => setForm({...form, forceDlr: e.target.checked})} className="accent-blue-600" /><span className="text-sm">Force DLR</span></label>
-                </div>
+                {(form.chargingMode === "force_dlr_timeout") && (
+                  <F label="DLR Timeout (s)" type="number" value={form.dlrTimeout} onChange={v => setForm({...form, dlrTimeout: v})} />
+                )}
               </div>
+              {form.chargingMode === "force_dlr" && <p className="text-xs text-purple-600 mt-2">⚡ Supplier is charged immediately and triggers instant DLR delivery to clients.</p>}
+              {form.chargingMode === "force_dlr_timeout" && <p className="text-xs text-amber-600 mt-2">⏱ Supplier charged immediately. If no real DLR arrives within {form.dlrTimeout}s, auto-deliver occurs.</p>}
             </section>
 
             <div className="flex gap-3 pt-2">

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchMessage, decryptCredentials } from "@/lib/webmail";
+import { fetchMessageFromAnyFolder, decryptCredentials } from "@/lib/webmail";
 
 function getCredentials(request: Request): { email: string; password: string } | null {
   const cookie = request.headers.get("cookie");
@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const msg = await fetchMessage(creds.email, creds.password, uid);
+    const msg = await fetchMessageFromAnyFolder(creds.email, creds.password, uid, "INBOX");
     if (!msg) {
       return NextResponse.json({ error: "Message not found" }, { status: 404 });
     }

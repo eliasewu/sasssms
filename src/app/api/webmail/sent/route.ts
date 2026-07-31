@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchSentFolder, decryptCredentials } from "@/lib/webmail";
+import { fetchFromFolder, decryptCredentials } from "@/lib/webmail";
 
 function getCredentials(request: Request): { email: string; password: string } | null {
   const cookie = request.headers.get("cookie");
@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     const limit = parseInt(url.searchParams.get("limit") || "50");
     const offset = parseInt(url.searchParams.get("offset") || "0");
 
-    const result = await fetchSentFolder(creds.email, creds.password, limit, offset);
+    const result = await fetchFromFolder(creds.email, creds.password, "Sent", limit, offset);
     return NextResponse.json(result);
   } catch (error: unknown) {
     console.error("Webmail sent folder error:", error);

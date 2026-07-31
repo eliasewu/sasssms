@@ -42,15 +42,14 @@ export async function computeFirstPaymentBonus(
     const completedCount = parseInt(result.rows[0]?.cnt || "0");
 
     if (completedCount === 0) {
-      const amount = typeof paymentAmount === "string" 
-        ? parseFloat(paymentAmount) 
-        : paymentAmount;
-
-      if (amount >= minAmount) {
+      // Compare the SMS credit amount (not the dollar amount) against minAmount
+      // because minAmount (default: 250,000) represents SMS credits threshold.
+      // e.g. $25 at $0.00010/SMS = 250,000 SMS, which meets the 250,000 threshold.
+      if (baseSmsAmount >= minAmount) {
         const totalSms = baseSmsAmount + bonusSms;
         console.log(
           `[PAYMENT-PROMO] First payment bonus applied: tenant=${tenantId}, ` +
-          `amount=${amount}, baseSMS=${baseSmsAmount}, bonus=${bonusSms}, total=${totalSms}`
+          `paymentAmount=${paymentAmount}, baseSMS=${baseSmsAmount}, bonus=${bonusSms}, total=${totalSms}`
         );
         return { totalSms, bonusSms, isFirstPayment: true };
       }

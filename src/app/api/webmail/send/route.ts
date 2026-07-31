@@ -87,9 +87,12 @@ export async function POST(request: Request) {
     );
 
     if (!result.success) {
+      // Pass the actual SMTP error through so the user can diagnose the issue
+      const errMsg = result.error || "Failed to send email. Please check your connection and try again.";
+      console.error("[webmail] SMTP send failed:", errMsg);
       return NextResponse.json({
         success: false,
-        error: "Failed to send email. Please check your connection and try again.",
+        error: errMsg,
       }, { status: 500 });
     }
 

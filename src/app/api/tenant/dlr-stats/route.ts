@@ -75,7 +75,7 @@ export async function GET(request: Request) {
          m.status, m.dlr_status, m.dlr_timestamp,
          m.cost, m.supplier_cost, m.profit,
          m.supplier_id, s.name as supplier_name,
-         COALESCE(s.force_dlr, false) as supplier_force_dlr,
+         COALESCE(s.charging_mode, CASE WHEN COALESCE(s.force_dlr, false) THEN 'force_dlr' ELSE 'on_submit' END) as supplier_charging_mode,
          m.client_id, c.name as client_name,
          m.connection_type, m.created_at
        FROM messages m
@@ -120,14 +120,14 @@ export async function GET(request: Request) {
       [since]
     ),
 
-    // DLR Health: awaiting real DLR vs force_dlr resolved
+    // DLR Health: awaiting real DLR vs force_dlr / charging_mode resolved
     tenantQuery(
       tenant.schemaName,
       `SELECT
          COUNT(*) as total_with_dlr,
          COUNT(*) FILTER (WHERE m.dlr_status = 'SENT') as awaiting_real_dlr,
-         COUNT(*) FILTER (WHERE m.dlr_status = 'DELIVERED' AND COALESCE(s.force_dlr, false) = true) as force_dlr_delivered,
-         COUNT(*) FILTER (WHERE m.dlr_status = 'DELIVERED' AND COALESCE(s.force_dlr, false) = false) as real_dlr_delivered,
+         COUNT(*) FILTER (WHERE m.dlr_status = 'DELIVERED' AND COALESCE(s.charging_mode, 'on_submit') IN ('force_dlr', 'force_dlr_timeout')) as force_dlr_delivered,
+         COUNT(*) FILTER (WHERE m.dlr_status = 'DELIVERED' AND COALESCE(s.charging_mode, 'on_submit') NOT IN ('force_dlr', 'force_dlr_timeout')) as real_dlr_delivered,
          COUNT(*) FILTER (WHERE m.dlr_status = 'FAILED') as real_dlr_failed
        FROM messages m
        LEFT JOIN suppliers s ON m.supplier_id = s.id

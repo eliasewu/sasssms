@@ -25,6 +25,7 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER || "welcome@net2app.com",
     pass: process.env.SMTP_PASS || "",
   },
+  tls: { rejectUnauthorized: false }, // allow self-signed certs on localhost
 });
 
 interface Pm2HealthResult {

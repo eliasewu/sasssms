@@ -4,15 +4,21 @@
  */
 
 export const ALL_SERVER_IPS = [
-  "127.0.0.1",   // Local only — cross-server fetch disabled
+  "149.56.22.232",   // Canada — Toronto (Origin)
+  "15.235.35.125",   // Canada — Toronto (Dev)
+  "54.37.252.5",     // France — Paris
+  "145.239.1.7",     // Germany — Frankfurt (Primary Mail Server)
+  "146.59.47.22",    // Poland — Warsaw
+  "66.70.176.241",   // USA — New York
 ] as const;
 
 export const KNOWN_LABELS: Record<string, string> = {
   "149.56.22.232": "Canada — Toronto (Origin)",
-  "15.235.35.125": "Canada — Toronto",
+  "15.235.35.125": "Canada — Toronto (Dev)",
   "54.37.252.5": "France — Paris",
-  "145.239.1.7": "Germany — Frankfurt",
+  "145.239.1.7": "Germany — Frankfurt (Mail Server)",
   "146.59.47.22": "Poland — Warsaw",
+  "66.70.176.241": "USA — New York",
 };
 
 export function serverLabel(ip: string): string {

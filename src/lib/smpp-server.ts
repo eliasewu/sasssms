@@ -37,6 +37,14 @@ import {
   extractRemoteAddress,
 } from "@/lib/smpp-bind-validator";
 import { lookupClientRate, lookupSupplierCost } from "@/lib/rates";
+import {
+  resolveChargingMode,
+  isSubmitCharged,
+  isDlrCharged,
+  isForceDlr,
+  isForceDlrTimeout,
+} from "@/lib/charging";
+import type { ChargingMode } from "@/lib/charging";
 import { executeVoiceOtpCall } from "@/lib/voice-otp-engine";
 import { buildVoiceOtpSmppDlrMessage } from "@/lib/voice-otp-dlr";
 import { applyTranslations, applyEntityTranslations } from "@/lib/translation-engine";
@@ -393,7 +401,7 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
             });
             console.log(`[SMPP-SRV] DLR callback triggered: modem=${parsed.messageId} → our=${ourMessageId} status=${parsed.status}`);
 
-            // Update message DLR status in DB
+            // Update message DLR status in DB with on_dlr charging
             pool.connect().then(async (dbClient) => {
               try {
                 const statusMap: Record<string, string> = {
@@ -403,10 +411,75 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
                   UNKNOWN: "FAILED", FAILED: "FAILED",
                 };
                 const dlrStatus = statusMap[parsed.status.toUpperCase()] || parsed.status;
+                const isDlrDelivered = dlrStatus === "DELIVERED";
+
                 await dbClient.query(`SET search_path TO "${ss.schemaName}"`);
+
+                // Check if client/supplier are on_dlr and need charging now
+                const { rows: msgRows } = await dbClient.query(
+                  `SELECT client_id, supplier_id, cost, supplier_cost FROM messages WHERE message_id = $1`,
+                  [ourMessageId]
+                );
+                const msgData = msgRows[0];
+                const existingCost = msgData ? parseFloat(msgData.cost || "0") : 0;
+                const existingSuppCost = msgData ? parseFloat(msgData.supplier_cost || "0") : 0;
+
+                let finalCost = existingCost;
+                let finalSuppCost = existingSuppCost;
+
+                if (isDlrDelivered) {
+                  // Check client on_dlr (cost was 0 at submit)
+                  if (msgData?.client_id && existingCost === 0) {
+                    try {
+                      const { rows: cRows } = await dbClient.query(
+                        "SELECT charging_mode, billing_mode, force_dlr FROM clients WHERE id = $1",
+                        [msgData.client_id]
+                      );
+                      if (cRows.length > 0 && isDlrCharged(resolveChargingMode(cRows[0]))) {
+                        const clientRate = await lookupClientRate(
+                          (pdu.source_addr as string) || "",
+                          msgData.client_id, ss.schemaName, dbClient
+                        );
+                        finalCost = clientRate;
+
+                        // Increment tenant sms_counter
+                        await dbClient.query("SET search_path TO public");
+                        await dbClient.query(
+                          "UPDATE tenants SET sms_counter = COALESCE(sms_counter, 0) + 1 WHERE id = $1",
+                          [ss.tenantId]
+                        );
+                        await dbClient.query(`SET search_path TO "${ss.schemaName}"`);
+                        console.log(`[SMPP-SRV] DLR: charged client #${msgData.client_id} (on_dlr) for ${ourMessageId}`);
+                      }
+                    } catch (err) {
+                      console.error(`[SMPP-SRV] DLR client charge error for ${ourMessageId}:`, err);
+                    }
+                  }
+
+                  // Check supplier on_dlr
+                  if (msgData?.supplier_id && existingSuppCost === 0) {
+                    try {
+                      const { rows: sRows } = await dbClient.query(
+                        "SELECT charging_mode, force_dlr FROM suppliers WHERE id = $1",
+                        [msgData.supplier_id]
+                      );
+                      if (sRows.length > 0 && isDlrCharged(resolveChargingMode(sRows[0]))) {
+                        finalSuppCost = await lookupSupplierCost(
+                          (pdu.source_addr as string) || "",
+                          msgData.supplier_id, ss.schemaName, dbClient
+                        );
+                      }
+                    } catch (err) {
+                      console.error(`[SMPP-SRV] DLR supplier charge error for ${ourMessageId}:`, err);
+                    }
+                  }
+                }
+
                 await dbClient.query(
-                  `UPDATE messages SET dlr_status = $1, dlr_timestamp = NOW(), status = $2 WHERE message_id = $3`,
-                  [dlrStatus, dlrStatus, ourMessageId]
+                  `UPDATE messages SET dlr_status = $1, dlr_timestamp = NOW(), status = $2,
+                   cost = $4, supplier_cost = $5, profit = $4 - $5
+                   WHERE message_id = $3`,
+                  [dlrStatus, dlrStatus, ourMessageId, finalCost, finalSuppCost]
                 );
                 await dbClient.query("SET search_path TO public");
               } catch (err) {
@@ -753,16 +826,30 @@ async function processSubmitSm(
 
       // ── Supplier cost & profit lookup (same as HTTP API) ──
       const resolvedSupplierId = firstRoute.supplierId;
+      let supplierChargingMode: ChargingMode = "on_submit";
+      let supplierDlrTimeout = 60;
       let supplierCost = 0;
       let profit = 0;
       if (resolvedSupplierId) {
         try {
+          const { rows: suppRows } = await client.query(
+            "SELECT charging_mode, force_dlr, dlr_timeout FROM suppliers WHERE id = $1",
+            [resolvedSupplierId]
+          );
+          if (suppRows.length > 0) {
+            supplierChargingMode = resolveChargingMode(suppRows[0]);
+            supplierDlrTimeout = parseInt(suppRows[0].dlr_timeout as string || "60");
+          }
           supplierCost = await lookupSupplierCost(origDest, resolvedSupplierId, es.schemaName);
           profit = ratePerSms - supplierCost;
         } catch (err) {
           console.error("[SMPP] Supplier cost lookup error:", err);
         }
       }
+
+      // ── Resolve client charging mode ──
+      const clientChargingMode = resolveChargingMode(c);
+      const clientDlrTimeout = parseInt(c.dlr_timeout as string || "60");
 
       // ── Check connection type: handle Voice OTP / OTT / CUSTOM_API routes specially ──
       const firstRouteFinal = filteredRoutes[0];
@@ -890,6 +977,10 @@ async function processSubmitSm(
           console.error("[SMPP] OTT delivery error:", err);
         }
 
+        const ottClientCost = ottSuccess && !isDlrCharged(clientChargingMode) ? ratePerSms : 0;
+        const ottSuppCost = ottSuccess && !isDlrCharged(supplierChargingMode) ? supplierCost : 0;
+        const ottProfit = ottClientCost - ottSuppCost;
+
         await client.query(
           `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id, dlr_timestamp,
            original_sender, original_destination, original_content, translation_notes)
@@ -898,9 +989,9 @@ async function processSubmitSm(
            ottSuccess ? 'SENT' : 'FAILED',
            c.route_plan_id, firstRouteFinal.routeId, firstRouteFinal.trunkId,
            firstRouteFinal.supplierId, connType,
-           ottSuccess ? ratePerSms : 0,
-           ottSuccess ? supplierCost : 0,
-           ottSuccess ? profit : 0,
+           ottClientCost,
+           ottSuppCost,
+           ottProfit,
            ottSuccess ? 'SENT' : 'FAILED',
            messageId,
            ottSuccess ? null : new Date(),
@@ -990,6 +1081,10 @@ async function processSubmitSm(
           console.error("[SMPP] Custom API delivery error:", err);
         }
 
+        const customApiClientCost = customApiSuccess && !isDlrCharged(clientChargingMode) ? ratePerSms : 0;
+        const customApiSuppCost = customApiSuccess && !isDlrCharged(supplierChargingMode) ? supplierCost : 0;
+        const customApiProfit = customApiClientCost - customApiSuppCost;
+
         await client.query(
           `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id, supplier_message_id,
            original_sender, original_destination, original_content, translation_notes, dlr_timestamp)
@@ -998,9 +1093,9 @@ async function processSubmitSm(
            customApiSuccess ? 'SENT' : 'FAILED',
            c.route_plan_id, firstRouteFinal.routeId, firstRouteFinal.trunkId,
            firstRouteFinal.supplierId, connType,
-           customApiSuccess ? ratePerSms : 0,
-           customApiSuccess ? supplierCost : 0,
-           customApiSuccess ? profit : 0,
+           customApiClientCost,
+           customApiSuppCost,
+           customApiProfit,
            customApiSuccess ? 'SENT' : 'FAILED',
            messageId,
            customApiMessageId,
@@ -1036,6 +1131,10 @@ async function processSubmitSm(
 
       if (deliveryResult.success) {
         // Insert message as SENT (DLR will update it later when real DLR arrives)
+        // Client cost: 0 for on_dlr, ratePerSms otherwise
+        const clientCost = isDlrCharged(clientChargingMode) ? 0 : ratePerSms;
+        const suppCost = isDlrCharged(supplierChargingMode) ? 0 : supplierCost;
+        const msgProfit = clientCost - suppCost;
         await client.query(
           `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id,
            original_sender, original_destination, original_content, translation_notes)
@@ -1047,24 +1146,80 @@ async function processSubmitSm(
             deliveryResult.routeUsed?.trunkId || null,
             deliveryResult.routeUsed?.supplierId || null,
             deliveryResult.routeUsed?.connectionType || "SMPP",
-            ratePerSms,
-            supplierCost,
-            profit,
+            clientCost,
+            suppCost,
+            msgProfit,
             messageId,
             origSrc, origDest, origContent, appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null,
           ]
         );
 
-        // Deduct tenant SMS counter (balance tracking removed)
-        await client.query(`SET search_path TO public`);
-        await client.query(
-          `UPDATE tenants SET sms_counter = COALESCE(sms_counter, 0) + 1 WHERE id = $1`,
-          [es.tenantId]
-        );
-        await client.query(`SET search_path TO "${es.schemaName}"`);
+        // Deduct tenant SMS counter (skip for on_dlr clients — deferred to DLR time)
+        if (isSubmitCharged(clientChargingMode)) {
+          await client.query(`SET search_path TO public`);
+          await client.query(
+            `UPDATE tenants SET sms_counter = COALESCE(sms_counter, 0) + 1 WHERE id = $1`,
+            [es.tenantId]
+          );
+          await client.query(`SET search_path TO "${es.schemaName}"`);
+        }
 
         // ── Register DLR callback to push DLR back to this ESME client (always, even if force_dlr) ──
+        // When real DLR arrives, charge any on_dlr side and update costs
         registerDlrCallback(messageId, (dlr: DlrPayload) => {
+          const isDelivered = dlr.status === "DELIVRD" || dlr.status === "DELIVERED";
+
+          if (isDelivered) {
+            // Charge on_dlr sides now since DLR confirms delivery
+            const chargeTasks: Promise<void>[] = [];
+            if (isDlrCharged(clientChargingMode)) {
+              chargeTasks.push(
+                (async () => {
+                  const dbc = await pool.connect();
+                  try {
+                    await dbc.query(`SET search_path TO "${es.schemaName}"`);
+                    await dbc.query(
+                      `UPDATE messages SET cost = $1, supplier_cost = $2, profit = $1 - $2 WHERE message_id = $3`,
+                      [ratePerSms, suppCost, messageId]
+                    );
+                    await dbc.query(`SET search_path TO public`);
+                    await dbc.query(
+                      `UPDATE tenants SET sms_counter = COALESCE(sms_counter, 0) + 1 WHERE id = $1`,
+                      [es.tenantId]
+                    );
+                    console.log(`[SMPP] DLR: charged client #${es.clientId} (on_dlr) for ${messageId}`);
+                  } catch (err) {
+                    console.error(`[SMPP] DLR charge error for client #${es.clientId}:`, err);
+                  } finally {
+                    await dbc.query(`SET search_path TO public`);
+                    dbc.release();
+                  }
+                })()
+              );
+            }
+            if (isDlrCharged(supplierChargingMode)) {
+              chargeTasks.push(
+                (async () => {
+                  const dbc = await pool.connect();
+                  try {
+                    await dbc.query(`SET search_path TO "${es.schemaName}"`);
+                    await dbc.query(
+                      `UPDATE messages SET supplier_cost = $1, profit = cost - $1 WHERE message_id = $2`,
+                      [supplierCost, messageId]
+                    );
+                    console.log(`[SMPP] DLR: supplier cost applied (on_dlr) for ${messageId}`);
+                  } catch (err) {
+                    console.error(`[SMPP] DLR supplier charge error for ${messageId}:`, err);
+                  } finally {
+                    await dbc.query(`SET search_path TO public`);
+                    dbc.release();
+                  }
+                })()
+              );
+            }
+            // Fire-and-forget charge tasks (non-blocking for DLR push)
+            Promise.all(chargeTasks).catch(() => {});
+          }
           // Find the live ESME session (may have reconnected with a new session object)
           let liveSession: EsmeSession | null = null;
           for (const [, s] of activeSessions) {
@@ -1100,99 +1255,193 @@ async function processSubmitSm(
           `[SMPP] SMS delivered via ${deliveryResult.routeUsed?.routeName} (supplier: ${deliveryResult.routeUsed?.supplierName})${deliveryResult.fallbackUsed ? ` (fallback after ${deliveryResult.failedRoutes} failed routes)` : ""}`
         );
 
-        // ── Force DLR as 60-second fallback: only kicks in if no real DLR arrives ──
-        const clientForceDlr = !!(c.force_dlr);
-        let supplierForceDlr = false;
-        const usedSupplierId = deliveryResult.routeUsed?.supplierId || null;
-        if (usedSupplierId) {
-          try {
-            const { rows: fRows } = await client.query(
-              "SELECT force_dlr FROM suppliers WHERE id = $1", [usedSupplierId]
-            );
-            supplierForceDlr = !!(fRows[0]?.force_dlr);
-          } catch (err) {
-            console.error("[SMPP] force_dlr supplier lookup error:", err);
-          }
-        }
+        // ── Force DLR / Force DLR Timeout logic ──
+        const needsImmediateDlr = isForceDlr(clientChargingMode) || isForceDlr(supplierChargingMode);
+        const needsTimeoutDlr = isForceDlrTimeout(clientChargingMode) || isForceDlrTimeout(supplierChargingMode);
 
-        if (clientForceDlr || supplierForceDlr) {
+        if (needsImmediateDlr || needsTimeoutDlr) {
           const schemaName = es.schemaName;
           const tenantId = es.tenantId;
           const clientId = es.clientId;
-          console.log(`[SMPP] force_dlr fallback scheduled for ${messageId}: will auto-deliver if no real DLR in 60s`);
-          setTimeout(async () => {
-            try {
-              const checkClient = await pool.connect();
+
+          if (needsImmediateDlr) {
+            // force_dlr: push immediate success DLR NOW (fire-and-forget — don't block SMPP response)
+            console.log(`[SMPP] force_dlr: pushing immediate DLR for ${messageId}`);
+            // Fire-and-forget: mark as DELIVERED immediately without blocking response
+            pool.connect().then(async (chargeDbc) => {
               try {
-                await checkClient.query(`SET search_path TO "${schemaName}"`);
-                const { rows } = await checkClient.query(
-                  `SELECT dlr_status FROM messages WHERE message_id = $1`,
-                  [messageId]
+                await chargeDbc.query(`SET search_path TO "${schemaName}"`);
+                await chargeDbc.query(
+                  `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW(),
+                   cost = $2, supplier_cost = $3, profit = $4 WHERE message_id = $1`,
+                  [messageId, ratePerSms, suppCost, ratePerSms - suppCost]
                 );
-                // Only fall back if still SENT (no real DLR arrived yet)
-                if (rows.length > 0 && rows[0].dlr_status === 'SENT') {
-                  await checkClient.query(
-                    `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW()
-                     WHERE message_id = $1`,
-                    [messageId]
+
+                // Charge on_dlr client counter
+                if (isDlrCharged(clientChargingMode)) {
+                  await chargeDbc.query(`SET search_path TO public`);
+                  await chargeDbc.query(
+                    `UPDATE tenants SET sms_counter = COALESCE(sms_counter, 0) + 1 WHERE id = $1`,
+                    [tenantId]
                   );
-                  console.log(`[SMPP] force_dlr fallback: no real DLR in 60s → ${messageId} marked DELIVERED`);
-
-                  // Push fallback DLR — find live ESME session (may have reconnected)
-                  let liveSession: EsmeSession | null = null;
-                  for (const [, s] of activeSessions) {
-                    if (s.clientId === clientId && s.schemaName === schemaName) {
-                      liveSession = s;
-                      break;
-                    }
-                  }
-
-                  if (liveSession) {
-                    try {
-                      const now = new Date();
-                      const submitDate = String(now.getTime()).slice(0, 10);
-                      const doneDate = String(now.getTime()).slice(0, 10);
-                      liveSession.session.send(
-                        new smpp.PDU("deliver_sm", {
-                          source_addr: dest,
-                          destination_addr: src,
-                          short_message: {
-                            message: `id:${messageId} sub:001 dlvrd:001 submit date:${submitDate} done date:${doneDate} stat:DELIVRD err:000 text:DELIVRD`,
-                          },
-                          esm_class: 4,
-                          registered_delivery: 0,
-                          data_coding: 0,
-                        })
-                      );
-                      console.log(`[SMPP] force_dlr fallback DLR pushed to ESME: ${messageId} → DELIVRD`);
-                    } catch (dlrErr) {
-                      console.error(`[SMPP] force_dlr fallback DLR push error:`, dlrErr);
-                    }
-                  } else {
-                    // Client disconnected — queue the DLR for when they reconnect
-                    const { depth } = enqueueDlrPersist(tenantId, clientId, schemaName, {
-                      messageId,
-                      supplierMessageId: messageId,
-                      status: 'DELIVRD',
-                      submitDate: String(Date.now()).slice(0, 10),
-                      doneDate: String(Date.now()).slice(0, 10),
-                      errorCode: '000',
-                      dest,
-                      src,
-                    });
-                    console.log(`[SMPP] force_dlr fallback DLR queued for ${messageId}: client ${clientId} disconnected (queue depth: ${depth})`);
-                  }
-                } else {
-                  console.log(`[SMPP] force_dlr fallback skipped for ${messageId}: real DLR already received (status=${rows[0]?.dlr_status})`);
+                  await chargeDbc.query(`SET search_path TO "${schemaName}"`);
+                  console.log(`[SMPP] force_dlr: charged client #${clientId} (on_dlr) for ${messageId}`);
+                }
+                // Also charge on_dlr supplier (force_dlr preempts real DLR)
+                if (isDlrCharged(supplierChargingMode)) {
+                  await chargeDbc.query(
+                    `UPDATE messages SET supplier_cost = $1, profit = cost - $1 WHERE message_id = $2`,
+                    [supplierCost, messageId]
+                  );
+                  console.log(`[SMPP] force_dlr: supplier cost applied (on_dlr) for ${messageId}`);
                 }
               } finally {
-                await checkClient.query(`SET search_path TO public`);
-                checkClient.release();
+                await chargeDbc.query(`SET search_path TO public`);
+                chargeDbc.release();
               }
-            } catch (err) {
-              console.error(`[SMPP] force_dlr fallback error for ${messageId}:`, err);
-            }
-          }, 60_000);
+
+              // Push DLR — find live ESME session
+              let liveSession: EsmeSession | null = null;
+              for (const [, s] of activeSessions) {
+                if (s.clientId === clientId && s.schemaName === schemaName) {
+                  liveSession = s;
+                  break;
+                }
+              }
+              if (liveSession) {
+                try {
+                  const now = new Date();
+                  const submitDate = String(now.getTime()).slice(0, 10);
+                  const doneDate = String(now.getTime()).slice(0, 10);
+                  liveSession.session.send(
+                    new smpp.PDU("deliver_sm", {
+                      source_addr: dest,
+                      destination_addr: src,
+                      short_message: {
+                        message: `id:${messageId} sub:001 dlvrd:001 submit date:${submitDate} done date:${doneDate} stat:DELIVRD err:000 text:DELIVRD`,
+                      },
+                      esm_class: 4,
+                      registered_delivery: 0,
+                      data_coding: 0,
+                    })
+                  );
+                  console.log(`[SMPP] force_dlr immediate DLR pushed to ESME: ${messageId} → DELIVRD`);
+                } catch (dlrErr) {
+                  console.error(`[SMPP] force_dlr immediate DLR push error:`, dlrErr);
+                }
+              } else {
+                enqueueDlrPersist(tenantId, clientId, schemaName, {
+                  messageId,
+                  supplierMessageId: messageId,
+                  status: 'DELIVRD',
+                  submitDate: String(Date.now()).slice(0, 10),
+                  doneDate: String(Date.now()).slice(0, 10),
+                  errorCode: '000',
+                  dest,
+                  src,
+                });
+                console.log(`[SMPP] force_dlr immediate DLR queued for ${messageId}: client ${clientId} disconnected`);
+              }
+            }).catch((err) => {
+              console.error(`[SMPP] force_dlr background update failed for ${messageId}:`, err);
+            });
+          } else {
+            // force_dlr_timeout: schedule fallback
+            const effectiveTimeout = Math.min(clientDlrTimeout, supplierDlrTimeout);
+            console.log(`[SMPP] force_dlr_timeout: will auto-deliver ${messageId} in ${effectiveTimeout}s if no real DLR`);
+            setTimeout(async () => {
+              try {
+                const checkClient = await pool.connect();
+                try {
+                  await checkClient.query(`SET search_path TO "${schemaName}"`);
+                  const { rows } = await checkClient.query(
+                    `SELECT dlr_status, cost, supplier_cost FROM messages WHERE message_id = $1`,
+                    [messageId]
+                  );
+                  if (rows.length > 0 && rows[0].dlr_status === 'SENT') {
+                    const existingCost = parseFloat(rows[0].cost || "0");
+                    const existingSuppCost = parseFloat(rows[0].supplier_cost || "0");
+                    let updateCost = existingCost;
+                    let updateSuppCost = existingSuppCost;
+
+                    if (isDlrCharged(clientChargingMode) && existingCost === 0) {
+                      updateCost = ratePerSms;
+                    }
+                    if (isDlrCharged(supplierChargingMode) && existingSuppCost === 0) {
+                      updateSuppCost = supplierCost;
+                    }
+
+                    await checkClient.query(
+                      `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW(),
+                       cost = $2, supplier_cost = $3, profit = $2 - $3 WHERE message_id = $1`,
+                      [messageId, updateCost, updateSuppCost]
+                    );
+                    console.log(`[SMPP] force_dlr_timeout: no real DLR in ${effectiveTimeout}s → ${messageId} marked DELIVERED`);
+
+                    // Charge counter if client was on_dlr
+                    if (isDlrCharged(clientChargingMode) && existingCost === 0) {
+                      await checkClient.query(`SET search_path TO public`);
+                      await checkClient.query(
+                        `UPDATE tenants SET sms_counter = COALESCE(sms_counter, 0) + 1 WHERE id = $1`,
+                        [tenantId]
+                      );
+                      await checkClient.query(`SET search_path TO "${schemaName}"`);
+                    }
+
+                    // Push DLR
+                    let liveSession: EsmeSession | null = null;
+                    for (const [, s] of activeSessions) {
+                      if (s.clientId === clientId && s.schemaName === schemaName) {
+                        liveSession = s;
+                        break;
+                      }
+                    }
+                    if (liveSession) {
+                      try {
+                        const now = new Date();
+                        const submitDate = String(now.getTime()).slice(0, 10);
+                        const doneDate = String(now.getTime()).slice(0, 10);
+                        liveSession.session.send(
+                          new smpp.PDU("deliver_sm", {
+                            source_addr: dest,
+                            destination_addr: src,
+                            short_message: {
+                              message: `id:${messageId} sub:001 dlvrd:001 submit date:${submitDate} done date:${doneDate} stat:DELIVRD err:000 text:DELIVRD`,
+                            },
+                            esm_class: 4,
+                            registered_delivery: 0,
+                            data_coding: 0,
+                          })
+                        );
+                        console.log(`[SMPP] force_dlr_timeout DLR pushed to ESME: ${messageId} → DELIVRD`);
+                      } catch (dlrErr) {
+                        console.error(`[SMPP] force_dlr_timeout DLR push error:`, dlrErr);
+                      }
+                    } else {
+                      enqueueDlrPersist(tenantId, clientId, schemaName, {
+                        messageId,
+                        supplierMessageId: messageId,
+                        status: 'DELIVRD',
+                        submitDate: String(Date.now()).slice(0, 10),
+                        doneDate: String(Date.now()).slice(0, 10),
+                        errorCode: '000',
+                        dest,
+                        src,
+                      });
+                      console.log(`[SMPP] force_dlr_timeout DLR queued for ${messageId}`);
+                    }
+                  } else {
+                    console.log(`[SMPP] force_dlr_timeout skipped for ${messageId}: real DLR already received (status=${rows[0]?.dlr_status})`);
+                  }
+                } finally {
+                  await checkClient.query(`SET search_path TO public`);
+                  checkClient.release();
+                }
+              } catch (err) {
+                console.error(`[SMPP] force_dlr_timeout error for ${messageId}:`, err);
+              }
+            }, effectiveTimeout * 1000);
+          }
         }
 
         return { success: true, messageId };

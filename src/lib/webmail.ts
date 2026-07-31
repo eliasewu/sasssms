@@ -89,18 +89,6 @@ function connectAndAuth(email: string, password: string): Promise<Imap> {
 }
 
 /**
- * Open inbox on an authenticated IMAP connection.
- */
-function openInbox(imap: Imap): Promise<Imap.Box> {
-  return new Promise((resolve, reject) => {
-    imap.openBox("INBOX", false, (err, box) => {
-      if (err) return reject(err);
-      resolve(box);
-    });
-  });
-}
-
-/**
  * Send an email via SMTP using the user's credentials.
  * The email is saved to the "Sent" folder via IMAP after sending.
  */
@@ -116,11 +104,13 @@ export async function sendEmail(
   attachments: Array<{ filename: string; content: Buffer; contentType: string }> = []
 ): Promise<{ success: boolean; error?: string }> {
   // Create a fresh transporter with the user's credentials
+  // tls: rejectUnauthorized=false allows self-signed certs on localhost (same as email-service.ts)
   const transporter = nodemailer.createTransport({
     host: SMTP_HOST,
     port: SMTP_PORT,
     secure: SMTP_PORT === 465,
     auth: { user: email, pass: password },
+    tls: { rejectUnauthorized: false },
   });
 
   try {
@@ -194,78 +184,6 @@ function buildRawMessage(
 }
 
 /**
- * Fetch messages from the Sent folder.
- */
-export async function fetchSentFolder(
-  email: string,
-  password: string,
-  limit: number = 50,
-  offset: number = 0
-): Promise<{ messages: InboxMessage[]; total: number }> {
-  let imap: Imap | null = null;
-  try {
-    imap = await connectAndAuth(email, password);
-    // Open Sent folder (try common names)
-    const box = await openMailbox(imap, ["Sent", "Sent Items", "Sent Messages"]);
-    const total = box.messages.total;
-
-    if (total === 0) {
-      return { messages: [], total: 0 };
-    }
-
-    const start = Math.max(1, total - offset - limit + 1);
-    const end = total - offset;
-
-    if (start > end) {
-      return { messages: [], total };
-    }
-
-    const messages = await new Promise<InboxMessage[]>((resolve, reject) => {
-      const results: InboxMessage[] = [];
-      const fetch = (imap!.seq as any).fetch(`${start}:${end}`, {
-        bodies: ["HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID)", ""],
-        struct: true,
-      });
-
-      fetch.on("message", (msg: Imap.ImapMessage) => {
-        let header = "";
-        msg.on("body", (stream: NodeJS.ReadableStream) => {
-          stream.on("data", (chunk: Buffer) => {
-            header += chunk.toString("utf8");
-          });
-        });
-        msg.on("attributes", (attrs: Imap.ImapMessageAttributes) => {
-          results.push({
-            uid: attrs.uid,
-            from: "", to: "", subject: "", date: "",
-            flags: attrs.flags || [],
-            size: (attrs as any).size || 0,
-            hasAttachments: false,
-          });
-        });
-        msg.on("end", () => {
-          const parsed = Imap.parseHeader(header);
-          const idx = results.findIndex((r) => r.uid === (msg as any).attributes?.uid);
-          if (idx !== -1) {
-            results[idx].from = parsed.from?.[0] || "";
-            results[idx].to = parsed.to?.[0] || "";
-            results[idx].subject = parsed.subject?.[0] || "(No subject)";
-            results[idx].date = parsed.date?.[0] || "";
-          }
-        });
-      });
-
-      fetch.once("error", reject);
-      fetch.once("end", () => resolve(results.reverse()));
-    });
-
-    return { messages, total };
-  } finally {
-    if (imap) imap.end();
-  }
-}
-
-/**
  * Open a mailbox by trying multiple folder names sequentially.
  */
 async function openMailbox(imap: Imap, folderNames: string[]): Promise<Imap.Box> {
@@ -296,103 +214,6 @@ export async function verifyCredentials(email: string, password: string): Promis
   } finally {
     if (imap) imap.end();
   }
-}
-
-/**
- * Fetch inbox message summaries (last N messages).
- */
-export async function fetchInbox(
-  email: string,
-  password: string,
-  limit: number = 50,
-  offset: number = 0
-): Promise<{ messages: InboxMessage[]; total: number }> {
-  let imap: Imap | null = null;
-  try {
-    imap = await connectAndAuth(email, password);
-    const box = await openInbox(imap);
-    const total = box.messages.total;
-
-    if (total === 0) {
-      return { messages: [], total: 0 };
-    }
-
-    const start = Math.max(1, total - offset - limit + 1);
-    const end = total - offset;
-
-    if (start > end) {
-      return { messages: [], total };
-    }
-
-    const messages = await new Promise<InboxMessage[]>((resolve, reject) => {
-      const results: InboxMessage[] = [];
-      const fetch = (imap!.seq as any).fetch(`${start}:${end}`, {
-        bodies: ["HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID IN-REPLY-TO)", ""],
-        struct: true,
-      });
-
-      fetch.on("message", (msg: Imap.ImapMessage) => {
-        let header = "";
-        msg.on("body", (stream: NodeJS.ReadableStream) => {
-          stream.on("data", (chunk: Buffer) => {
-            header += chunk.toString("utf8");
-          });
-        });
-        msg.on("attributes", (attrs: Imap.ImapMessageAttributes) => {
-          results.push({
-            uid: attrs.uid,
-            from: "",
-            to: "",
-            subject: "",
-            date: "",
-            flags: attrs.flags || [],
-            size: (attrs as any).size || 0,
-            hasAttachments: false,
-          });
-        });
-        msg.on("end", () => {
-          // Parse headers
-          const parsed = Imap.parseHeader(header);
-          const idx = results.findIndex((r) => r.uid === (msg as any).attributes?.uid);
-          if (idx !== -1) {
-          results[idx].from = parsed.from?.[0] || "";
-          results[idx].to = parsed.to?.[0] || "";
-          results[idx].subject = parsed.subject?.[0] || "(No subject)";
-          results[idx].date = parsed.date?.[0] || "";
-          }
-        });
-      });
-
-      fetch.once("error", reject);
-      fetch.once("end", () => resolve(results.reverse()));
-    });
-
-    return { messages, total };
-  } finally {
-    if (imap) imap.end();
-  }
-}
-
-/**
- * Fetch a single full message by UID (INBOX).
- */
-export async function fetchMessage(
-  email: string,
-  password: string,
-  uid: number
-): Promise<FullMessage | null> {
-  return fetchMessageFromFolder(email, password, uid, ["INBOX"]);
-}
-
-/**
- * Fetch a single full message from the Sent folder by UID.
- */
-export async function fetchSentMessage(
-  email: string,
-  password: string,
-  uid: number
-): Promise<FullMessage | null> {
-  return fetchMessageFromFolder(email, password, uid, ["Sent", "Sent Items", "Sent Messages"]);
 }
 
 /**
@@ -469,6 +290,358 @@ async function fetchMessageFromFolder(
     });
 
     return result;
+  } finally {
+    if (imap) imap.end();
+  }
+}
+
+// ═════════════════════════════════════════════════════════════
+//  Folder Management — Drafts, Junk, Trash, Archive support
+// ═════════════════════════════════════════════════════════════
+
+export interface FolderInfo {
+  name: string;
+  displayName: string;
+  total: number;
+  unseen: number;
+  specialUse: string;
+}
+
+const FOLDER_DISPLAY_NAMES: Record<string, string> = {
+  INBOX: "Inbox",
+  Drafts: "Drafts",
+  Sent: "Sent",
+  Junk: "Junk",
+  Trash: "Trash",
+  Archive: "Archive",
+  "Sent Items": "Sent",
+  "Sent Messages": "Sent",
+  Spam: "Junk",
+  "Junk Mail": "Junk",
+  Deleted: "Trash",
+  "Deleted Items": "Trash",
+};
+
+const FOLDER_ORDER = ["INBOX", "Drafts", "Sent", "Junk", "Trash", "Archive"];
+
+/**
+ * List all IMAP folders with message counts.
+ */
+export async function listFolders(
+  email: string,
+  password: string
+): Promise<FolderInfo[]> {
+  let imap: Imap | null = null;
+  try {
+    imap = await connectAndAuth(email, password);
+    const boxes = await new Promise<Record<string, any>>((resolve, reject) => {
+      imap!.getBoxes((err: Error | null, boxes?: Record<string, any>) => {
+        if (err) reject(err);
+        else resolve(boxes || {});
+      });
+    });
+
+    const folders: FolderInfo[] = [];
+    for (const name of Object.keys(boxes)) {
+      try {
+        const opened = await new Promise<Imap.Box>((resolve, reject) => {
+          imap!.openBox(name, true, (err, box) => {
+            if (err) reject(err);
+            else resolve(box);
+          });
+        });
+        const attribs: string[] = boxes[name]?.attribs || [];
+        const specialUse = attribs.find((a) =>
+          ["\\Inbox", "\\Drafts", "\\Sent", "\\Junk", "\\Trash", "\\Archive"].includes(a)
+        ) || "";
+        folders.push({
+          name,
+          displayName: FOLDER_DISPLAY_NAMES[name] || name,
+          total: opened.messages.total,
+          unseen: opened.messages.new,
+          specialUse,
+        });
+      } catch {
+        // Skip folders we can't open
+      }
+    }
+
+    // Sort: standard folders first in predefined order, then others alphabetically
+    folders.sort((a, b) => {
+      const ai = FOLDER_ORDER.indexOf(a.name);
+      const bi = FOLDER_ORDER.indexOf(b.name);
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      if (ai !== -1) return -1;
+      if (bi !== -1) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    return folders;
+  } finally {
+    if (imap) imap.end();
+  }
+}
+
+/**
+ * Fetch messages from any folder (generalized version of fetchInbox).
+ */
+export async function fetchFromFolder(
+  email: string,
+  password: string,
+  folderName: string,
+  limit: number = 50,
+  offset: number = 0
+): Promise<{ messages: InboxMessage[]; total: number }> {
+  let imap: Imap | null = null;
+  try {
+    imap = await connectAndAuth(email, password);
+    const box = await new Promise<Imap.Box>((resolve, reject) => {
+      imap!.openBox(folderName, false, (err, box) => {
+        if (err) reject(err);
+        else resolve(box);
+      });
+    });
+    const total = box.messages.total;
+
+    if (total === 0) {
+      return { messages: [], total: 0 };
+    }
+
+    const start = Math.max(1, total - offset - limit + 1);
+    const end = total - offset;
+
+    if (start > end) {
+      return { messages: [], total };
+    }
+
+    const messages = await new Promise<InboxMessage[]>((resolve, reject) => {
+      const results: InboxMessage[] = [];
+      // Only request HEADER.FIELDS — the body stream for HEADER.FIELDS
+      // returns only the requested headers as a clean RFC 2822 block.
+      // Requesting "" (full body) as a second body would mix MIME body
+      // content into the same stream, corrupting Imap.parseHeader.
+      const fetch = (imap!.seq as any).fetch(`${start}:${end}`, {
+        bodies: "HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID IN-REPLY-TO)",
+        struct: true,
+      });
+
+      fetch.on("message", (msg: Imap.ImapMessage) => {
+        let uid: number = 0;
+        let flags: string[] = [];
+        let size: number = 0;
+        let header = "";
+
+        msg.on("attributes", (attrs: Imap.ImapMessageAttributes) => {
+          uid = attrs.uid;
+          flags = attrs.flags || [];
+          size = (attrs as any).size || 0;
+        });
+
+        msg.on("body", (stream: NodeJS.ReadableStream) => {
+          stream.on("data", (chunk: Buffer) => {
+            header += chunk.toString("utf8");
+          });
+        });
+
+        msg.on("end", () => {
+          if (!uid) return; // skip if no uid (shouldn't happen)
+          const parsed = Imap.parseHeader(header);
+          results.push({
+            uid,
+            from: parsed.from?.[0] || "",
+            to: parsed.to?.[0] || "",
+            subject: parsed.subject?.[0] || "(No subject)",
+            date: parsed.date?.[0] || "",
+            flags,
+            size,
+            hasAttachments: false,
+          });
+        });
+      });
+
+      fetch.once("error", reject);
+      fetch.once("end", () => resolve(results.reverse()));
+    });
+
+    return { messages, total };
+  } finally {
+    if (imap) imap.end();
+  }
+}
+
+/**
+ * Fetch a full message from any folder by UID.
+ */
+export async function fetchMessageFromAnyFolder(
+  email: string,
+  password: string,
+  uid: number,
+  folderName: string
+): Promise<FullMessage | null> {
+  return fetchMessageFromFolder(email, password, uid, [folderName]);
+}
+
+/**
+ * Move a message from one folder to another (copy + delete + expunge).
+ */
+export async function moveMessage(
+  email: string,
+  password: string,
+  uid: number,
+  fromFolder: string,
+  toFolder: string
+): Promise<{ success: boolean; error?: string }> {
+  let imap: Imap | null = null;
+  try {
+    imap = await connectAndAuth(email, password);
+    await new Promise<Imap.Box>((resolve, reject) => {
+      imap!.openBox(fromFolder, false, (err, box) => {
+        if (err) reject(err);
+        else resolve(box);
+      });
+    });
+
+    // Copy to target folder
+    await new Promise<void>((resolve, reject) => {
+      (imap as any).uid.copy(uid, toFolder, (err: Error | null) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    // Mark original as deleted
+    await new Promise<void>((resolve, reject) => {
+      (imap as any).uid.addFlags(uid, ["\\Deleted"], (err: Error | null) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    // Expunge to permanently remove from source folder
+    await new Promise<void>((resolve) => {
+      imap!.expunge(() => resolve());
+    });
+
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message };
+  } finally {
+    if (imap) imap.end();
+  }
+}
+
+/**
+ * Delete a message — move to Trash, or permanently expunge if already in Trash.
+ */
+export async function deleteMessage(
+  email: string,
+  password: string,
+  uid: number,
+  folder: string
+): Promise<{ success: boolean; error?: string }> {
+  const isTrash = ["Trash", "Deleted", "Deleted Items"].includes(folder);
+
+  if (isTrash) {
+    // Permanent delete — add \Deleted and expunge
+    let imap: Imap | null = null;
+    try {
+      imap = await connectAndAuth(email, password);
+      await new Promise<Imap.Box>((resolve, reject) => {
+        imap!.openBox(folder, false, (err, box) => {
+          if (err) reject(err);
+          else resolve(box);
+        });
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        (imap as any).uid.addFlags(uid, ["\\Deleted"], (err: Error | null) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
+      await new Promise<void>((resolve) => {
+        imap!.expunge(() => resolve());
+      });
+
+      return { success: true };
+    } catch (err: unknown) {
+      return { success: false, error: (err as Error).message };
+    } finally {
+      if (imap) imap.end();
+    }
+  } else {
+    // Move to Trash
+    return moveMessage(email, password, uid, folder, "Trash");
+  }
+}
+
+/**
+ * Save a draft to the Drafts folder via IMAP APPEND.
+ */
+export async function saveDraft(
+  email: string,
+  password: string,
+  to: string,
+  cc: string,
+  subject: string,
+  body: string,
+  isHtml: boolean = false
+): Promise<{ success: boolean; error?: string }> {
+  let imap: Imap | null = null;
+  try {
+    imap = await connectAndAuth(email, password);
+    const raw = buildRawMessage(email, to, cc, subject, body, isHtml);
+    await new Promise<void>((resolve, reject) => {
+      imap!.append(
+        raw,
+        { mailbox: "Drafts", flags: ["\\Draft", "\\Seen"] },
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message };
+  } finally {
+    if (imap) imap.end();
+  }
+}
+
+/**
+ * Set or remove a flag (e.g. \Seen, \Flagged) on a message by UID.
+ */
+export async function setMessageFlag(
+  email: string,
+  password: string,
+  uid: number,
+  folder: string,
+  flag: string,
+  set: boolean
+): Promise<{ success: boolean; error?: string }> {
+  let imap: Imap | null = null;
+  try {
+    imap = await connectAndAuth(email, password);
+    await new Promise<Imap.Box>((resolve, reject) => {
+      imap!.openBox(folder, false, (err, box) => {
+        if (err) reject(err);
+        else resolve(box);
+      });
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      const fn = set ? (imap as any).uid.addFlags : (imap as any).uid.delFlags;
+      fn.call((imap as any).uid, uid, [flag], (err: Error | null) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message };
   } finally {
     if (imap) imap.end();
   }

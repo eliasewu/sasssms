@@ -53,6 +53,7 @@ export default function OtpExtractPage() {
   // Quick OTP Extraction Test
   const [quickTestMessage, setQuickTestMessage] = useState("Your OTP code is 252525. Valid for 5 min.");
   const [quickTestResult, setQuickTestResult] = useState<{ otp: string | null; matchedRule: string | null; template: string | null } | null>(null);
+  const [quickTestLoading, setQuickTestLoading] = useState(false);
 
   // Per-row test state
   const [testRowIdx, setTestRowIdx] = useState<number | null>(null);

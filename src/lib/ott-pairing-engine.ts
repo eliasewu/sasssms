@@ -962,10 +962,10 @@ async function cleanupAbandonedPairings(): Promise<number> {
 async function disconnectPairingClient(conn: PairingConnection): Promise<void> {
   try {
     if (conn.deviceType === "whatsapp") {
-      (conn.client as WASocket).ev.removeAllListeners();
+      ((conn.client as WASocket).ev as any).removeAllListeners();
       (conn.client as WASocket).ws?.close();
     } else {
-      await (conn.client as any).disconnect();
+      await      (conn.client as any).disconnect(true);
     }
   } catch {
     // Best effort cleanup

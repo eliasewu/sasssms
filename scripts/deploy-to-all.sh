@@ -25,6 +25,7 @@ SERVERS=(
   "54.37.252.5"     # France — Paris
   "145.239.1.7"     # Germany — Frankfurt
   "146.59.47.22"    # Poland — Warsaw
+  "66.70.176.241"   # USA — New York
 )
 SSH_USER="ubuntu"
 SSH_PASS="Telco1988"

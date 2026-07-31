@@ -185,6 +185,7 @@ export async function POST(request: Request) {
           port: parseInt(process.env.SMTP_PORT || "587"),
           secure: parseInt(process.env.SMTP_PORT || "587") === 465,
           auth: { user: process.env.SMTP_USER || "welcome@net2app.com", pass: process.env.SMTP_PASS || "" },
+          tls: { rejectUnauthorized: false }, // allow self-signed certs on localhost
         });
         await transporter.sendMail({
           from: `"Net2APP Notifications" <${process.env.SMTP_USER || "welcome@net2app.com"}>`,
@@ -210,6 +211,7 @@ export async function POST(request: Request) {
       sendTenantWelcomeEmail({
         tenantEmail: tenant.email,
         tenantName: tenant.companyName,
+        tenantPassword: password,
         serverIp: assignedServerIp,
         smppPort: 2775,
         httpPort: 5556,

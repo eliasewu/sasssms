@@ -151,6 +151,30 @@ service pop3-login {
 
 ssl = no
 
+namespace inbox {
+  inbox = yes
+  mailbox Drafts {
+    auto = create
+    special_use = \\Drafts
+  }
+  mailbox Sent {
+    auto = create
+    special_use = \\Sent
+  }
+  mailbox Junk {
+    auto = create
+    special_use = \\Junk
+  }
+  mailbox Trash {
+    auto = create
+    special_use = \\Trash
+  }
+  mailbox Archive {
+    auto = create
+    special_use = \\Archive
+  }
+}
+
 plugin {
   quota = maildir:User quota
   quota_rule = *:storage=1G
@@ -167,6 +191,11 @@ postconf -e "smtpd_sasl_path = private/auth"
 postconf -e "smtpd_sasl_auth_enable = yes"
 postconf -e "smtpd_tls_security_level = may"
 postconf -e "smtp_tls_security_level = may"
+postconf -e "smtpd_relay_restrictions = permit_mynetworks permit_sasl_authenticated defer_unauth_destination"
+postconf -e "smtpd_recipient_restrictions = permit_mynetworks permit_sasl_authenticated reject_unauth_destination"
+postconf -e "smtpd_sender_login_maps = pgsql:/etc/postfix/pgsql-virtual-aliases.cf"
+postconf -e "smtpd_sender_restrictions = reject_sender_login_mismatch"
+postconf -e "local_transport = error:local delivery disabled"
 
 # ── 6. Set up SSL with Let's Encrypt (optional, uncomment when DNS is ready) ──
 # certbot certonly --standalone -d ${MAIL_HOSTNAME} --non-interactive --agree-tos -m admin@${MAIL_DOMAIN}
@@ -203,6 +232,10 @@ postconf -M "submission/inet=submission inet n - n - - smtpd" 2>/dev/null || tru
 postconf -P "submission/inet/syslog_name=postfix/submission" 2>/dev/null || true
 postconf -P "submission/inet/smtpd_tls_security_level=may" 2>/dev/null || true
 postconf -P "submission/inet/smtpd_sasl_auth_enable=yes" 2>/dev/null || true
+postconf -P "submission/inet/smtpd_relay_restrictions=permit_sasl_authenticated,reject" 2>/dev/null || true
+postconf -P "submission/inet/smtpd_recipient_restrictions=permit_sasl_authenticated,reject" 2>/dev/null || true
+postconf -P "submission/inet/smtpd_sender_restrictions=reject_sender_login_mismatch" 2>/dev/null || true
+postconf -P "submission/inet/syslog_name=postfix/submission" 2>/dev/null || true
 
 # ── 9. Restart services ──
 echo ">>> Restarting services..."

@@ -6,7 +6,14 @@ import Link from "next/link";
 
 interface Admin { id: number; name: string; email: string; }
 
-const navItems = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: string;
+  external?: boolean;
+}
+
+const navItems: NavItem[] = [
   { href: "/super/dashboard", label: "Dashboard", icon: "📊" },
   { href: "/super/dashboard/tenants", label: "Tenants", icon: "🏢" },
   { href: "/super/dashboard/users", label: "Users", icon: "👥" },
@@ -22,6 +29,7 @@ const navItems = [
   { href: "/super/dashboard/servers", label: "Servers", icon: "🖥️" },
   { href: "/super/dashboard/sms-counter-audit", label: "SMS Credit Audit", icon: "🔢" },
   { href: "/super/dashboard/settings", label: "Settings", icon: "⚙️" },
+  { href: "/n8n2/", label: "Workflow (n8n)", icon: "⚡", external: true },
 ];
 
 export default function SuperDashboardLayout({ children }: { children: React.ReactNode }) {
@@ -81,20 +89,31 @@ export default function SuperDashboardLayout({ children }: { children: React.Rea
         </div>
 
         <nav className="flex-1 py-4">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm transition-colors ${
-                pathname === item.href
-                  ? "bg-orange-600 text-white"
-                  : "text-slate-300 hover:bg-white/10 hover:text-white"
-              }`}
-            >
-              <span className="text-lg">{item.icon}</span>
-              <span>{item.label}</span>
-            </Link>
-          ))}
+          {navItems.map((item) =>
+            item.external ? (
+              <a
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm transition-colors text-slate-300 hover:bg-white/10 hover:text-white`}
+              >
+                <span className="text-lg">{item.icon}</span>
+                <span>{item.label}</span>
+              </a>
+            ) : (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm transition-colors ${
+                  pathname === item.href
+                    ? "bg-orange-600 text-white"
+                    : "text-slate-300 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                <span className="text-lg">{item.icon}</span>
+                <span>{item.label}</span>
+              </Link>
+            )
+          )}
         </nav>
 
         <div className="p-4 border-t border-white/10">

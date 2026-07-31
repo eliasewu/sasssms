@@ -4,6 +4,11 @@
 #  Called by: POST /api/super/servers (deploy=true)
 #  Env vars:  DEPLOY_IP, DEPLOY_USER, DEPLOY_SSH_PASS, DEPLOY_SU_PASS
 #  Arg 1:     LOCATION_ID (e.g. canada, france)
+#
+#  Strategy: lightweight provision (Node/PM2/PG/nginx) + rsync app
+#  files from local server + remote build + PM2 start.
+#  This replaces the old install.sh-from-/tmp approach which failed
+#  because package.json was not in the CWD.
 # ═══════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -13,7 +18,6 @@ SSH_PASS="${DEPLOY_SSH_PASS:-}"
 SU_PASS="${DEPLOY_SU_PASS:-${SSH_PASS}}"
 LOCATION_ID="${1:-unknown}"
 APP_DIR="/opt/net2app"
-GIT_REPO="${DEPLOY_GIT_REPO:-https://github.com/eliasewu/sasssms.git}"
 
 if [ -z "$IP" ] || [ -z "$SSH_PASS" ]; then
   echo "Usage: DEPLOY_IP=x DEPLOY_USER=x DEPLOY_SSH_PASS=x [DEPLOY_SU_PASS=x] bash $0 [LOCATION_ID]"
@@ -22,34 +26,43 @@ fi
 
 log() { echo "[$(date '+%H:%M:%S')] $1"; }
 
+# ── SSH/SCP/rsync helpers (password or key auth) ──
+USE_SSHPASS=false
+
 ssh_cmd() {
-  sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 "$SSH_USER@$IP" "$@"
+  if [ "$USE_SSHPASS" = true ]; then
+    sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 "$SSH_USER@$IP" "$@"
+  else
+    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o BatchMode=yes "$SSH_USER@$IP" "$@"
+  fi
 }
 
-scp_cmd() {
-  sshpass -e scp -o StrictHostKeyChecking=no "$@"
+rsync_cmd() {
+  if [ "$USE_SSHPASS" = true ]; then
+    sshpass -e rsync -avz --delete \
+      --exclude node_modules --exclude .next --exclude .git --exclude .server-creds --exclude .env \
+      -e 'ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15' \
+      "$@"
+  else
+    rsync -avz --delete \
+      --exclude node_modules --exclude .next --exclude .git --exclude .server-creds --exclude .env \
+      -e 'ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o BatchMode=yes' \
+      "$@"
+  fi
 }
 
 log "Deploying Net2APP to $IP ($LOCATION_ID) as $SSH_USER..."
 
 # ── 1. Check connectivity (try SSH key first, then password) ──
 log "Checking SSH connectivity..."
-SSH_OK=false
 
-# Try key-based auth first
 if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "$SSH_USER@$IP" "echo KEY_OK" 2>/dev/null; then
   log "SSH key auth OK"
-  SSH_OK=true
-  # Redefine ssh_cmd to use key-only (no sshpass)
-  ssh_cmd() { ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o BatchMode=yes "$SSH_USER@$IP" "$@"; }
-  scp_cmd() { scp -o StrictHostKeyChecking=no -o BatchMode=yes "$@"; }
-fi
-
-# Fall back to password if key auth failed
-if [ "$SSH_OK" != true ]; then
+else
   if [ -n "$SSH_PASS" ]; then
     log "Trying password auth..."
     export SSHPASS="$SSH_PASS"
+    USE_SSHPASS=true
     if ! ssh_cmd "echo CONNECTED" 2>/dev/null; then
       echo "FAILED: Cannot SSH into $IP as $SSH_USER (key + password both failed)"
       exit 1
@@ -61,116 +74,130 @@ if [ "$SSH_OK" != true ]; then
   fi
 fi
 
-# ── 2. Check/install sshpass locally (only needed if password auth is used) ──
-if [ "$SSH_OK" != true ] && [ -n "$SSH_PASS" ]; then
-  if ! command -v sshpass &>/dev/null; then
-    log "Installing sshpass locally..."
-    sudo apt-get update -qq && sudo apt-get install -y -qq sshpass 2>/dev/null || true
-  fi
+# ── 2. Lightweight provisioning (Node.js, PM2, PostgreSQL, nginx, redis) ──
+log "Provisioning server (Node.js, PM2, PostgreSQL, nginx, redis)..."
+
+# Run provisioning as root via sudo — installs only what's needed (no Asterisk)
+# Pattern: password first line (for sudo -S), then heredoc script (for bash -s)
+{ echo "$SU_PASS"; cat << 'PROVISION_EOF'; } | ssh_cmd "sudo -S bash -s" 2>&1 | tail -20
+set -e
+export DEBIAN_FRONTEND=noninteractive
+
+# System packages
+apt-get update -qq
+apt-get install -y -qq curl wget git nginx redis-server build-essential 2>&1 | tail -3
+
+# PostgreSQL
+if ! command -v psql &>/dev/null; then
+  apt-get install -y -qq postgresql postgresql-contrib 2>&1 | tail -3
+  systemctl enable --now postgresql
+fi
+sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='postgres'" | grep -q 1 || \
+  sudo -u postgres psql -c "CREATE USER postgres WITH PASSWORD 'postgres' SUPERUSER;" 2>/dev/null || true
+sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='app_db'" | grep -q 1 || \
+  sudo -u postgres psql -c "CREATE DATABASE app_db OWNER postgres;"
+sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';" 2>/dev/null || true
+systemctl enable --now postgresql
+
+# Node.js 22
+if ! command -v node &>/dev/null; then
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash - 2>&1 | tail -3
+  apt-get install -y -qq nodejs 2>&1 | tail -3
 fi
 
-# ── 3. Copy install.sh to remote server ──
-log "Copying install script..."
+# PM2
+if ! command -v pm2 &>/dev/null; then
+  npm install -g pm2 2>&1 | tail -3
+fi
+
+echo "PROVISION_DONE"
+PROVISION_EOF
+
+log "Provisioning complete"
+
+# ── 3. Create app directory and rsync files from local server ──
+log "Syncing application files to remote server..."
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-INSTALL_SCRIPT="$SCRIPT_DIR/../install.sh"
+LOCAL_APP_DIR="$(dirname "$SCRIPT_DIR")"
 
-if [ ! -f "$INSTALL_SCRIPT" ]; then
-  INSTALL_SCRIPT="$SCRIPT_DIR/../../install.sh"
-fi
+# Ensure /opt/net2app exists on remote
+echo "$SU_PASS" | ssh_cmd "sudo -S mkdir -p $APP_DIR && sudo chown $SSH_USER:$SSH_USER $APP_DIR" 2>/dev/null
 
-if [ ! -f "$INSTALL_SCRIPT" ]; then
-  echo "FAILED: install.sh not found"
-  exit 1
-fi
+# rsync app files (excluding heavy dirs) — this is the key fix!
+# The old approach ran install.sh from /tmp where there was no package.json.
+# Now we rsync the actual app files from the local server.
+rsync_cmd "$LOCAL_APP_DIR/" "$SSH_USER@$IP:$APP_DIR/" 2>&1 | tail -5
+log "Application files synced"
 
-scp_cmd "$INSTALL_SCRIPT" "$SSH_USER@$IP:/tmp/install.sh"
-log "Install script copied"
+# ── 4. Setup .env, install deps, build, and start PM2 ──
+log "Installing dependencies and building on remote server..."
 
-# ── 4. Run install.sh on remote server ──
-log "Running installation (5-10 minutes)..."
-echo "$SU_PASS" | ssh_cmd "sudo -S bash /tmp/install.sh 2>&1" 2>&1 || {
-  log "install.sh had issues — attempting manual deployment..."
+# Generate .env with a unique JWT secret, then npm install + build + start
+# Pattern: password first line (for sudo -S), then heredoc script (for bash -s)
+{ echo "$SU_PASS"; cat << 'BUILD_EOF'; } | ssh_cmd "sudo -S bash -s" 2>&1 | tail -30
+set -e
+APP_DIR="/opt/net2app"
+cd "$APP_DIR"
 
-  # ── Manual fallback: install prerequisites and clone from git ──
-  echo "$SU_PASS" | ssh_cmd "sudo -S bash -c '
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update -qq
-    apt-get install -y -qq curl git nginx redis-server postgresql postgresql-contrib build-essential 2>&1 | tail -3
-
-    if ! command -v node; then
-      curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-      apt-get install -y -qq nodejs
-    fi
-
-    npm install -g pm2 2>/dev/null || true
-
-    sudo -u postgres psql -c \"ALTER USER postgres PASSWORD '\\''postgres'\\'';\" 2>/dev/null || true
-    sudo -u postgres psql -tc \"SELECT 1 FROM pg_database WHERE datname='\\''app_db'\\''\" 2>/dev/null | grep -q 1 || \
-      sudo -u postgres psql -c \"CREATE DATABASE app_db OWNER postgres;\"
-  ' 2>&1"
-
-  # Clone repo from git
-  log "Cloning repository..."
-  echo "$SU_PASS" | ssh_cmd "sudo -S bash -c '
-    if [ -d $APP_DIR/.git ]; then
-      cd $APP_DIR && git pull 2>&1
-    else
-      rm -rf $APP_DIR
-      git clone $GIT_REPO $APP_DIR 2>&1
-    fi
-  ' 2>&1" || {
-    log "WARNING: git clone failed — repo may be private. Using files from /tmp."
-    echo "$SU_PASS" | ssh_cmd "sudo -S bash -c '
-      mkdir -p $APP_DIR
-      for f in install.sh package.json drizzle.config.json tsconfig.json next.config.ts postcss.config.mjs; do
-        [ -f /tmp/\$f ] && cp /tmp/\$f $APP_DIR/
-      done
-    ' 2>&1" || true
-  }
-
-  # Setup .env and build
-  echo "$SU_PASS" | ssh_cmd "sudo -S bash -c '
-    cd $APP_DIR
-
-    cat > .env << ENDENV
+# Create .env if it doesn't exist (preserve existing .env on updates)
+if [ ! -f "$APP_DIR/.env" ]; then
+  JWT_SECRET="net2app-prod-$(date +%s)-$(openssl rand -hex 16)"
+  cat > "$APP_DIR/.env" << ENVEOF
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/app_db
-JWT_SECRET=net2app-prod-\$(date +%s)-\$(openssl rand -hex 16)
+JWT_SECRET=$JWT_SECRET
 NODE_ENV=production
 PORT=5556
 SMPP_PORT=2775
 NEXT_PUBLIC_APP_URL=https://net2app.com
-ENDENV
-    chmod 600 .env
+ENVEOF
+  chmod 600 "$APP_DIR/.env"
+  echo "Created new .env"
+else
+  echo "Preserved existing .env"
+fi
 
-    npm install 2>&1 | tail -5
-    npm run build 2>&1 | tail -5 || { echo "BUILD FAILED"; HEALTHY=false; }
-    npx drizzle-kit push 2>&1 | tail -3 || echo \"DB_WARNING: drizzle push had issues\"
+# Install dependencies
+npm install 2>&1 | tail -5
 
-    pm2 delete net2app 2>/dev/null || true
-    pm2 start npm --name net2app -- run start
-    pm2 save
+# Build the application
+npm run build 2>&1 | tail -5
 
-    # Install PM2 watchdog (checks localhost:5556 every 2 min, auto-restarts if unresponsive)
-    if [ -f /opt/net2app/scripts/net2app-watchdog.sh ]; then
-      cp /opt/net2app/scripts/net2app-watchdog.sh /usr/local/bin/net2app-watchdog
-      chmod +x /usr/local/bin/net2app-watchdog
-      (crontab -l 2>/dev/null | grep -v net2app-watchdog; echo \"*/2 * * * * /usr/local/bin/net2app-watchdog\") | crontab -
-    fi
-  ' 2>&1"
+# Push database schema
+npx drizzle-kit push 2>&1 | tail -3 || echo "DB_WARNING: drizzle push had issues (may need manual run)"
 
-  # Configure nginx
-  echo "$SU_PASS" | ssh_cmd "sudo -S bash -c '
-    mkdir -p /etc/nginx/ssl
-    openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-      -keyout /etc/nginx/ssl/net2app.key \
-      -out /etc/nginx/ssl/net2app.crt \
-      -subj /CN=net2app.com 2>/dev/null
+# Start with PM2
+pm2 delete net2app 2>/dev/null || true
+pm2 start npm --name net2app -- run start
+pm2 save 2>/dev/null || true
 
-    cat > /etc/nginx/sites-available/net2app << NGINXEOF
+echo "BUILD_DONE"
+BUILD_EOF
+
+log "Build complete"
+
+# ── 5. Configure nginx ──
+log "Configuring nginx..."
+
+{ echo "$SU_PASS"; cat << 'NGINX_EOF'; } | ssh_cmd "sudo -S bash -s" 2>&1 | tail -10
+set -e
+
+# Generate self-signed cert if missing
+if [ ! -f /etc/nginx/ssl/net2app.crt ] || [ ! -f /etc/nginx/ssl/net2app.key ]; then
+  mkdir -p /etc/nginx/ssl
+  openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+    -keyout /etc/nginx/ssl/net2app.key \
+    -out /etc/nginx/ssl/net2app.crt \
+    -subj "/CN=net2app.com" 2>/dev/null
+  chmod 600 /etc/nginx/ssl/net2app.key
+fi
+
+# Nginx site config
+cat > /etc/nginx/sites-available/net2app << 'NGXCONF'
 server {
     listen 80;
     server_name _;
-    location / { return 301 https://\\$host\\$request_uri; }
+    location /.well-known/acme-challenge/ { root /var/www/html; }
+    location / { return 301 https://$host$request_uri; }
 }
 server {
     listen 443 ssl http2;
@@ -182,53 +209,112 @@ server {
     client_max_body_size 100M;
     location /uploads/ {
         alias /opt/net2app/public/uploads/;
-        try_files \\$uri =404;
+        try_files $uri =404;
         expires 1h;
-        add_header Cache-Control \"public\";
+        add_header Cache-Control "public";
     }
-
     location / {
         proxy_pass http://127.0.0.1:5556;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade \\$http_upgrade;
-        proxy_set_header Connection \"upgrade\";
-        proxy_set_header Host \\$host;
-        proxy_set_header X-Real-IP \\$remote_addr;
-        proxy_set_header X-Forwarded-For \\$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \\$scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 300s;
     }
 }
-NGINXEOF
+NGXCONF
 
-    ln -sf /etc/nginx/sites-available/net2app /etc/nginx/sites-enabled/
-    rm -f /etc/nginx/sites-enabled/default
-    nginx -t && systemctl start nginx && systemctl enable nginx
-  ' 2>&1"
-}
+ln -sf /etc/nginx/sites-available/net2app /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default
+nginx -t 2>&1
+systemctl reload nginx
+systemctl enable nginx
 
-# ── 5. Verify deployment ──
+# Open firewall ports
+iptables -I INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
+iptables -I INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
+iptables -I INPUT -p tcp --dport 2775 -j ACCEPT 2>/dev/null || true
+iptables -I INPUT -p tcp --dport 5556 -j ACCEPT 2>/dev/null || true
+
+echo "NGINX_DONE"
+NGINX_EOF
+
+log "Nginx configured"
+
+# ── 6. Install PM2 watchdog ──
+log "Installing watchdog..."
+{ echo "$SU_PASS"; cat << 'WATCHDOG_EOF'; } | ssh_cmd "sudo -S bash -s" 2>/dev/null || true
+if [ -f /opt/net2app/scripts/net2app-watchdog.sh ]; then
+  sudo cp /opt/net2app/scripts/net2app-watchdog.sh /usr/local/bin/net2app-watchdog 2>/dev/null
+  sudo chmod +x /usr/local/bin/net2app-watchdog 2>/dev/null
+  (crontab -l 2>/dev/null | grep -v net2app-watchdog; echo "*/2 * * * * /usr/local/bin/net2app-watchdog") | crontab - 2>/dev/null
+  echo "Watchdog installed"
+fi
+WATCHDOG_EOF
+
+# ── 7. Setup PM2 auto-start on boot ──
+log "Setting up PM2 auto-start..."
+{ echo "$SU_PASS"; cat << 'STARTUP_EOF'; } | ssh_cmd "sudo -S bash -s" 2>&1 | tail -5
+STARTUP_CMD=$(PM2_HOME=/root/.pm2 pm2 startup systemd -u root --hp /root 2>/dev/null | grep 'sudo' | head -1)
+if [ -n "$STARTUP_CMD" ]; then
+  eval "$STARTUP_CMD" 2>/dev/null || true
+fi
+PM2_HOME=/root/.pm2 pm2 save 2>/dev/null || true
+echo "PM2 startup configured"
+STARTUP_EOF
+
+# ── 8. Verify deployment ──
 log "Verifying deployment..."
-sleep 10
+sleep 5
 
 HEALTHY=true
-if ! ssh_cmd "curl -s -o /dev/null -w '%{http_code}' http://localhost:5556" 2>/dev/null | grep -q "200"; then
-  log "WARNING: App port 5556 not responding with 200"
+
+# Check app port
+APP_STATUS=$(ssh_cmd "curl -s -o /dev/null -w '%{http_code}' http://localhost:5556" 2>/dev/null || echo "000")
+if [ "$APP_STATUS" = "200" ]; then
+  log "App port 5556: HTTP 200 ✅"
+else
+  log "WARNING: App port 5556 returned HTTP $APP_STATUS"
   HEALTHY=false
 fi
 
-if ! ssh_cmd "ss -tlnp 2>/dev/null | grep -q ':2775'"; then
-  log "WARNING: SMPP port 2775 not listening"
+# Check PM2 (PM2 runs as root, so check with PM2_HOME=/root/.pm2)
+PM2_STATUS=$(ssh_cmd "PM2_HOME=/root/.pm2 pm2 jlist 2>/dev/null | grep -o '\"status\":\"online\"' | head -1" 2>/dev/null || echo "")
+if [ -n "$PM2_STATUS" ]; then
+  log "PM2: online ✅"
+else
+  log "WARNING: PM2 not running"
   HEALTHY=false
 fi
 
-# ── 6. Print summary ──
+# Check nginx
+NGINX_STATUS=$(ssh_cmd "systemctl is-active nginx 2>/dev/null" 2>/dev/null || echo "")
+if [ "$NGINX_STATUS" = "active" ]; then
+  log "Nginx: active ✅"
+else
+  log "WARNING: Nginx not active"
+  HEALTHY=false
+fi
+
+# Check PostgreSQL
+PG_STATUS=$(ssh_cmd "pg_isready 2>/dev/null" 2>/dev/null || echo "")
+if echo "$PG_STATUS" | grep -q "accepting"; then
+  log "PostgreSQL: ready ✅"
+else
+  log "WARNING: PostgreSQL not ready"
+  HEALTHY=false
+fi
+
+# ── 9. Print summary ──
 echo ""
 echo "═══════════════════════════════════════"
 if [ "$HEALTHY" = true ]; then
   echo "  ✅ Net2APP deployed successfully!"
   echo "  🌐 https://$IP"
-  echo "  🔌 SMPP: $IP:2775"
+  echo "  📱 App: $IP:5556"
   echo "  📍 Location: $LOCATION_ID"
 else
   echo "  ⚠️  Deployment completed with warnings"

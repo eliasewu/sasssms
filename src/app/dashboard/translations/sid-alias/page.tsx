@@ -543,7 +543,7 @@ export default function SidAliasPage() {
                     <td className="px-4 py-2 text-right">
                       <div className="flex items-center justify-end gap-1 flex-wrap">
                         <button onClick={() => {
-                          setTestAllResults(null);
+                          clearTestAll();
                           try {
                             if (buildRegex(rule.matchPattern).test(quickTestSender)) {
                               setQuickTestResult({ matchedAlias: rule.aliasName, aliasName: rule.aliasName });

@@ -32,8 +32,9 @@ export async function POST(request: Request) {
         connection_type, host, port, username, password, system_id, system_type,
         smpp_version, bind_type, address_ton, address_npi, address_range, inbound_mode,
         api_url, api_key, currency, force_dlr,
+        charging_mode, dlr_timeout,
         connection_mode, config, bind_status, connector_id
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27) RETURNING *`,
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29) RETURNING *`,
       [
         body.supplierCode || null, body.name, body.companyName || null, body.contactPerson || null,
         body.email || null, body.phone || null, body.connectionType ?? null,
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
         body.addressRange || null, body.inboundMode || false,
         body.apiUrl || null, body.apiKey || null, body.currency || "USD",
         body.forceDlr || false,
+        body.chargingMode || "on_submit", body.dlrTimeout || null,
         body.connectionMode || "CLIENT", body.config || null, "UNBOUND",
         body.connectorId || null
       ]

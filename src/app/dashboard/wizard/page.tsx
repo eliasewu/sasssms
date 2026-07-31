@@ -45,7 +45,7 @@ const CLIENT_CSV_COLUMNS: CsvColumn[] = [
   { key: "maxTps", label: "Max TPS", required: false, defaultValue: "10" },
   { key: "billingMode", label: "Billing Mode", required: false, defaultValue: "prepaid" },
   { key: "currency", label: "Currency", required: false, defaultValue: "USD" },
-  { key: "forceDlr", label: "Force DLR", required: false, defaultValue: "false" },
+  { key: "chargingMode", label: "Charging Mode", required: false, defaultValue: "on_submit" },
   { key: "enableHttpApi", label: "Enable HTTP API", required: false, defaultValue: "false" },
   { key: "webhookUrl", label: "Webhook URL", required: false },
 ];
@@ -66,7 +66,7 @@ const SUPPLIER_CSV_COLUMNS: CsvColumn[] = [
   { key: "bindType", label: "Bind Type", required: false, defaultValue: "TRX" },
   { key: "connectionMode", label: "Connection Mode", required: false, defaultValue: "CLIENT" },
   { key: "currency", label: "Currency", required: false, defaultValue: "USD" },
-  { key: "forceDlr", label: "Force DLR", required: false, defaultValue: "false" },
+  { key: "chargingMode", label: "Charging Mode", required: false, defaultValue: "on_submit" },
 ];
 
 // ── Parsed CSV Row ──
@@ -262,7 +262,8 @@ export default function QuickWizardPage() {
   const [billingMode, setBillingMode] = useState("prepaid");
   const [currency, setCurrency] = useState("USD");
   const [routePlanId, setRoutePlanId] = useState("");
-  const [forceDlr, setForceDlr] = useState(false);
+  const [chargingMode, setChargingMode] = useState("on_submit");
+  const [dlrTimeout, setDlrTimeout] = useState("60");
   const [enableHttpApi, setEnableHttpApi] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState("");
 
@@ -343,7 +344,9 @@ export default function QuickWizardPage() {
       currency,
       routePlanId: routePlanId ? parseInt(routePlanId) : null,
       enableHttpApi,
-      forceDlr,
+      forceDlr: chargingMode === "force_dlr" || chargingMode === "force_dlr_timeout",
+      chargingMode,
+      dlrTimeout: parseInt(dlrTimeout) || 60,
       webhookUrl: webhookUrl || null,
     };
 
@@ -365,7 +368,9 @@ export default function QuickWizardPage() {
       smppVersion: sSmppVer,
       bindType: sBindType,
       currency,
-      forceDlr,
+      forceDlr: chargingMode === "force_dlr" || chargingMode === "force_dlr_timeout",
+      chargingMode,
+      dlrTimeout: parseInt(dlrTimeout) || 60,
     };
 
     try {
@@ -444,7 +449,9 @@ export default function QuickWizardPage() {
           payload[col.key] = row.data[col.key];
           // Map camelCase to snake_case for the API
           const snakeKey = col.key.replace(/([A-Z])/g, "_$1").toLowerCase();
-          if (snakeKey === "force_dlr" || snakeKey === "enable_http_api" || snakeKey === "inbound_mode") {
+          if (snakeKey === "charging_mode" || snakeKey === "chargingmode") {
+            // already string, pass through
+          } else if (snakeKey === "force_dlr" || snakeKey === "enable_http_api" || snakeKey === "inbound_mode") {
             payload[col.key] = row.data[col.key]?.toLowerCase() === "true";
           }
         }
@@ -912,14 +919,15 @@ export default function QuickWizardPage() {
               </div>
             </Section>
 
-            <Section icon="💰" title="Billing Defaults">
+            <Section icon="💰" title="Billing & Charging">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Billing Mode</label>
-                  <select value={billingMode} onChange={e => setBillingMode(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm">
-                    <option value="prepaid">Prepaid</option>
-                    <option value="dlr">DLR-Based</option>
-                    <option value="postpaid">Postpaid</option>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Charging Mode</label>
+                  <select value={chargingMode} onChange={e => setChargingMode(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm">
+                    <option value="on_submit">On Submit — charge immediately</option>
+                    <option value="on_dlr">On DLR — charge after delivery</option>
+                    <option value="force_dlr">Force DLR — charge + instant DLR</option>
+                    <option value="force_dlr_timeout">Force DLR Timeout — charge + timed DLR</option>
                   </select>
                 </div>
                 <div>
@@ -939,8 +947,14 @@ export default function QuickWizardPage() {
                   </select>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-4 mt-3">
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={forceDlr} onChange={e => setForceDlr(e.target.checked)} className="accent-blue-600" /> Force DLR</label>
+              {chargingMode === "force_dlr_timeout" && (
+                <div className="mt-3">
+                  <F label="DLR Timeout (seconds)" type="number" value={dlrTimeout} onChange={setDlrTimeout} />
+                </div>
+              )}
+              {chargingMode === "force_dlr" && <p className="text-xs text-purple-600 mt-2">⚡ Client charged immediately with instant DELIVERED DLR.</p>}
+              {chargingMode === "on_dlr" && <p className="text-xs text-blue-600 mt-2">🔄 Client charged only after supplier confirms delivery.</p>}
+              <div className="mt-3">
                 <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={enableHttpApi} onChange={e => setEnableHttpApi(e.target.checked)} className="accent-blue-600" /> Enable HTTP API</label>
               </div>
             </Section>
@@ -1083,7 +1097,7 @@ export default function QuickWizardPage() {
                   )}
                   <ReviewRow label="Billing" value={billingMode} />
                   <ReviewRow label="Currency" value={currency} />
-                  {forceDlr && <ReviewRow label="Force DLR" value="Yes" />}
+                  {chargingMode !== "on_submit" && <ReviewRow label={`Charging: ${chargingMode}`} value={chargingMode === "force_dlr" ? "⚡ Force DLR" : chargingMode === "force_dlr_timeout" ? `⏱ Force DLR (${dlrTimeout}s)` : "🔄 On DLR"} />}
                   {enableHttpApi && <ReviewRow label="HTTP API" value="Enabled" />}
                   {webhookUrl && <ReviewRow label="Webhook" value={webhookUrl} mono />}
                 </div>

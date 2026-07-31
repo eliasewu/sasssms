@@ -19,6 +19,15 @@ import type { OttDeviceType } from "@/lib/ott-pairing-engine";
 import { lookupClientRate, lookupSupplierCost } from "@/lib/rates";
 import { buildUrl, evaluateCondition, extractFromResponse, parseHeaders } from "@/lib/api-connector-parser";
 import { buildRegex } from "@/lib/regex-utils";
+import {
+  resolveChargingMode,
+  isSubmitCharged,
+  isDlrCharged,
+  isForceDlr,
+  isForceDlrTimeout,
+  buildForceDlrPayload,
+} from "@/lib/charging";
+import type { ChargingMode } from "@/lib/charging";
 
 export const dynamic = "force-dynamic";
 
@@ -126,8 +135,8 @@ export async function POST(request: Request) {
   }
 
   const client = clientResult.rows[0];
-  const clientBillingMode = (client.billing_mode as string) || "prepaid";
-  const isDlrBilling = clientBillingMode === "dlr";
+  const clientChargingMode = resolveChargingMode(client);
+  const clientDlrTimeout = parseInt(client.dlr_timeout as string || "60");
   const ratePerSms = await lookupClientRate(destination, clientId as number, tenant.schemaName);
   const clientMaxTps = parseInt(client.max_tps || "0");
   
@@ -601,9 +610,10 @@ export async function POST(request: Request) {
             customApiMessageId = String(parsed.transaction_id);
           }
 
-          status = customApiSuccess ? "SENT" : "FAILED";
-          dlrStatus = customApiSuccess ? "SENT" : "FAILED";
-        }
+      status = customApiSuccess ? "SENT" : "FAILED";
+      dlrStatus = customApiSuccess ? "SENT" : "FAILED";
+
+    }
       }
     } catch (err) {
       console.error("Custom API delivery error:", err);
@@ -612,40 +622,46 @@ export async function POST(request: Request) {
     }
   }
 
-  // ── Billing: use client billing_mode to decide submit vs DLR billing ──
+  // ── Billing: use charging_mode to decide submit vs DLR billing ──
   const resolvedSupplierId = deliveryResult?.routeUsed?.supplierId || supplierId;
   const finalSuccess = status === "SENT" || status === "DELIVERED" || (isCustomApi && customApiSuccess) || (isVoiceOtp && callSuccess);
-  if (isDlrBilling) {
-    // DLR-based billing — cost charged in dlr-poller.ts on DELIVERED
+  let supplierChargingMode: ChargingMode = "on_submit";
+  let supplierDlrTimeout = 60;
+  if (resolvedSupplierId) {
+    try {
+      const suppResult = await tenantQuery(
+        tenant.schemaName,
+        "SELECT charging_mode, force_dlr, dlr_timeout FROM suppliers WHERE id = $1",
+        [resolvedSupplierId]
+      );
+      if (suppResult.rows.length > 0) {
+        supplierChargingMode = resolveChargingMode(suppResult.rows[0]);
+        supplierDlrTimeout = parseInt(suppResult.rows[0].dlr_timeout as string || "60");
+      }
+    } catch { /* use defaults */ }
+  }
+
+  // ── Client cost: charge now if not on_dlr ──
+  if (!finalSuccess) {
+    // FAILED — don't charge client, don't pay supplier
     supplierCost = 0;
     profit = 0;
-  } else if (resolvedSupplierId && finalSuccess) {
-    try {
-      supplierCost = await lookupSupplierCost(origDestination, resolvedSupplierId as number, tenant.schemaName);
-      profit = ratePerSms - supplierCost;
-    } catch { /* use defaults */ }
-  } else if (!finalSuccess) {
-    // FAILED deliveries — don't charge client, don't pay supplier
+  } else if (isSubmitCharged(clientChargingMode)) {
+    // Charge client immediately
+    if (resolvedSupplierId) {
+      try {
+        supplierCost = await lookupSupplierCost(origDestination, resolvedSupplierId as number, tenant.schemaName);
+        profit = ratePerSms - supplierCost;
+      } catch { /* use defaults */ }
+    }
+  } else {
+    // Client is on_dlr — defer cost to DLR arrival
     supplierCost = 0;
     profit = 0;
   }
 
-  // ── Compute final cost with defensive guard ──
-  // If cost would be 0 but we know the real rate (supplier_cost + profit > 0),
-  // fall back to ratePerSms from client_rates. Guards against billing_mode
-  // edge cases where isDlrBilling is incorrectly true.
-  let finalCost: number;
-  if (isDlrBilling) {
-    finalCost = 0;
-  } else if (finalSuccess) {
-    finalCost = ratePerSms;
-  } else {
-    finalCost = 0;
-  }
-  // Safety net: if computed cost is 0 but supplierCost+profit suggests otherwise
-  if (finalCost === 0 && supplierCost > 0) {
-    finalCost = supplierCost + profit;
-  }
+  // Client cost: 0 for on_dlr, ratePerSms otherwise
+  const finalCost = (!finalSuccess || isDlrCharged(clientChargingMode)) ? 0 : ratePerSms;
 
   // Insert message (store original + translated values, always SENT — real DLR will update later)
   const msgResult = await tenantQuery(
@@ -675,31 +691,21 @@ export async function POST(request: Request) {
   );
 
   // ── Deduct SMS counter — atomic increment to avoid race conditions ──
-  // Skip for DLR-billed clients (their counter is charged in dlr-poller on DELIVERED)
-  // Always count, even if smsLimit is 0 (pre-paid top-up may have happened after some sends)
-  if (tenantData && !isDlrBilling) {
+  // Skip for on_dlr clients (counter is charged at DLR time)
+  if (tenantData && isSubmitCharged(clientChargingMode)) {
     await db
       .update(tenants)
       .set({ smsCounter: sql`sms_counter + 1` })
       .where(eq(tenants.id, tenant.tenantId));
   }
 
-  // ── 60-second force_dlr fallback: only kicks in if no real DLR arrives within 60s ──
-  const clientForceDlr = !!(client.force_dlr);
-  let supplierForceDlr = false;
-  const actualSupplierId = deliveryResult?.routeUsed?.supplierId || (selectedRoute.supplier_id as number) || supplierId;
-  if (!clientForceDlr && actualSupplierId) {
-    try {
-      const suppCheck = await tenantQuery(
-        tenant.schemaName,
-        "SELECT force_dlr FROM suppliers WHERE id = $1",
-        [actualSupplierId]
-      );
-      supplierForceDlr = !!(suppCheck.rows[0]?.force_dlr);
-    } catch { /* proceed without */ }
-  }
-
-  if ((clientForceDlr || supplierForceDlr) && status === "SENT" && dlrStatus === "SENT") {
+  // ── Force DLR / Force DLR Timeout logic ──
+  // force_dlr: push immediate success DLR to client NOW
+  // force_dlr_timeout: charge now + schedule timeout to auto-deliver if no real DLR
+  if ((isForceDlr(clientChargingMode) || isForceDlrTimeout(clientChargingMode) ||
+       isForceDlr(supplierChargingMode) || isForceDlrTimeout(supplierChargingMode)) &&
+      status === "SENT" && dlrStatus === "SENT") {
+    const actualSupplierId = deliveryResult?.routeUsed?.supplierId || (selectedRoute.supplier_id as number) || supplierId;
     const fSchemaName = tenant.schemaName;
     const fDestination = origDestination;
     const fSource = origSender;
@@ -707,47 +713,111 @@ export async function POST(request: Request) {
     const fRouteName = deliveryResult?.routeUsed?.routeName || (selectedRoute.route_name as string) || (selectedRoute.name as string) || "";
     const fSupplierName = deliveryResult?.routeUsed?.supplierName || (selectedRoute.supplier_name as string) || "";
     const fSupplierMsgId = deliveryResult?.supplierMessageId || null;
-    console.log(`[FORCE-DLR] Fallback scheduled for ${messageId}: will auto-deliver if no real DLR in 60s`);
-    setTimeout(async () => {
-      try {
-        const checkResult = await tenantQuery(
-          fSchemaName,
-          `SELECT dlr_status FROM messages WHERE message_id = $1`,
-          [messageId]
-        );
-        // Only fall back if still SENT (no real DLR arrived yet)
-        if (checkResult.rows.length > 0 && checkResult.rows[0].dlr_status === 'SENT') {
+
+    // Determine timeout: use the smaller of client and supplier dlr_timeout
+    const effectiveTimeout = Math.min(clientDlrTimeout, supplierDlrTimeout);
+
+    // force_dlr (no timeout): push DLR immediately
+    if (isForceDlr(clientChargingMode) || isForceDlr(supplierChargingMode)) {
+      console.log(`[FORCE-DLR] Pushing immediate DLR for ${messageId}`);
+      await tenantQuery(
+        fSchemaName,
+        `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW() WHERE message_id = $1`,
+        [messageId]
+      );
+
+      // Charge on_dlr side now (since we're forcing delivery)
+      if (isDlrCharged(clientChargingMode)) {
+        await db
+          .update(tenants)
+          .set({ smsCounter: sql`sms_counter + 1` })
+          .where(eq(tenants.id, tenant.tenantId));
+      }
+
+      // Also charge on_dlr supplier now (force_dlr preempts real DLR)
+      const actualSupplierId2 = deliveryResult?.routeUsed?.supplierId || (selectedRoute.supplier_id as number) || supplierId;
+      if (isDlrCharged(supplierChargingMode) && actualSupplierId2) {
+        try {
+          const supCost = await lookupSupplierCost(origDestination, actualSupplierId2 as number, tenant.schemaName);
           await tenantQuery(
             fSchemaName,
-            `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW() WHERE message_id = $1`,
+            `UPDATE messages SET supplier_cost = $1, profit = cost - $1 WHERE message_id = $2`,
+            [supCost, messageId]
+          );
+        } catch { /* best-effort */ }
+      }
+
+      if (dlrCallbackUrl) {
+        const forcePayload = buildForceDlrPayload({
+          messageId, supplierMessageId: fSupplierMsgId,
+          destination: fDestination, source: fSource,
+          cost: fRatePerSms, routeName: fRouteName,
+          supplierName: fSupplierName, forceDlr: true,
+        });
+        pushDlrToClient(dlrCallbackUrl, forcePayload).catch(() => {});
+        console.log(`[FORCE-DLR] Immediate DLR pushed to client webhook: ${messageId} → DELIVERED`);
+      }
+    } else {
+      // force_dlr_timeout: schedule fallback
+      console.log(`[FORCE-DLR] Timeout scheduled for ${messageId}: will auto-deliver in ${effectiveTimeout}s if no real DLR`);
+      setTimeout(async () => {
+        try {
+          const checkResult = await tenantQuery(
+            fSchemaName,
+            `SELECT dlr_status, cost, supplier_cost FROM messages WHERE message_id = $1`,
             [messageId]
           );
-          console.log(`[FORCE-DLR] Fallback: no real DLR in 60s → ${messageId} marked DELIVERED`);
+          if (checkResult.rows.length > 0 && checkResult.rows[0].dlr_status === 'SENT') {
+            const existingCost = parseFloat(checkResult.rows[0].cost || "0");
+            const existingSuppCost = parseFloat(checkResult.rows[0].supplier_cost || "0");
 
-          // Push fallback DLR via HTTP callback
-          if (dlrCallbackUrl) {
-            const forcePayload = {
-              message_id: messageId,
-              destination: fDestination,
-              source: fSource,
-              status: "DELIVERED",
-              cost: fRatePerSms,
-              timestamp: new Date().toISOString(),
-              route_name: fRouteName,
-              supplier_name: fSupplierName,
-              supplier_message_id: fSupplierMsgId,
-              force_dlr: true,
-            };
-            pushDlrToClient(dlrCallbackUrl, forcePayload).catch(() => {});
-            console.log(`[FORCE-DLR] Fallback DLR pushed to client webhook: ${messageId} → DELIVERED`);
+            // If either side was on_dlr with zero cost, charge them now
+            let updateCost = existingCost;
+            let updateSuppCost = existingSuppCost;
+            let updateProfit = existingCost - existingSuppCost;
+
+            if (isDlrCharged(clientChargingMode) && existingCost === 0) {
+              updateCost = fRatePerSms;
+              updateProfit = updateCost - updateSuppCost;
+              await db
+                .update(tenants)
+                .set({ smsCounter: sql`sms_counter + 1` })
+                .where(eq(tenants.id, tenant.tenantId));
+            }
+            if (isDlrCharged(supplierChargingMode) && existingSuppCost === 0) {
+              try {
+                const actualSupplierId3 = deliveryResult?.routeUsed?.supplierId || (selectedRoute.supplier_id as number) || supplierId;
+                updateSuppCost = actualSupplierId3 ? await lookupSupplierCost(origDestination, actualSupplierId3 as number, tenant.schemaName) : existingSuppCost;
+                updateProfit = updateCost - updateSuppCost;
+              } catch { /* keep existing */ }
+            }
+
+            await tenantQuery(
+              fSchemaName,
+              `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW(),
+               cost = $2, supplier_cost = $3, profit = $4 WHERE message_id = $1`,
+              [messageId, updateCost, updateSuppCost, updateProfit]
+            );
+            console.log(`[FORCE-DLR] Timeout: no real DLR in ${effectiveTimeout}s → ${messageId} marked DELIVERED`);
+
+            if (dlrCallbackUrl) {
+              const forcePayload = buildForceDlrPayload({
+                messageId, supplierMessageId: fSupplierMsgId,
+                destination: fDestination, source: fSource,
+                cost: fRatePerSms, routeName: fRouteName,
+                supplierName: fSupplierName, forceDlr: true,
+              });
+              pushDlrToClient(dlrCallbackUrl, forcePayload).catch(() => {});
+              console.log(`[FORCE-DLR] Timeout DLR pushed to client webhook: ${messageId} → DELIVERED`);
+            }
+          } else {
+            console.log(`[FORCE-DLR] Timeout skipped for ${messageId}: real DLR already received (status=${checkResult.rows[0]?.dlr_status})`);
           }
-        } else {
-          console.log(`[FORCE-DLR] Fallback skipped for ${messageId}: real DLR already received (status=${checkResult.rows[0]?.dlr_status})`);
+        } catch (err) {
+          console.error(`[FORCE-DLR] Timeout error for ${messageId}:`, err);
         }
-      } catch (err) {
-        console.error(`[FORCE-DLR] Fallback error for ${messageId}:`, err);
-      }
-    }, 60_000);
+      }, effectiveTimeout * 1000);
+    }
   }
 
   return NextResponse.json({
@@ -763,7 +833,7 @@ export async function POST(request: Request) {
       fallbackUsed: deliveryResult?.fallbackUsed || false,
       failedRoutes: deliveryResult?.failedRoutes || 0,
     },
-    cost: isDlrBilling ? 0 : (finalSuccess ? ratePerSms : 0),
+    cost: isDlrCharged(clientChargingMode) ? 0 : (finalSuccess ? ratePerSms : 0),
     supplierCost,
     profit,
     supplierMessageId: deliveryResult?.supplierMessageId || customApiMessageId || null,

@@ -312,6 +312,8 @@ export default function NumberBlacklistPage() {
     runTestAll(quickTestNumber);
   };
 
+  const assignedRules = rules.filter(r => r.scope !== "both" && r.entityId);
+
   const exactCount = rules.filter(r => r.matchMode === "exact").length;
   const regexCount = rules.filter(r => r.matchMode === "regex").length;
 

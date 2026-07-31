@@ -13,7 +13,8 @@ interface Client {
   is_active: boolean; route_plan_id: number;
   smpp_username: string; smpp_password: string; smpp_allowed_ip: string; smpp_port: number; max_tps: number;
   billing_mode: string; currency: string; enable_http_api: boolean;
-  force_dlr: boolean; webhook_url: string; http_api_key: string;
+  charging_mode: string; dlr_timeout: number; force_dlr: boolean;
+  webhook_url: string; http_api_key: string;
   bind_status: string; last_bind_time: string;
 }
 
@@ -35,8 +36,8 @@ export default function ClientPage() {
     country: "", address: "", connectionType: "SMPP",
     smppUsername: "", smppPassword: "", smppAllowedIp: "", smppPort: "2775", smppSystemType: "ESME", maxTps: "10",
     billingMode: "prepaid", currency: "USD",
-    routePlanId: "", enableHttpApi: false, httpApiKey: "", forceDlr: false,
-    dlrTimeoutMode: "fixed", dlrTimeout: "60", webhookUrl: "",
+    routePlanId: "", enableHttpApi: false, httpApiKey: "",
+    chargingMode: "on_submit", dlrTimeout: "60", webhookUrl: "",
   });
 
   const load = useCallback(async () => {
@@ -106,8 +107,9 @@ export default function ClientPage() {
       smppSystemType: "ESME", maxTps: c.max_tps?.toString() || "10",
       billingMode: c.billing_mode || "prepaid", currency: c.currency || "USD",
       routePlanId: c.route_plan_id?.toString() || "", enableHttpApi: c.enable_http_api || false,
-      forceDlr: c.force_dlr || false, dlrTimeoutMode: "fixed", dlrTimeout: "60",
-      webhookUrl: c.webhook_url || "", httpApiKey: c.http_api_key || "",
+      httpApiKey: c.http_api_key || "",
+      chargingMode: c.charging_mode || (c.force_dlr ? "force_dlr" : (c.billing_mode === "dlr" ? "on_dlr" : "on_submit")),
+      dlrTimeout: (c.dlr_timeout || 60).toString(), webhookUrl: c.webhook_url || "",
     });
     setShowForm(true);
   };
@@ -235,11 +237,22 @@ export default function ClientPage() {
 
             {/* Billing */}
             <section className="bg-slate-50 rounded-xl p-5">
-              <h4 className="font-semibold text-slate-700 mb-4">💰 Billing Settings</h4>
+              <h4 className="font-semibold text-slate-700 mb-4">💰 Charging Mode</h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Select label="Billing Mode" value={form.billingMode} onChange={e => setForm({...form, billingMode: e.target.value})} options={[{v:"prepaid",l:"Prepaid (submit)"},{v:"dlr",l:"DLR-Based"},{v:"postpaid",l:"Postpaid"}]} />
+                <Select label="Charging Mode" value={form.chargingMode} onChange={e => setForm({...form, chargingMode: e.target.value})} options={[
+                  {v:"on_submit",l:"On Submit — charge immediately"},
+                  {v:"on_dlr",l:"On DLR — charge after delivery"},
+                  {v:"force_dlr",l:"Force DLR — charge + instant DLR"},
+                  {v:"force_dlr_timeout",l:"Force DLR Timeout — charge + timed DLR"},
+                ]} />
                 <Select label="Currency" value={form.currency} onChange={e => setForm({...form, currency: e.target.value})} options={[{v:"USD",l:"USD"},{v:"EUR",l:"EUR"},{v:"INR",l:"INR"},{v:"USDT",l:"USDT"}]} />
+                {(form.chargingMode === "force_dlr_timeout") && (
+                  <Input label="DLR Timeout (seconds)" type="number" value={form.dlrTimeout} onChange={e => setForm({...form, dlrTimeout: e.target.value})} />
+                )}
               </div>
+              {form.chargingMode === "force_dlr" && <p className="text-xs text-purple-600 mt-2">⚡ Client is charged immediately and receives an instant DELIVERED DLR without waiting for the supplier.</p>}
+              {form.chargingMode === "force_dlr_timeout" && <p className="text-xs text-amber-600 mt-2">⏱ Client is charged immediately. If no real DLR arrives within {form.dlrTimeout}s, an automatic DELIVERED DLR is pushed.</p>}
+              {form.chargingMode === "on_dlr" && <p className="text-xs text-blue-600 mt-2">🔄 Client is only charged when the supplier confirms delivery. Invoice costs are 0 until DLR arrives.</p>}
             </section>
 
             {/* Routing */}
@@ -249,15 +262,10 @@ export default function ClientPage() {
                 <Select label="Routing Plan" value={form.routePlanId} onChange={e => setForm({...form, routePlanId: e.target.value})} options={[{v:"",l:"-- None --"},...routePlans.map(r => ({v:r.id.toString(),l:r.name}))]} />
                 <div className="space-y-2">
                   <Check label="Enable HTTP API" checked={form.enableHttpApi} onChange={e => setForm({...form, enableHttpApi: e.target.checked})} />
-                  <Check label="Force DLR" checked={form.forceDlr} onChange={e => setForm({...form, forceDlr: e.target.checked})} />
                 </div>
                 {form.enableHttpApi && (
                   <Input label="HTTP API Key" value={form.httpApiKey} onChange={e => setForm({...form, httpApiKey: e.target.value})} placeholder="Auto-generated from SMPP credentials" suffix={form.httpApiKey ? <CopyButton value={form.httpApiKey} /> : undefined} />
                 )}
-                {form.forceDlr && <>
-                  <Select label="DLR Timeout Mode" value={form.dlrTimeoutMode} onChange={e => setForm({...form, dlrTimeoutMode: e.target.value})} options={[{v:"fixed",l:"Fixed"},{v:"dynamic",l:"Dynamic"}]} />
-                  <Input label="DLR Timeout (s)" type="number" value={form.dlrTimeout} onChange={e => setForm({...form, dlrTimeout: e.target.value})} />
-                </>}
                 <div className="md:col-span-2">
                   <Input label="Webhook URL" value={form.webhookUrl} onChange={e => setForm({...form, webhookUrl: e.target.value})} placeholder="https://..." />
                 </div>
@@ -300,7 +308,7 @@ export default function ClientPage() {
                   </span>
                 </td>
                 <td className="px-4 py-3"><span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs">{c.connection_type || "SMPP"}</span>{c.enable_http_api ? <><br/><span className="text-xs text-green-600 font-mono inline-flex items-center gap-1">🌐 HTTP API {c.http_api_key && <CopyButton value={c.http_api_key} />}</span></> : null}</td>
-                <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs ${c.is_active?"bg-green-100 text-green-700":"bg-red-100 text-red-700"}`}>{c.is_active?"Active":"Inactive"}</span>{c.force_dlr ? <><br/><span className="text-xs text-purple-600">⚡ Force DLR</span></> : null}</td>
+                <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs ${c.is_active?"bg-green-100 text-green-700":"bg-red-100 text-red-700"}`}>{c.is_active?"Active":"Inactive"}</span>{c.charging_mode && c.charging_mode !== "on_submit" ? <><br/><span className={`text-xs ${c.charging_mode === "force_dlr" || c.charging_mode === "force_dlr_timeout" ? "text-purple-600" : "text-blue-600"}`}>{c.charging_mode === "force_dlr" ? "⚡ Force DLR" : c.charging_mode === "force_dlr_timeout" ? "⏱ Force DLR Timeout" : c.charging_mode === "on_dlr" ? "🔄 On DLR" : ""}</span></> : c.force_dlr ? <><br/><span className="text-xs text-purple-600">⚡ Force DLR</span></> : null}</td>
                 <td className="px-4 py-3"><button onClick={() => handleEdit(c)} className="text-blue-600 hover:underline text-xs mr-2">Edit</button><button onClick={() => handleDelete(c.id)} className="text-red-600 hover:underline text-xs">Delete</button></td>
               </tr>
             ))}

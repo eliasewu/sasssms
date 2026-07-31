@@ -249,6 +249,7 @@ async function handleSupplierUnbound(event: BindEvent): Promise<void> {
                 port: parseInt(process.env.SMTP_PORT || "587"),
                 secure: parseInt(process.env.SMTP_PORT || "587") === 465,
                 auth: { user: process.env.SMTP_USER || "welcome@net2app.com", pass: process.env.SMTP_PASS || "" },
+                tls: { rejectUnauthorized: false }, // allow self-signed certs on localhost
               });
               await transporter.sendMail({
                 from: `"Net2APP Alerts" <${process.env.SMTP_USER || "welcome@net2app.com"}>`,
@@ -305,6 +306,7 @@ async function handleSupplierUnbound(event: BindEvent): Promise<void> {
           port: parseInt(process.env.SMTP_PORT || "587"),
           secure: parseInt(process.env.SMTP_PORT || "587") === 465,
           auth: { user: process.env.SMTP_USER || "welcome@net2app.com", pass: process.env.SMTP_PASS || "" },
+          tls: { rejectUnauthorized: false }, // allow self-signed certs on localhost
         });
         await transporter.sendMail({
           from: `"Net2APP Alerts" <${process.env.SMTP_USER || "welcome@net2app.com"}>`,

@@ -23,7 +23,7 @@ export async function GET(request: Request) {
       dateGroup = "date_trunc('day', created_at)";
   }
 
-  const [volumeRes, clientRes, supplierRes, connectionRes, dlrRes] = await Promise.all([
+  const [volumeRes, clientRes, supplierRes, connectionRes, dlrRes, chargingRes] = await Promise.all([
     tenantQuery(
       tenant.schemaName,
       `SELECT ${dateGroup} as period, COUNT(*) as count,
@@ -68,6 +68,21 @@ export async function GET(request: Request) {
        GROUP BY dlr_status`,
       [startDate, endDate]
     ),
+    // Charging mode breakdown: messages by client charging_mode
+    tenantQuery(
+      tenant.schemaName,
+      `SELECT COALESCE(c.charging_mode, CASE WHEN c.force_dlr THEN 'force_dlr' WHEN c.billing_mode = 'dlr' THEN 'on_dlr' ELSE 'on_submit' END) as charging_mode,
+              COUNT(*) as count,
+              COALESCE(SUM(CAST(m.cost AS DECIMAL)), 0) as revenue,
+              COALESCE(SUM(CAST(COALESCE(m.supplier_cost, '0') AS DECIMAL)), 0) as cost,
+              COALESCE(SUM(CAST(COALESCE(m.profit, '0') AS DECIMAL)), 0) as profit
+       FROM messages m
+       LEFT JOIN clients c ON m.client_id = c.id
+       WHERE m.created_at >= $1 AND m.created_at <= $2
+       GROUP BY COALESCE(c.charging_mode, CASE WHEN c.force_dlr THEN 'force_dlr' WHEN c.billing_mode = 'dlr' THEN 'on_dlr' ELSE 'on_submit' END)
+       ORDER BY count DESC`,
+      [startDate, endDate]
+    ),
   ]);
 
   return NextResponse.json({
@@ -76,5 +91,6 @@ export async function GET(request: Request) {
     bySupplier: supplierRes.rows,
     byConnectionType: connectionRes.rows,
     dlrSummary: dlrRes.rows,
+    byChargingMode: chargingRes.rows,
   });
 }

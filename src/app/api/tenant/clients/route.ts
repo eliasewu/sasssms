@@ -47,8 +47,9 @@ export async function POST(request: Request) {
       client_code, name, company_name, contact_person, email, phone, country, address,
       connection_type, smpp_username, smpp_password, smpp_allowed_ip, smpp_port, smpp_system_type, max_tps,
       billing_mode, currency,
-      route_plan_id, enable_http_api, http_api_key, force_dlr, dlr_timeout_mode, dlr_timeout, webhook_url
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`,
+      route_plan_id, enable_http_api, http_api_key, force_dlr, dlr_timeout_mode, dlr_timeout, webhook_url,
+      charging_mode
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *`,
     [
       body.clientCode || null, body.name, body.companyName || null, body.contactPerson || null,
       body.email, body.phone, body.country || null, body.address || null,
@@ -56,7 +57,8 @@ export async function POST(request: Request) {
       body.smppAllowedIp || null, body.smppPort || 2775, body.smppSystemType || null, body.maxTps || null,
       body.billingMode || "prepaid", body.currency || "USD",
       body.routePlanId || null, body.enableHttpApi || false, httpApiKey, body.forceDlr || false,
-      body.dlrTimeoutMode || null, body.dlrTimeout || null, body.webhookUrl || null
+      body.dlrTimeoutMode || null, body.dlrTimeout || null, body.webhookUrl || null,
+      body.chargingMode || "on_submit"
     ]
   );
 

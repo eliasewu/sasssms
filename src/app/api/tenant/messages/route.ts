@@ -19,6 +19,8 @@ export async function GET(request: Request) {
   const source = url.searchParams.get("source"); // "test", "client", "campaign"
 
   let query = `SELECT m.*, c.name as client_name,
+    COALESCE(c.charging_mode, CASE WHEN c.force_dlr THEN 'force_dlr' WHEN c.billing_mode = 'dlr' THEN 'on_dlr' ELSE 'on_submit' END) as client_charging_mode,
+    COALESCE(s.charging_mode, CASE WHEN s.force_dlr THEN 'force_dlr' ELSE 'on_submit' END) as supplier_charging_mode,
     rp.name as route_plan_name, r.name as route_name,
     t.name as trunk_name, s.name as supplier_name
     FROM messages m

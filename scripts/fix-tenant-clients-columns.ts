@@ -27,6 +27,7 @@ async function main() {
       { name: "force_dlr", type: "BOOLEAN DEFAULT false" },
       { name: "dlr_timeout_mode", type: "VARCHAR(50)" },
       { name: "dlr_timeout", type: "INTEGER" },
+      { name: "charging_mode", type: "VARCHAR(50) DEFAULT 'on_submit'" },
       { name: "enable_http_api", type: "BOOLEAN DEFAULT false" },
       { name: "http_api_key", type: "VARCHAR(255)" },
     ];

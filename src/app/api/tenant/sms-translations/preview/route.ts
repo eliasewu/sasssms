@@ -99,6 +99,7 @@ export async function POST(request: Request) {
       replacementFixed: profile.replacementFixed,
       mcc: profile.mcc,
       mnc: profile.mnc,
+      category: null,
     },
     sender,
     destination,
