@@ -191,7 +191,69 @@ if [ ! -f /etc/nginx/ssl/net2app.crt ] || [ ! -f /etc/nginx/ssl/net2app.key ]; t
   chmod 600 /etc/nginx/ssl/net2app.key
 fi
 
-# Nginx site config
+# Nginx site config (n8n proxy block only on Singapore where n8n runs)
+if [ "$LOCATION_ID" = "singapore" ]; then
+cat > /etc/nginx/sites-available/net2app << 'NGXCONF'
+server {
+    listen 80;
+    server_name _;
+    location /.well-known/acme-challenge/ { root /var/www/html; }
+    location / { return 301 https://$host$request_uri; }
+}
+server {
+    listen 443 ssl http2;
+    server_name _;
+    ssl_certificate /etc/nginx/ssl/net2app.crt;
+    ssl_certificate_key /etc/nginx/ssl/net2app.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    client_max_body_size 100M;
+    location /uploads/ {
+        alias /opt/net2app/public/uploads/;
+        try_files $uri =404;
+        expires 1h;
+        add_header Cache-Control "public";
+    }
+    # ── n8n /n8n/ redirect ──
+    location = /n8n {
+        return 302 /n8n2/;
+    }
+    location /n8n/ {
+        return 302 /n8n2/;
+    }
+    # ── n8n at /n8n2/ — N8N_PATH=/n8n2/ handles routing natively ──
+    location = /n8n2 {
+        return 301 /n8n2/;
+    }
+    location /n8n2/ {
+        # Strip the /n8n2/ prefix — n8n runs at root
+        proxy_pass http://127.0.0.1:5678/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+        proxy_redirect off;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:5556;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+    }
+}
+NGXCONF
+else
 cat > /etc/nginx/sites-available/net2app << 'NGXCONF'
 server {
     listen 80;
@@ -226,6 +288,7 @@ server {
     }
 }
 NGXCONF
+fi
 
 ln -sf /etc/nginx/sites-available/net2app /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
