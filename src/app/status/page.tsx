@@ -22,8 +22,8 @@ interface StatusData {
 }
 
 const COUNTRY_FLAGS: Record<string, string> = {
-  Canada: "🇨🇦", Poland: "🇵🇱", France: "🇫🇷", USA: "🇺🇸",
-  Germany: "🇩🇪", "United Kingdom": "🇬🇧", Singapore: "🇸🇬",
+  Canada: "🇨🇦", France: "🇫🇷", Germany: "🇩🇪",
+  "United Kingdom": "🇬🇧", Singapore: "🇸🇬",
 };
 
 function getFlag(loc: ServerInfo): string {

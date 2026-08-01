@@ -15,8 +15,8 @@ interface HealthInfo {
 }
 
 const FLAG_MAP: Record<string, string> = {
-  Canada: "🇨🇦", Poland: "🇵🇱", France: "🇫🇷", USA: "🇺🇸",
-  Germany: "🇩🇪", "United Kingdom": "🇬🇧", Singapore: "🇸🇬", Australia: "🇦🇺",
+  Canada: "🇨🇦", France: "🇫🇷", Germany: "🇩🇪",
+  "United Kingdom": "🇬🇧", Singapore: "🇸🇬", Australia: "🇦🇺",
 };
 
 export default function ServersPage() {
