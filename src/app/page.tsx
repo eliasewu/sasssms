@@ -678,7 +678,7 @@ export default function LandingPage() {
                 <p className="text-amber-100 text-sm mt-1">Managed Softswitch Infrastructure</p>
               </div>
               <div className="p-6">
-                <p className="text-gray-600 text-sm leading-relaxed mb-4">Fully managed VOS3000 hosting on dedicated servers. Includes installation, configuration, monitoring, DDoS protection, and 24/7 support. Deploy in Canada, France, Poland, or USA.</p>
+                <p className="text-gray-600 text-sm leading-relaxed mb-4">Fully managed VOS3000 hosting on dedicated servers. Includes installation, configuration, monitoring, DDoS protection, and 24/7 support. Deploy in Canada, France, or Germany.</p>
                 <div className="space-y-2 mb-5">
                   {["Dedicated Server Hosting", "VOS3000 Installation", "DDoS Protection", "24/7 Monitoring", "Automated Backups", "Multi-Location Deploy"].map(f => (
                     <div key={f} className="flex items-center gap-2 text-xs text-gray-500"><span className="text-amber-500">✓</span> {f}</div>
