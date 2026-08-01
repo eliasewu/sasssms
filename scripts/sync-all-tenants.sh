@@ -4,7 +4,7 @@ set -e
 
 SYNC_SECRET="net2app-internal-sync-2024"
 ORIGIN="149.56.22.232"
-REMOTES=("15.235.35.125:Canada2" "54.37.252.5:France" "145.239.1.7:Germany" "146.59.47.22:Poland")
+REMOTES=("15.235.35.125:Canada2" "54.37.252.5:France" "145.239.1.7:Germany")
 PASSWORD="Telco1988"
 
 echo "=== Step 1: Fetch all active tenants from Origin ==="
