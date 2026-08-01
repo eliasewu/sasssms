@@ -635,7 +635,7 @@ async function handleBind(
           `SELECT id, name, username, password, system_id
            FROM suppliers
            WHERE connection_mode = 'SERVER'
-             AND connection_type = 'SMPP'
+             AND (connection_type = 'SMPP' OR connection_type = 'ANDROID_SMS')
              AND (username = $1 OR system_id = $1)
              AND is_active = true AND deleted_at IS NULL`,
           [systemId]
@@ -1111,6 +1111,147 @@ async function processSubmitSm(
           console.log(`[SMPP] Custom API FAILED via SMPP: ${dest} — ${firstRouteFinal.routeName}`);
           return { success: false, messageId, errorCode: 1 };
         }
+      }
+
+      // ── ANDROID_SMS routes: deliver via Android phone acting as SMS gateway ──
+      // The Android app binds as a supplier in SERVER mode. We send deliver_sm
+      // to the active supplier session, and the phone sends the SMS natively.
+      if (connType === "ANDROID_SMS") {
+        let androidSuccess = false;
+        const supplierKey = `supplier:${es.tenantId}:${firstRouteFinal.supplierId}`;
+        const androidSession = activeSupplierSessions.get(supplierKey);
+
+        if (androidSession) {
+          try {
+            // Send deliver_sm to the Android app with the SMS content
+            androidSession.session.send(
+              new smpp.PDU("deliver_sm", {
+                source_addr: src,
+                destination_addr: dest,
+                short_message: { message: content },
+                esm_class: 0,
+                registered_delivery: 1, // Request DLR from the phone
+                data_coding: 0,
+              })
+            );
+            androidSuccess = true;
+            console.log(`[SMPP] Android SMS: deliver_sm sent to ${androidSession.systemId} (supplier #${firstRouteFinal.supplierId}) → ${dest}`);
+
+            // Update android_gateway_devices counter
+            pool.query(
+              `UPDATE android_gateway_devices SET sms_sent_count = sms_sent_count + 1, last_seen = NOW() WHERE supplier_id = $1 AND tenant_id = $2`,
+              [firstRouteFinal.supplierId, es.tenantId]
+            ).catch(() => {});
+          } catch (err) {
+            console.error(`[SMPP] Android SMS deliver_sm error:`, err);
+          }
+        } else {
+          console.warn(`[SMPP] No active Android gateway session for supplier #${firstRouteFinal.supplierId} (key: ${supplierKey})`);
+        }
+
+        const androidClientCost = androidSuccess && !isDlrCharged(clientChargingMode) ? ratePerSms : 0;
+        const androidSuppCost = androidSuccess && !isDlrCharged(supplierChargingMode) ? supplierCost : 0;
+        const androidProfit = androidClientCost - androidSuppCost;
+
+        await client.query(
+          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id, dlr_timestamp,
+           original_sender, original_destination, original_content, translation_notes)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+          [es.clientId, src, dest, content,
+           androidSuccess ? 'SENT' : 'FAILED',
+           c.route_plan_id, firstRouteFinal.routeId, firstRouteFinal.trunkId,
+           firstRouteFinal.supplierId, connType,
+           androidClientCost, androidSuppCost, androidProfit,
+           androidSuccess ? 'SENT' : 'FAILED',
+           messageId,
+           androidSuccess ? null : new Date(),
+           origSrc, origDest, origContent,
+           appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null]
+        );
+
+        if (androidSuccess) {
+          // Register DLR callback — when the Android app sends back a deliver_sm DLR,
+          // push it to the ESME client and handle on_dlr charging
+          registerDlrCallback(messageId, (dlr: DlrPayload) => {
+            const isDelivered = dlr.status === "DELIVRD" || dlr.status === "DELIVERED";
+            if (isDelivered) {
+              const chargeTasks: Promise<void>[] = [];
+              if (isDlrCharged(clientChargingMode)) {
+                chargeTasks.push(
+                  (async () => {
+                    const dbc = await pool.connect();
+                    try {
+                      await dbc.query(`SET search_path TO "${es.schemaName}"`);
+                      await dbc.query(
+                        `UPDATE messages SET cost = $1, supplier_cost = $2, profit = $1 - $2 WHERE message_id = $3`,
+                        [ratePerSms, androidSuppCost, messageId]
+                      );
+                      await dbc.query(`SET search_path TO public`);
+                      await dbc.query(
+                        `UPDATE tenants SET sms_counter = COALESCE(sms_counter, 0) + 1 WHERE id = $1`,
+                        [es.tenantId]
+                      );
+                    } finally {
+                      await dbc.query(`SET search_path TO public`);
+                      dbc.release();
+                    }
+                  })()
+                );
+              }
+              if (isDlrCharged(supplierChargingMode)) {
+                chargeTasks.push(
+                  (async () => {
+                    const dbc = await pool.connect();
+                    try {
+                      await dbc.query(`SET search_path TO "${es.schemaName}"`);
+                      await dbc.query(
+                        `UPDATE messages SET supplier_cost = $1, profit = cost - $1 WHERE message_id = $2`,
+                        [supplierCost || androidSuppCost, messageId]
+                      );
+                    } finally {
+                      await dbc.query(`SET search_path TO public`);
+                      dbc.release();
+                    }
+                  })()
+                );
+              }
+              Promise.all(chargeTasks).catch(() => {});
+            }
+            // Push DLR back to ESME client
+            let liveSession: EsmeSession | null = null;
+            for (const [, s] of activeSessions) {
+              if (s.clientId === es.clientId && s.schemaName === es.schemaName) {
+                liveSession = s;
+                break;
+              }
+            }
+            if (liveSession) {
+              const dlrStatus = mapDlrStatus(dlr.status);
+              try {
+                liveSession.session.send(
+                  new smpp.PDU("deliver_sm", {
+                    source_addr: dlr.dest,
+                    destination_addr: dlr.src,
+                    short_message: {
+                      message: `id:${dlr.supplierMessageId || messageId} sub:001 dlvrd:001 submit date:${dlr.submitDate} done date:${dlr.doneDate} stat:${dlrStatus} err:${dlr.errorCode} text:${dlrStatus}`,
+                    },
+                    esm_class: 4,
+                    registered_delivery: 0,
+                    data_coding: 0,
+                  })
+                );
+                console.log(`[SMPP] Android DLR pushed to ESME: ${dlr.messageId} → ${dlr.status}`);
+              } catch (dlrErr) {
+                console.error(`[SMPP] Android DLR push error:`, dlrErr);
+              }
+            } else {
+              enqueueDlrPersist(es.tenantId, es.clientId, es.schemaName, dlr);
+              console.log(`[SMPP] Android DLR queued for ${messageId}: ESME client ${es.clientId} disconnected`);
+            }
+          });
+          return { success: true, messageId };
+        }
+        return { success: false, messageId, errorCode: 1 };
       }
 
       const dlrCallbackUrl = c.dlr_callback_url || c.webhook_url || undefined;

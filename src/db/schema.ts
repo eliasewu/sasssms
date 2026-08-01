@@ -582,6 +582,26 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// ── Android SMS Gateway Devices — phones acting as SMS suppliers ──
+export const androidGatewayDevices = pgTable("android_gateway_devices", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull(),
+  schemaName: varchar("schema_name", { length: 100 }).notNull(),
+  supplierId: integer("supplier_id").notNull(),
+  deviceName: varchar("device_name", { length: 255 }),
+  phoneNumber: varchar("phone_number", { length: 50 }),
+  deviceId: varchar("device_id", { length: 255 }).notNull().unique(),
+  smppUsername: varchar("smpp_username", { length: 100 }).notNull(),
+  serverIp: varchar("server_ip", { length: 50 }),
+  bindStatus: varchar("bind_status", { length: 20 }).default("UNBOUND"),
+  lastSeen: timestamp("last_seen"),
+  smsSentCount: integer("sms_sent_count").default(0),
+  smsReceivedCount: integer("sms_received_count").default(0),
+  appVersion: varchar("app_version", { length: 20 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // ── Live Chat Internal Notes — visible only to super admins ──
 export const liveChatNotes = pgTable("live_chat_notes", {
   id: serial("id").primaryKey(),
