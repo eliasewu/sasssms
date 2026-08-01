@@ -1206,7 +1206,7 @@ async function processSubmitSm(
                       await dbc.query(`SET search_path TO "${es.schemaName}"`);
                       await dbc.query(
                         `UPDATE messages SET supplier_cost = $1, profit = cost - $1 WHERE message_id = $2`,
-                        [supplierCost || androidSuppCost, messageId]
+                        [typeof supplierCost === 'number' ? supplierCost : androidSuppCost, messageId]
                       );
                     } finally {
                       await dbc.query(`SET search_path TO public`);
