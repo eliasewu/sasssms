@@ -32,20 +32,57 @@ export async function POST(request: Request) {
     const tenantId = tenant.tenantId;
     const schemaName = tenant.schemaName;
 
-    // Look up the actual supplier SMPP username for the device record
+    // Validate supplier ownership: must exist in tenant's schema, be active,
+    // have connection_type='ANDROID_SMS' and connection_mode='SERVER'
     let smppUsername = `android_${deviceId.substring(0, 20)}`;
     try {
       await pool.query(`SET search_path TO "${schemaName}"`);
       const { rows: suppRows } = await pool.query(
-        `SELECT username FROM suppliers WHERE id = $1`,
+        `SELECT id, username, connection_type, connection_mode, is_active, name
+         FROM suppliers WHERE id = $1`,
         [supplierId]
       );
       await pool.query(`SET search_path TO public`);
-      if (suppRows.length > 0 && suppRows[0].username) {
-        smppUsername = suppRows[0].username;
+
+      if (suppRows.length === 0) {
+        return NextResponse.json(
+          { error: "Supplier not found. Create an ANDROID_SMS supplier first." },
+          { status: 404 }
+        );
       }
-    } catch {
-      // Fall back to generated username
+
+      const supplier = suppRows[0];
+
+      if (!supplier.is_active) {
+        return NextResponse.json(
+          { error: `Supplier "${supplier.name}" is inactive. Activate it first.` },
+          { status: 400 }
+        );
+      }
+
+      if (supplier.connection_type !== "ANDROID_SMS") {
+        return NextResponse.json(
+          { error: `Supplier "${supplier.name}" has connection_type "${supplier.connection_type}", not "ANDROID_SMS". Update the supplier settings.` },
+          { status: 400 }
+        );
+      }
+
+      if (supplier.connection_mode !== "SERVER") {
+        return NextResponse.json(
+          { error: `Supplier "${supplier.name}" has connection_mode "${supplier.connection_mode}", not "SERVER". The Android app binds as a server-mode supplier.` },
+          { status: 400 }
+        );
+      }
+
+      if (supplier.username) {
+        smppUsername = supplier.username;
+      }
+    } catch (err) {
+      console.error("[android-gateway] Supplier lookup error:", err);
+      return NextResponse.json(
+        { error: "Internal server error. Could not verify supplier." },
+        { status: 500 }
+      );
     }
 
     const serverIp = await getSelfIp();
