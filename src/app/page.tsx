@@ -895,8 +895,8 @@ export default function LandingPage() {
                   <div className="flex items-start gap-2.5">
                     <span className="text-base shrink-0 mt-0.5">💻</span>
                     <p className="text-xs text-slate-600 leading-relaxed">
-                      iOS requires a Mac with Xcode to build. We&apos;re working on it — check back
-                      soon or join the waitlist to be notified when it&apos;s available.
+                      Build pipeline is ready via Expo EAS — iOS app compiles in the cloud.
+                      Join the waitlist to be first to know when it drops.
                     </p>
                   </div>
                 </div>
