@@ -170,11 +170,26 @@ fi
 echo "[6/9] Environment config..."
 cat > "$APP_DIR/.env" << EOF
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/app_db
-JWT_SECRET=net2app-prod-$(date +%s)-$(openssl rand -hex 16)
+JWT_SECRET=net2app-sms-platform-secret-key-2024
 NODE_ENV=production
 PORT=$APP_PORT
 SMPP_PORT=$SMPP_PORT
+NEXT_PUBLIC_APP_URL=https://net2app.com
 NEXT_PUBLIC_TAWKTO_ID=646f1d5874285f0ec46d8d19
+
+# Google OAuth — set these before deploying:
+# GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+# GOOGLE_CLIENT_SECRET=your-google-client-secret
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=https://net2app.com/api/auth/google/callback
+
+# Mail server
+SMTP_HOST=127.0.0.1
+SMTP_PORT=587
+SMTP_USER=welcome@net2app.com
+SMTP_PASS=Net2app2026!
+SUPER_ADMIN_EMAIL=elias.ewu@gmail.com
 EOF
 chmod 600 "$APP_DIR/.env"
 ok ".env created"
