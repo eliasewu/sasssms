@@ -934,6 +934,55 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Social Proof Bar */}
+      <div className="bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 py-12">
+        <div className="max-w-6xl mx-auto px-6 lg:px-12">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+            <div className="group">
+              <div className="text-3xl lg:text-4xl font-extrabold text-white mb-1 group-hover:scale-110 transition-transform duration-300">5</div>
+              <div className="text-slate-400 text-sm font-medium">🌍 Global Server Locations</div>
+              <div className="text-slate-600 text-xs mt-1">Canada, France, Germany, Australia</div>
+            </div>
+            <div className="group">
+              <div className="text-3xl lg:text-4xl font-extrabold text-white mb-1 group-hover:scale-110 transition-transform duration-300">8+</div>
+              <div className="text-slate-400 text-sm font-medium">🔌 Connection Types</div>
+              <div className="text-slate-600 text-xs mt-1">SMPP, HTTP, RCS, OTT, Voice & more</div>
+            </div>
+            <div className="group">
+              <div className="text-3xl lg:text-4xl font-extrabold text-white mb-1 group-hover:scale-110 transition-transform duration-300">99.9%</div>
+              <div className="text-slate-400 text-sm font-medium">📊 Platform Uptime</div>
+              <div className="text-slate-600 text-xs mt-1">Multi-region redundancy</div>
+            </div>
+            <div className="group">
+              <div className="text-3xl lg:text-4xl font-extrabold bg-gradient-to-r from-green-400 to-emerald-300 bg-clip-text text-transparent mb-1 group-hover:scale-110 transition-transform duration-300">$0</div>
+              <div className="text-slate-400 text-sm font-medium">💰 Setup & Monthly Fees</div>
+              <div className="text-slate-600 text-xs mt-1">Pay only for what you use</div>
+            </div>
+          </div>
+
+          <div className="mt-10 pt-8 border-t border-slate-700/50">
+            <div className="flex flex-wrap items-center justify-center gap-6 text-slate-500 text-xs">
+              <span className="flex items-center gap-1.5">
+                <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                End-to-end encrypted SMPP connections
+              </span>
+              <span className="flex items-center gap-1.5">
+                <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                Per-tenant PostgreSQL schema isolation
+              </span>
+              <span className="flex items-center gap-1.5">
+                <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                24/7 automated health monitoring
+              </span>
+              <span className="flex items-center gap-1.5">
+                <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                Deploy in under 60 seconds
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Cost Calculator - Clean Design */}
       <div id="calculator" className="bg-gray-50 py-20">
         <div className="max-w-4xl mx-auto px-6 lg:px-8">
