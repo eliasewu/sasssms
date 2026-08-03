@@ -184,6 +184,8 @@ export default function LandingPage() {
   const [waitlistEmail, setWaitlistEmail] = useState("");
   const [waitlistLoading, setWaitlistLoading] = useState(false);
   const [waitlistDone, setWaitlistDone] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [downloadUrl, setDownloadUrl] = useState("");
   const [settings, setSettings] = useState<LandingSettings>({ costPerSms: "0.00010", packages: [] });
   const router = useRouter();
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -231,6 +233,21 @@ export default function LandingPage() {
     fetch("/api/public/settings")
       .then(r => r.json())
       .then(setSettings)
+      .catch(() => {});
+  }, []);
+
+  // Check if user has an active tenant session (for direct download button)
+  useEffect(() => {
+    const hasCookie = document.cookie.includes("tenant_token=");
+    if (!hasCookie) return;
+    fetch("/api/tenant/android-app/share-link", { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.downloadUrl) {
+          setIsLoggedIn(true);
+          setDownloadUrl(data.downloadUrl);
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -811,10 +828,24 @@ export default function LandingPage() {
                 </div>
 
                 <div className="flex flex-col gap-3">
-                  <button onClick={() => setMode("register")} className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-3.5 rounded-xl font-semibold hover:from-green-600 hover:to-emerald-700 transition shadow-lg shadow-green-500/25 group-hover:shadow-green-500/40">
-                    Sign Up & Download APK →
-                  </button>
-                  <p className="text-xs text-gray-400 text-center">Create a free account to access the download</p>
+                  {isLoggedIn ? (
+                    <>
+                      <a href={downloadUrl || "/api/tenant/android-app/download"} className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-3.5 rounded-xl font-semibold hover:from-green-600 hover:to-emerald-700 transition shadow-lg shadow-green-500/25 group-hover:shadow-green-500/40 text-center inline-flex items-center justify-center gap-2">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        Download APK (65 MB)
+                      </a>
+                      <p className="text-xs text-gray-400 text-center">
+                        You&apos;re signed in — <a href="/dashboard/android-app" className="text-blue-500 hover:text-blue-600 underline">view setup guide</a>
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => setMode("register")} className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-3.5 rounded-xl font-semibold hover:from-green-600 hover:to-emerald-700 transition shadow-lg shadow-green-500/25 group-hover:shadow-green-500/40">
+                        Sign Up & Download APK →
+                      </button>
+                      <p className="text-xs text-gray-400 text-center">Create a free account to access the download</p>
+                    </>
+                  )}
                 </div>
 
                 <div className="mt-6 pt-6 border-t border-gray-100">
