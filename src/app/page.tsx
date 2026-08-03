@@ -870,24 +870,35 @@ export default function LandingPage() {
                     <svg className="w-9 h-9 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
                   </div>
                   <div>
-                    <h3 className="text-2xl font-bold text-gray-900">iOS App</h3>
-                    <p className="text-slate-500 text-sm font-medium">iPhone & iPad</p>
+                    <h3 className="text-2xl font-bold text-gray-900">iOS <span className="text-slate-400 font-normal">(iPhone)</span></h3>
+                    <p className="text-slate-500 text-sm font-medium">net2app for iOS</p>
                   </div>
                 </div>
 
-                <div className="space-y-3 mb-6">
-                  {[
-                    { icon: "📱", text: "Native iOS experience" },
-                    { icon: "🔔", text: "Push notification support" },
-                    { icon: "🎯", text: "Widget & Shortcuts integration" },
-                    { icon: "🔒", text: "Face ID / Touch ID unlock" },
-                    { icon: "☁️", text: "iCloud sync & backup" },
-                  ].map(f => (
-                    <div key={f.text} className="flex items-center gap-3 text-sm text-gray-400">
-                      <span className="text-base shrink-0 opacity-60">{f.icon}</span>
-                      <span>{f.text}</span>
-                    </div>
-                  ))}
+                <p className="text-sm text-gray-600 leading-relaxed mb-5">
+                  The iOS version is currently in development. It will offer the same SMPP gateway
+                  functionality — turn your iPhone into an SMS gateway with auto-discovery, background
+                  connectivity, and real-time DLR.
+                </p>
+
+                <div className="flex flex-wrap items-center gap-2 mb-6">
+                  <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 text-xs font-medium px-3 py-1 rounded-full border border-amber-200">
+                    <span className="w-1.5 h-1.5 bg-amber-500 rounded-full"></span>
+                    In Development
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 text-xs font-medium px-3 py-1 rounded-full">
+                    SMPP v3.4
+                  </span>
+                </div>
+
+                <div className="bg-slate-50 rounded-xl p-4 mb-6 border border-slate-200">
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-base shrink-0 mt-0.5">💻</span>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      iOS requires a Mac with Xcode to build. We&apos;re working on it — check back
+                      soon or join the waitlist to be notified when it&apos;s available.
+                    </p>
+                  </div>
                 </div>
 
                 {waitlistDone ? (
