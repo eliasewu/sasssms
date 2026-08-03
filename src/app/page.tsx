@@ -764,6 +764,119 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Mobile Apps Download Section */}
+      <section className="py-20 bg-gradient-to-b from-gray-50 to-white">
+        <div className="max-w-7xl mx-auto px-6 lg:px-12">
+          <div className="text-center mb-14">
+            <div className="inline-flex items-center gap-2 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-full px-4 py-1.5 mb-4">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+              <span className="text-green-700 text-sm font-medium">Mobile Apps</span>
+            </div>
+            <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">Turn Your Phone Into an SMS Gateway</h2>
+            <p className="text-gray-500 text-lg max-w-3xl mx-auto">Download the Net2APP mobile app and transform any Android phone into a powerful SMS gateway. iOS app coming soon.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            {/* Android Card */}
+            <div className="group relative bg-white rounded-3xl border-2 border-green-200 hover:border-green-400 shadow-lg hover:shadow-2xl transition-all duration-500 overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-green-400/20 to-transparent rounded-bl-full -mr-4 -mt-4"></div>
+              <div className="p-8">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center shadow-lg shadow-green-500/30 group-hover:scale-110 transition-transform duration-300">
+                    <svg className="w-9 h-9 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18c0 .55.45 1 1 1h1v3.5a1.5 1.5 0 0 0 3 0V19h2v3.5a1.5 1.5 0 0 0 3 0V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8C2.67 8 2 8.67 2 9.5v7c0 .83.67 1.5 1.5 1.5S5 17.33 5 16.5v-7C5 8.67 4.33 8 3.5 8zm17 0c-.83 0-1.5.67-1.5 1.5v7c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-7c0-.83-.67-1.5-1.5-1.5zm-4.97-5.84l1.3-1.3c.2-.2.2-.51 0-.71-.2-.2-.51-.2-.71 0l-1.48 1.48A5.84 5.84 0 0 0 12 1c-.96 0-1.86.23-2.66.63L7.85.15c-.2-.2-.51-.2-.71 0-.2.2-.2.51 0 .71l1.31 1.31A5.983 5.983 0 0 0 6 7h12c0-1.99-.97-3.75-2.47-4.84zM10 5H9V4h1v1zm5 0h-1V4h1v1z"/></svg>
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-gray-900">Android App</h3>
+                    <p className="text-green-600 text-sm font-medium">SMS Gateway • v1.0.0</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3 mb-6">
+                  {[
+                    { icon: "📨", text: "Send & receive SMS via SMPP" },
+                    { icon: "🔗", text: "Auto-connect to nearest server" },
+                    { icon: "📊", text: "Real-time delivery reports" },
+                    { icon: "🔐", text: "Encrypted communication" },
+                    { icon: "🌍", text: "5 global server locations" },
+                  ].map(f => (
+                    <div key={f.text} className="flex items-center gap-3 text-sm text-gray-600">
+                      <span className="text-base shrink-0">{f.icon}</span>
+                      <span>{f.text}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  <button onClick={() => setMode("register")} className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-3.5 rounded-xl font-semibold hover:from-green-600 hover:to-emerald-700 transition shadow-lg shadow-green-500/25 group-hover:shadow-green-500/40">
+                    Sign Up & Download APK →
+                  </button>
+                  <p className="text-xs text-gray-400 text-center">Create a free account to access the download</p>
+                </div>
+
+                <div className="mt-6 pt-6 border-t border-gray-100">
+                  <div className="flex items-center justify-between text-xs text-gray-400">
+                    <span>🟢 Android 7.0+</span>
+                    <span>📦 65 MB</span>
+                    <span>🔄 Auto-updates</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* iOS Card */}
+            <div className="group relative bg-white rounded-3xl border-2 border-gray-200 hover:border-gray-300 shadow-lg hover:shadow-2xl transition-all duration-500 overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-slate-400/10 to-transparent rounded-bl-full -mr-4 -mt-4"></div>
+              <div className="absolute top-5 right-5">
+                <span className="bg-gradient-to-r from-amber-400 to-orange-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-md">Coming Soon</span>
+              </div>
+              <div className="p-8">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-16 h-16 bg-gradient-to-br from-slate-700 to-slate-900 rounded-2xl flex items-center justify-center shadow-lg shadow-slate-500/20 group-hover:scale-110 transition-transform duration-300">
+                    <svg className="w-9 h-9 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-gray-900">iOS App</h3>
+                    <p className="text-slate-500 text-sm font-medium">iPhone & iPad</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3 mb-6">
+                  {[
+                    { icon: "📱", text: "Native iOS experience" },
+                    { icon: "🔔", text: "Push notification support" },
+                    { icon: "🎯", text: "Widget & Shortcuts integration" },
+                    { icon: "🔒", text: "Face ID / Touch ID unlock" },
+                    { icon: "☁️", text: "iCloud sync & backup" },
+                  ].map(f => (
+                    <div key={f.text} className="flex items-center gap-3 text-sm text-gray-400">
+                      <span className="text-base shrink-0 opacity-60">{f.icon}</span>
+                      <span>{f.text}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  <button disabled className="w-full bg-slate-100 text-slate-400 py-3.5 rounded-xl font-semibold cursor-not-allowed">
+                    Available Soon on App Store
+                  </button>
+                  <p className="text-xs text-gray-400 text-center">
+                    Want early access? <a href="mailto:hello@net2app.com?subject=iOS App Early Access" className="text-blue-500 hover:text-blue-600 underline">Contact us</a>
+                  </p>
+                </div>
+
+                <div className="mt-6 pt-6 border-t border-gray-100">
+                  <div className="flex items-center justify-between text-xs text-gray-300">
+                    <span>🍎 iOS 15+</span>
+                    <span>⏳ In Development</span>
+                    <span>🚀 Q4 2026</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Cost Calculator - Clean Design */}
       <div id="calculator" className="bg-gray-50 py-20">
         <div className="max-w-4xl mx-auto px-6 lg:px-8">
