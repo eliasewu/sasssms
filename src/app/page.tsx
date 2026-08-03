@@ -180,6 +180,10 @@ export default function LandingPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [smsVolume, setSmsVolume] = useState(100000);
+  const [showIosWaitlist, setShowIosWaitlist] = useState(false);
+  const [waitlistEmail, setWaitlistEmail] = useState("");
+  const [waitlistLoading, setWaitlistLoading] = useState(false);
+  const [waitlistDone, setWaitlistDone] = useState(false);
   const [settings, setSettings] = useState<LandingSettings>({ costPerSms: "0.00010", packages: [] });
   const router = useRouter();
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -824,7 +828,7 @@ export default function LandingPage() {
             </div>
 
             {/* iOS Card */}
-            <div className="group relative bg-white rounded-3xl border-2 border-gray-200 hover:border-gray-300 shadow-lg hover:shadow-2xl transition-all duration-500 overflow-hidden">
+            <div className={`group relative bg-white rounded-3xl border-2 shadow-lg hover:shadow-2xl transition-all duration-500 overflow-hidden ${showIosWaitlist ? "border-slate-400" : "border-gray-200 hover:border-gray-300"}`}>
               <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-slate-400/10 to-transparent rounded-bl-full -mr-4 -mt-4"></div>
               <div className="absolute top-5 right-5">
                 <span className="bg-gradient-to-r from-amber-400 to-orange-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-md">Coming Soon</span>
@@ -855,14 +859,36 @@ export default function LandingPage() {
                   ))}
                 </div>
 
-                <div className="flex flex-col gap-3">
-                  <button disabled className="w-full bg-slate-100 text-slate-400 py-3.5 rounded-xl font-semibold cursor-not-allowed">
-                    Available Soon on App Store
-                  </button>
-                  <p className="text-xs text-gray-400 text-center">
-                    Want early access? <a href="mailto:hello@net2app.com?subject=iOS App Early Access" className="text-blue-500 hover:text-blue-600 underline">Contact us</a>
-                  </p>
-                </div>
+                {waitlistDone ? (
+                  <div className="bg-gradient-to-r from-slate-700 to-slate-800 rounded-xl p-5 text-center">
+                    <div className="text-3xl mb-2">🎉</div>
+                    <p className="text-white font-bold text-sm mb-1">You&apos;re on the list!</p>
+                    <p className="text-slate-400 text-xs">We&apos;ll notify you when the iOS app launches.</p>
+                  </div>
+                ) : showIosWaitlist ? (
+                  <form onSubmit={async (e) => { e.preventDefault(); if (!waitlistEmail) return; setWaitlistLoading(true); try { await fetch("/api/public/ios-waitlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: waitlistEmail }) }); setWaitlistDone(true); } catch {} setWaitlistLoading(false); }} className="flex flex-col gap-3">
+                    <div className="relative">
+                      <input type="email" value={waitlistEmail} onChange={e => setWaitlistEmail(e.target.value)} placeholder="Enter your email address" required className="w-full border-2 border-slate-300 focus:border-slate-500 rounded-xl px-4 py-3 text-sm outline-none transition" />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">📧</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="submit" disabled={waitlistLoading} className="flex-1 bg-gradient-to-r from-slate-700 to-slate-900 text-white py-3 rounded-xl font-semibold hover:from-slate-800 hover:to-black transition shadow-lg disabled:opacity-50">
+                        {waitlistLoading ? "Joining..." : "Join Waitlist →"}
+                      </button>
+                      <button type="button" onClick={() => setShowIosWaitlist(false)} className="px-4 py-3 text-sm text-slate-400 hover:text-slate-600 transition">✕</button>
+                    </div>
+                    <p className="text-xs text-gray-400 text-center">No spam, just a launch notification.</p>
+                  </form>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    <button onClick={() => setShowIosWaitlist(true)} className="w-full bg-gradient-to-r from-slate-700 to-slate-900 text-white py-3.5 rounded-xl font-semibold hover:from-slate-800 hover:to-black transition shadow-lg shadow-slate-500/25 group-hover:shadow-slate-500/40">
+                      🔔 Get Notified When Ready
+                    </button>
+                    <p className="text-xs text-gray-400 text-center">
+                      Join the waitlist for early access
+                    </p>
+                  </div>
+                )}
 
                 <div className="mt-6 pt-6 border-t border-gray-100">
                   <div className="flex items-center justify-between text-xs text-gray-300">
