@@ -96,7 +96,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
   {
     title: "Tools",
     items: [
-      { href: "/dashboard/android-app", label: "Android App", icon: "📱" },
+      { href: "/dashboard/android-app", label: "Mobile Apps", icon: "📱" },
       { href: "/dashboard/bind-status", label: "Bind Status", icon: "🔌" },
       { href: "/dashboard/dlr-status", label: "DLR Status", icon: "📬" },
       { href: "/dashboard/number-validation", label: "Number Validation", icon: "✅" },

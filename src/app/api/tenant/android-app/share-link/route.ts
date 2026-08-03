@@ -25,8 +25,10 @@ export async function GET(request: Request) {
     companyName: tenant.companyName,
   });
 
-  const url = new URL(request.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
+  // Use the Host header so the URL works externally (not localhost:5556)
+  const host = request.headers.get("host") || "net2app.com";
+  const protocol = host.includes("localhost") ? "http" : "https";
+  const baseUrl = `${protocol}://${host}`;
   const downloadUrl = `${baseUrl}/api/tenant/android-app/download?token=${encodeURIComponent(nonExpiringToken)}`;
 
   return NextResponse.json({
