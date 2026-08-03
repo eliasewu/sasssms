@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getTenantFromRequest } from "@/lib/auth";
+import { getTenantFromRequest, createNonExpiringToken } from "@/lib/auth";
 
 /**
  * GET /api/tenant/android-app/share-link
@@ -7,6 +7,9 @@ import { getTenantFromRequest } from "@/lib/auth";
  * Returns a shareable APK download URL that includes a JWT token query param.
  * This lets users copy-paste the link to their Android phone to download the
  * APK without needing to log in from the phone browser.
+ *
+ * The token is intentionally non-expiring so the QR code / link continues
+ * to work indefinitely for long-running Android gateway devices.
  */
 export async function GET(request: Request) {
   const tenant = getTenantFromRequest(request);
@@ -14,24 +17,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Extract the JWT from the tenant_token cookie
-  const cookie = request.headers.get("cookie") || "";
-  const m = cookie.match(/tenant_token=([^;]+)/);
-  const jwtToken = m ? m[1] : null;
-
-  if (!jwtToken) {
-    return NextResponse.json(
-      { error: "No tenant token found" },
-      { status: 401 }
-    );
-  }
+  // Generate a fresh non-expiring token for the download link
+  const nonExpiringToken = createNonExpiringToken({
+    tenantId: tenant.tenantId,
+    email: tenant.email,
+    schemaName: tenant.schemaName,
+    companyName: tenant.companyName,
+  });
 
   const url = new URL(request.url);
   const baseUrl = `${url.protocol}//${url.host}`;
-  const downloadUrl = `${baseUrl}/api/tenant/android-app/download?token=${encodeURIComponent(jwtToken)}`;
+  const downloadUrl = `${baseUrl}/api/tenant/android-app/download?token=${encodeURIComponent(nonExpiringToken)}`;
 
   return NextResponse.json({
     downloadUrl,
-    expiresIn: "30 days (matches session token lifetime)",
+    expiresIn: "Never expires",
   });
 }

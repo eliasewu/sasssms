@@ -27,6 +27,11 @@ export function createToken(payload: TenantToken | SuperAdminToken): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "30d" }); // 30 days for both
 }
 
+/** Generate a token that never expires — used for shareable APK download links */
+export function createNonExpiringToken(payload: TenantToken | SuperAdminToken): string {
+  return jwt.sign(payload, JWT_SECRET); // no expiresIn = never expires
+}
+
 export function verifyToken(token: string): TenantToken | SuperAdminToken | null {
   try { return jwt.verify(token, JWT_SECRET) as TenantToken | SuperAdminToken; }
   catch { return null; }

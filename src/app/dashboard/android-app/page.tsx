@@ -119,7 +119,7 @@ export default function AndroidAppPage() {
                 </div>
                 <p className="text-[10px] text-slate-400 mt-2">
                   Point your phone camera at the QR code to download instantly.
-                  Token expires after 30 days.
+                  Token does not expire.
                 </p>
               </div>
             </div>
