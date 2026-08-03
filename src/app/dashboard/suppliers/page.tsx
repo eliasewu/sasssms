@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useConfirmModal } from "@/components/confirm-modal";
 import CopyButton from "@/components/copy-button";
 import { useColumnFilters, FilterRow, FilterToggle, type ColumnFilterDef } from "@/components/column-filters";
 import { SkeletonTable } from "@/components/loading-states";
 import { genCode, genId, genPwd } from "@/lib/id-generators";
 
-const CONNECTION_TYPES = ["SMPP", "HTTP API", "Email", "WhatsApp OTT", "Telegram OTT", "Voice OTP", "Local Bypass", "RCS", "Flash SMS"];
+const CONNECTION_TYPES = ["SMPP", "ANDROID_SMS", "HTTP API", "Email", "WhatsApp OTT", "Telegram OTT", "Voice OTP", "Local Bypass", "RCS", "Flash SMS"];
 const SMPP_VERSIONS = ["3.3", "3.4", "5.0"];
 const BIND_TYPES = ["TRX", "TX", "RX", "TX_RX"];
 
@@ -32,6 +33,7 @@ interface Supplier {
 interface Connector { id: number; name: string; type: string; provider: string; region: string; api_url?: string; }
 
 export default function SupplierPage() {
+  const searchParams = useSearchParams();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,6 +73,33 @@ export default function SupplierPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // ── Deep-link support: ?create=ANDROID_SMS auto-opens the form pre-filled ──
+  const lastCreateParam = useRef<string | null>(null);
+  useEffect(() => {
+    const createType = searchParams.get("create");
+    if (createType === lastCreateParam.current) return;
+    lastCreateParam.current = createType;
+    if (createType === "ANDROID_SMS" && !loading) {
+      setForm(prev => ({
+        ...prev,
+        supplierCode: genCode(),
+        systemId: genId(),
+        password: genPwd(),
+        connectionType: "ANDROID_SMS",
+        connectionMode: "SERVER",
+        host: "",
+        port: "2775",
+        username: "",
+        systemType: "ANDROID_SMS",
+      }));
+      setShowForm(true);
+      setEditing(null);
+      setShowPwd(false);
+      setError("");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, loading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -220,7 +249,9 @@ export default function SupplierPage() {
   };
 
   const typeColors: Record<string, string> = {
-    SMPP: "bg-blue-100 text-blue-700", "HTTP API": "bg-green-100 text-green-700",
+    SMPP: "bg-blue-100 text-blue-700",
+    ANDROID_SMS: "bg-teal-100 text-teal-700",
+    "HTTP API": "bg-green-100 text-green-700",
     RCS: "bg-purple-100 text-purple-700", "Flash SMS": "bg-amber-100 text-amber-700",
     "Voice OTP": "bg-red-100 text-red-700", "WhatsApp OTT": "bg-emerald-100 text-emerald-700",
     "Telegram OTT": "bg-cyan-100 text-cyan-700", Email: "bg-pink-100 text-pink-700",
@@ -235,12 +266,14 @@ export default function SupplierPage() {
           <FilterToggle showFilters={showFilters} hasActive={hasActive} activeCount={activeFilterCount} onClick={toggle} />
           <button onClick={() => {
             setShowForm(true); setEditing(null); setShowPwd(false); setError("");
-            // Auto-generate values for new supplier
+            // Auto-generate values for new supplier — reset to defaults
             setForm(prev => ({
               ...prev,
               supplierCode: prev.supplierCode || genCode(),
               systemId: prev.systemId || genId(),
               password: prev.password || genPwd(),
+              connectionType: "SMPP",
+              connectionMode: "CLIENT",
             }));
           }} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium">+ Add Supplier</button>
         </div>
@@ -272,6 +305,9 @@ export default function SupplierPage() {
                   <select value={form.connectionMode} onChange={e => setForm({...form, connectionMode: e.target.value})} disabled={form.inboundMode} className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed">
                     {CONNECTION_MODES.map(m => <option key={m} value={m}>{m === "CLIENT" ? "Client (ESME) — connect to external SMSC" : "Server (SMSC) — clients connect to us"}</option>)}
                   </select>
+                  {form.connectionType === "ANDROID_SMS" && form.connectionMode !== "SERVER" && (
+                    <p className="text-xs text-amber-600 mt-1">⚠️ ANDROID_SMS requires Connection Mode to be <strong>SERVER</strong>. The Android phone connects to this platform as an SMSC.</p>
+                  )}
                 </div>
               </div>
             </section>
@@ -282,7 +318,7 @@ export default function SupplierPage() {
               <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
                 {CONNECTION_TYPES.map(t => (
                   <label key={t} className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs ${form.connectionType === t ? "border-blue-500 bg-blue-50" : "border-slate-200"}`}>
-                    <input type="radio" name="stype" checked={form.connectionType === t} onChange={() => setForm({...form, connectionType: t})} className="accent-blue-600" />
+                    <input type="radio" name="stype" checked={form.connectionType === t} onChange={() => setForm({...form, connectionType: t, ...(t === "ANDROID_SMS" ? { connectionMode: "SERVER" } : {})})} className="accent-blue-600" />
                     <span>{t}</span>
                   </label>
                 ))}
@@ -290,7 +326,7 @@ export default function SupplierPage() {
             </section>
 
             {/* SMPP Settings */}
-            {form.connectionType === "SMPP" && (
+            {(form.connectionType === "SMPP" || form.connectionType === "ANDROID_SMS") && (
               <section className="bg-slate-50 rounded-xl p-5">
                 <h4 className="font-semibold mb-3">⚙️ SMPP Connection (v{form.smppVersion})</h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

@@ -33,10 +33,20 @@ export function verifyToken(token: string): TenantToken | SuperAdminToken | null
 }
 
 export function getTenantFromRequest(request: Request): TenantToken | null {
+  // 1. Try cookie (browser-based auth)
   const cookie = request.headers.get("cookie");
   if (cookie) {
     const m = cookie.match(/tenant_token=([^;]+)/);
     if (m) { const d = verifyToken(m[1]); if (d && "tenantId" in d) return d; }
+  }
+  // 2. Try Authorization: Bearer <token> header (Android app / mobile / cURL)
+  const authHeader = request.headers.get("authorization");
+  if (authHeader) {
+    const token = authHeader.replace(/^Bearer\s+/i, "");
+    if (token) {
+      const d = verifyToken(token);
+      if (d && "tenantId" in d) return d;
+    }
   }
   return null;
 }
