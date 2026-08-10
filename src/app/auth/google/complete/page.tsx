@@ -13,6 +13,7 @@ function GoogleCompleteContent() {
   const googleId = searchParams.get("googleId") || "";
 
   const [phone, setPhone] = useState("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -22,13 +23,17 @@ function GoogleCompleteContent() {
       setError("Phone number is required");
       return;
     }
+    if (!acceptTerms) {
+      setError("You must accept the Terms & Conditions to create an account.");
+      return;
+    }
     setLoading(true);
     setError("");
 
     const res = await fetch("/api/auth/google/complete-registration", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ state, phone: phone.trim(), googleId, name }),
+      body: JSON.stringify({ state, phone: phone.trim(), googleId, name, acceptTerms: "true" }),
     });
 
     const data = await res.json();
@@ -97,6 +102,21 @@ function GoogleCompleteContent() {
             />
             <p className="text-xs text-gray-400 mt-1">Include your country code for accurate SMS routing.</p>
           </div>
+
+          <label className="flex items-start gap-2.5 text-xs text-gray-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={acceptTerms}
+              onChange={e => setAcceptTerms(e.target.checked)}
+              className="mt-0.5 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 accent-blue-600"
+            />
+            <span>
+              I have read and agree to the{" "}
+              <Link href="/terms" className="text-blue-600 font-medium hover:underline">Terms &amp; Conditions</Link>{" "}
+              and the{" "}
+              <Link href="/privacy" className="text-blue-600 font-medium hover:underline">Privacy Policy</Link>.
+            </span>
+          </label>
 
           <div className="bg-green-50 border border-green-200 rounded-lg p-3">
             <p className="text-xs text-green-700">✓ Google account linked • ✓ No password needed • ✓ Pay only for what you use</p>

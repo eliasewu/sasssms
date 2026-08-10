@@ -15,8 +15,14 @@ export async function POST(request: Request) {
   const body = await request.json();
   const result = await tenantQuery(
     tenant.schemaName,
-    `INSERT INTO business_api_connect (name, provider, api_url, credentials) VALUES ($1,$2,$3,$4) RETURNING *`,
-    [body.name, body.provider, body.apiUrl || null, body.credentials || null]
+    `INSERT INTO business_api_connect (name, provider, api_url, credentials, proxy_id) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [
+      body.name,
+      body.provider,
+      body.apiUrl || null,
+      body.credentials || null,
+      body.proxyId ? parseInt(body.proxyId, 10) : null,
+    ]
   );
   return NextResponse.json({ api: result.rows[0] }, { status: 201 });
 }

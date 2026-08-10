@@ -37,6 +37,36 @@ export function verifyToken(token: string): TenantToken | SuperAdminToken | null
   catch { return null; }
 }
 
+/**
+ * Short-lived (30 min) token embedded in the per-tenant 3proxy installer
+ * scripts. Lets the installer script on the residential machine register the
+ * freshly-created proxy in the tenant's dashboard WITHOUT a browser session:
+ * the token itself carries the tenant id/schema + the generated proxy
+ * credentials, so the register endpoint never trusts script-supplied creds.
+ */
+export interface ProxyRegisterToken {
+  scope: "proxy-register";
+  tenantId: number;
+  schemaName: string;
+  username: string;
+  password: string;
+  port: number;
+}
+
+export function createProxyRegisterToken(payload: ProxyRegisterToken): string {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: "30m" });
+}
+
+export function verifyProxyRegisterToken(token: string): ProxyRegisterToken | null {
+  try {
+    const d = jwt.verify(token, JWT_SECRET) as ProxyRegisterToken;
+    // Require credentials too — so a malformed token can never overwrite an
+    // existing (host, port) row with empty username/password in the register route.
+    return d && d.scope === "proxy-register" && d.tenantId && d.schemaName && d.username && d.password ? d : null;
+  }
+  catch { return null; }
+}
+
 export function getTenantFromRequest(request: Request): TenantToken | null {
   // 1. Try cookie (browser-based auth)
   const cookie = request.headers.get("cookie");

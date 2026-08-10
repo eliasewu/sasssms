@@ -20,6 +20,7 @@ import {
 } from "@/lib/api-connector-parser";
 import { lookupClientRate, lookupSupplierCost } from "@/lib/rates";
 import { resolveChargingMode, isDlrCharged } from "@/lib/charging";
+import { pushDlrWebhook } from "@/lib/dlr-webhook-log";
 
 const POLL_INTERVAL_MS = 5_000; // 5 seconds — fast enough for 4s connectors
 
@@ -62,26 +63,21 @@ async function pushDlrToClient(
   url: string,
   messageId: string,
   destination: string,
-  status: string
+  status: string,
+  schemaName: string
 ) {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
-    await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message_id: messageId,
-        status,
-        destination,
-        timestamp: new Date().toISOString(),
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-  } catch {
-    // fire-and-forget
-  }
+  await pushDlrWebhook(
+    url,
+    {
+      message_id: messageId,
+      status,
+      destination,
+      timestamp: new Date().toISOString(),
+    },
+    schemaName,
+    messageId,
+    status
+  );
 }
 
 /**
@@ -145,7 +141,8 @@ async function pollDlrForMessage(
           msg.dlr_callback_url,
           msg.message_id,
           msg.destination,
-          "FAILED"
+          "FAILED",
+          schemaName
         );
       }
       return true;
@@ -165,7 +162,8 @@ async function pollDlrForMessage(
             msg.dlr_callback_url,
             msg.message_id,
             msg.destination,
-            "DELIVERED"
+            "DELIVERED",
+            schemaName
           );
         }
         return true;
@@ -328,7 +326,8 @@ async function pollDlrForMessage(
         msg.dlr_callback_url,
         msg.message_id,
         msg.destination,
-        dlrStatus
+        dlrStatus,
+        schemaName
       );
     }
 

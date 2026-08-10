@@ -72,18 +72,22 @@ export async function lookupMccMnc(destination: string): Promise<MccMncResult> {
         }
 
         // ── Attempt 2: Legacy — direct prefix match from mcc_mnc_database ──
+        // MNCs are stored zero-padded ("003"), so strip leading zeros before
+        // prefix-matching against the local number ("3" matches "382…").
         if (!mnc) {
           const result = await client.query(
             `SELECT mnc, country_name, network_name
              FROM mcc_mnc_database
              WHERE mcc = $1 AND mnc IS NOT NULL AND mnc != ''
-             ORDER BY LENGTH(mnc) DESC`,
+             -- All MNCs are stored zero-padded ("003") — order by the length of
+             -- the stripped value so longer (more specific) prefixes match first.
+             ORDER BY LENGTH(TRIM(LEADING '0' FROM mnc)) DESC`,
             [mcc]
           );
 
           for (const row of result.rows) {
-            const mncPrefix = row.mnc as string;
-            if (localNumber.startsWith(mncPrefix)) {
+            const mncPrefix = (row.mnc as string).replace(/^0+/, "");
+            if (mncPrefix && localNumber.startsWith(mncPrefix)) {
               mnc = mncPrefix;
               networkName = row.network_name as string;
               break;
@@ -93,8 +97,8 @@ export async function lookupMccMnc(destination: string): Promise<MccMncResult> {
           // ── Attempt 3: Reverse match (MNC code contains local prefix) ──
           if (!mnc && localNumber.length >= 2) {
             for (const row of result.rows) {
-              const mncCode = row.mnc as string;
-              if (mncCode.includes(localNumber.slice(0, 2))) {
+              const mncCode = (row.mnc as string).replace(/^0+/, "");
+              if (mncCode && mncCode.includes(localNumber.slice(0, 2))) {
                 mnc = mncCode;
                 networkName = row.network_name as string;
                 break;

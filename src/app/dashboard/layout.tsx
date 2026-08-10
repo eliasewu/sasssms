@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import { usePersistedExpandedSection } from "@/hooks/usePersistedExpandedSection";
 
 interface Tenant {
   id: number;
@@ -99,6 +100,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { href: "/dashboard/android-app", label: "Mobile Apps", icon: "📱" },
       { href: "/dashboard/bind-status", label: "Bind Status", icon: "🔌" },
       { href: "/dashboard/dlr-status", label: "DLR Status", icon: "📬" },
+      { href: "/dashboard/dlr-webhook-logs", label: "DLR Webhook Log", icon: "📡" },
       { href: "/dashboard/number-validation", label: "Number Validation", icon: "✅" },
       { href: "/dashboard/ip-list", label: "IP Whitelist", icon: "🛡️" },
       { href: "/dashboard/reports", label: "Reports", icon: "📈" },
@@ -125,12 +127,20 @@ const navSections: { title: string; items: NavItem[] }[] = [
   },
 ];
 
+const SECTION_TITLES = navSections.map((s) => s.title);
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [freeCredits, setFreeCredits] = useState(0);
   const [pendingPayments, setPendingPayments] = useState<{ hasPending: boolean; count: number; latest: { id: number; amount: string; status: string; packageType: string | null; smsAmount: number; createdAt: string; } | null }>({ hasPending: false, count: 0, latest: null });
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [expandedSections, setExpandedSections] = useState<string[]>(["Overview", "Messaging"]);
+  // Only ONE sidebar section is open at a time — opening a section closes the
+  // others. The last-opened section is remembered per user in localStorage.
+  const [expandedSection, setExpandedSection] = usePersistedExpandedSection(
+    "net2app-sidebar-section",
+    "Overview",
+    SECTION_TITLES
+  );
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
@@ -185,9 +195,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
   const toggleSection = (title: string) => {
-    setExpandedSections((prev) =>
-      prev.includes(title) ? prev.filter((t) => t !== title) : [...prev, title]
-    );
+    setExpandedSection((prev) => (prev === title ? null : title));
   };
 
   if (loading) {
@@ -223,10 +231,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   className="w-full flex items-center justify-between px-4 py-2 text-xs font-semibold text-slate-400 uppercase tracking-wider hover:text-slate-200"
                 >
                   <span>{section.title}</span>
-                  <span className="text-[10px]">{expandedSections.includes(section.title) ? "▼" : "▶"}</span>
+                  <span className="text-[10px]">{expandedSection === section.title ? "▼" : "▶"}</span>
                 </button>
               )}
-              {(expandedSections.includes(section.title) || !sidebarOpen) && (
+              {(expandedSection === section.title || !sidebarOpen) && (
                 <div className="space-y-0.5">
                   {section.items.map((item) => (
                     <Link

@@ -23,8 +23,8 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   type WASocket,
 } from "@whiskeysockets/baileys";
-import { SocksProxyAgent } from "socks-proxy-agent";
 import qrcode from "qrcode";
+import { buildGramJsProxyConfig, buildOttProxyAgent } from "@/lib/proxy-connect";
 
 // Telegram imports are dynamic (optional dependency — not always installed)
 // Use require-style paths to prevent Turbopack static analysis from failing
@@ -162,24 +162,6 @@ function getDeviceAuthDir(schemaName: string, deviceId: number): string {
   const dir = join(AUTH_DIR, sanitizeSchemaName(schemaName), `device-${deviceId}`);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   return dir;
-}
-
-function buildSocksProxyUrl(
-  host: string | null,
-  port: number | null,
-  protocol: string | null,
-  username: string | null,
-  password: string | null
-): string | null {
-  if (!host || !port) return null;
-  const proto = protocol || "socks5";
-  const auth =
-    username && password
-      ? `${encodeURIComponent(username)}:${encodeURIComponent(password)}@`
-      : username
-        ? `${encodeURIComponent(username)}@`
-        : "";
-  return `${proto}://${auth}${host}:${port}`;
 }
 
 // ── Core Functions ──
@@ -344,20 +326,22 @@ async function startRealWhatsAppPairing(
   device: Record<string, unknown>,
   poolKey: string
 ): Promise<void> {
-  const proxyUrl = buildSocksProxyUrl(
-    device.proxy_host as string | null,
-    device.proxy_port as number | null,
-    device.proxy_protocol as string | null,
-    device.proxy_username as string | null,
-    device.proxy_password as string | null
-  );
+  // Protocol-aware residential proxy (3proxy + Tailscale): SOCKS5/SOCKS4 via
+  // SocksProxyAgent, HTTP/HTTPS via HttpsProxyAgent. Uses the shared builder
+  // so OTT engines and the proxy Test button agree on one format.
+  const { agent } = buildOttProxyAgent({
+    host: device.proxy_host as string | null,
+    port: device.proxy_port as number | null,
+    protocol: device.proxy_protocol as string | null,
+    username: device.proxy_username as string | null,
+    password: device.proxy_password as string | null,
+  });
 
   const authDir = getDeviceAuthDir(schemaName, deviceId);
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
-  const agent = proxyUrl ? new SocksProxyAgent(proxyUrl) : undefined;
   const { version } = await fetchLatestBaileysVersion();
 
-  console.log(`[OTT-ENGINE] WhatsApp: connecting via ${proxyUrl || "direct"} (baileys v${version.join(".")})`);
+  console.log(`[OTT-ENGINE] WhatsApp: connecting via ${device.proxy_host ? `${device.proxy_protocol || "socks5"}://${device.proxy_host}:${device.proxy_port}` : "direct"} (baileys v${version.join(".")})`);
 
   const sock = makeWASocket({
     version,
@@ -504,19 +488,17 @@ async function startRealTelegramPairing(
     return;
   }
 
-  // Build proxy config for GramJS
-  let proxyConfig: any = undefined;
-  if (device.proxy_host && device.proxy_port) {
-    proxyConfig = {
-      ip: device.proxy_host as string,
-      port: device.proxy_port as number,
-      socksType: 5,
-      username: (device.proxy_username as string) || undefined,
-      password: (device.proxy_password as string) || undefined,
-    };
-  }
+  // Build proxy config for GramJS (the Node equivalent of Telethon/Pyrogram).
+  // SOCKS5/SOCKS4 are supported; socksType derives from the stored protocol.
+  const proxyConfig = buildGramJsProxyConfig({
+    host: device.proxy_host as string | null,
+    port: device.proxy_port as number | null,
+    protocol: device.proxy_protocol as string | null,
+    username: device.proxy_username as string | null,
+    password: device.proxy_password as string | null,
+  });
 
-  console.log(`[OTT-ENGINE] Telegram: connecting via ${proxyConfig ? `${proxyConfig.ip}:${proxyConfig.port}` : "direct"}`);
+  console.log(`[OTT-ENGINE] Telegram: connecting via ${proxyConfig ? `${proxyConfig.ip}:${proxyConfig.port} (socks${proxyConfig.socksType})` : "direct"}`);
 
   const stringSession = new StringSession("");
   const client = new TelegramClient(stringSession, telegramApiId, telegramApiHash, {
@@ -851,9 +833,12 @@ export async function sendOttMessage(
   try {
     await client.query(`SET search_path TO "${schemaName}"`);
 
-    // Verify device is ONLINE
+    // Verify device is ONLINE (also pulls the quota fields for diagnostics)
     const { rows: devices } = await client.query(
-      `SELECT id, device_type, proxy_id FROM ott_devices WHERE id = $1 AND status = 'ONLINE' AND is_active = true`,
+      `SELECT id, name, device_type, proxy_id,
+              daily_limit, monthly_limit, daily_sent, monthly_sent,
+              daily_reset_date, monthly_reset_month
+       FROM ott_devices WHERE id = $1 AND status = 'ONLINE' AND is_active = true`,
       [deviceId]
     );
 
@@ -861,12 +846,55 @@ export async function sendOttMessage(
       return { success: false, messageId, deviceId, error: "Device not online" };
     }
 
+    const device = devices[0];
+
+    // ── Per-device quota enforcement (atomic) ──
+    // The UPDATE only succeeds while the device is under BOTH its daily and
+    // monthly limits, and increments the counters in the same statement — so
+    // concurrent sends can never both pass the check. Counters auto-reset
+    // when the date (daily) or YYYY-MM (monthly) changes.
+    // NOTE: counting at queue time (before the caller's messages INSERT) is
+    // deliberate — a rare failed insert may overcount by one, which errs on
+    // the side of protecting the WhatsApp/Telegram account.
+    const quota = await client.query(
+      `UPDATE ott_devices SET
+         daily_sent = CASE WHEN daily_reset_date = CURRENT_DATE THEN daily_sent + 1 ELSE 1 END,
+         monthly_sent = CASE WHEN monthly_reset_month = to_char(CURRENT_DATE, 'YYYY-MM') THEN monthly_sent + 1 ELSE 1 END,
+         daily_reset_date = CURRENT_DATE,
+         monthly_reset_month = to_char(CURRENT_DATE, 'YYYY-MM')
+       WHERE id = $1
+         AND (CASE WHEN daily_reset_date = CURRENT_DATE THEN daily_sent ELSE 0 END) < daily_limit
+         AND (CASE WHEN monthly_reset_month = to_char(CURRENT_DATE, 'YYYY-MM') THEN monthly_sent ELSE 0 END) < monthly_limit
+       RETURNING daily_sent, monthly_sent, daily_limit, monthly_limit`,
+      [deviceId]
+    );
+
+    if (quota.rows.length === 0) {
+      // Device was ONLINE a moment ago, so this is a quota rejection.
+      const today = new Date().toISOString().slice(0, 10);
+      const month = today.slice(0, 7);
+      const dailyHit =
+        String(device.daily_reset_date).slice(0, 10) === today &&
+        Number(device.daily_sent) >= Number(device.daily_limit);
+      const monthlyHit =
+        String(device.monthly_reset_month).slice(0, 7) === month &&
+        Number(device.monthly_sent) >= Number(device.monthly_limit);
+      const error = dailyHit
+        ? `Daily OTT limit reached (${device.daily_sent}/${device.daily_limit}) — device ${device.name} resets tomorrow`
+        : monthlyHit
+          ? `Monthly OTT limit reached (${device.monthly_sent}/${device.monthly_limit}) — device ${device.name} resets next month`
+          : "OTT device send limit reached";
+      console.warn(`[OTT-ENGINE] ${error} (device #${deviceId})`);
+      return { success: false, messageId, deviceId, error };
+    }
+
     // The main route handles the INSERT into messages in a single canonical insert.
-    // This function verifies the device is available and logs the intent.
+    // This function verifies the device is available, enforces quotas, and logs the intent.
     // The OTT Worker daemon picks up PENDING messages and delivers them.
 
     console.log(
-      `[OTT-ENGINE] Message ${messageId} queued for OTT device #${deviceId} (${devices[0].device_type}) → ${destination}`
+      `[OTT-ENGINE] Message ${messageId} queued for OTT device #${deviceId} (${device.device_type}) → ${destination} ` +
+      `(daily ${quota.rows[0].daily_sent}/${quota.rows[0].daily_limit}, monthly ${quota.rows[0].monthly_sent}/${quota.rows[0].monthly_limit})`
     );
 
     return { success: true, messageId, deviceId };

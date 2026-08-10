@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useConfirmModal } from "@/components/confirm-modal";
+import AuditActor from "@/components/audit-actor";
 
 interface PaymentGateway {
   id: number; method: string; label: string; is_active: boolean;
@@ -19,6 +20,19 @@ const PAYMENT_METHODS = [
   { value: "usdc", label: "USDC", icon: "💲" },
   { value: "bnb", label: "BNB (BSC)", icon: "🟡" },
 ];
+
+// Human-readable labels for the audited feature-toggle columns (0039 trigger).
+const TOGGLE_LABELS: Record<string, string> = {
+  smpp_enabled: "SMPP",
+  http_enabled: "HTTP API",
+  rcs_enabled: "RCS",
+  flash_sms_enabled: "Flash SMS",
+  voice_otp_enabled: "Voice OTP",
+  ott_enabled: "OTT",
+  business_api_enabled: "Business API",
+  email_enabled: "Email",
+  auto_renew_enabled: "Auto-Renew",
+};
 
 export default function SuperSettingsPage() {
   const [costPerSms, setCostPerSms] = useState("0.00010");
@@ -52,6 +66,25 @@ export default function SuperSettingsPage() {
   // Peak hours for supplier unbind alerts
   const [peakHoursStart, setPeakHoursStart] = useState("08:00");
   const [peakHoursEnd, setPeakHoursEnd] = useState("22:00");
+  // Tailscale auth key + advertise tags for automatic installer connection
+  const [tailscaleAuthKey, setTailscaleAuthKey] = useState("");
+  const [showAuthKey, setShowAuthKey] = useState(false);
+  const [tailscaleAdvertiseTags, setTailscaleAdvertiseTags] = useState("");
+  // Installer download audit (who downloaded a script + whether it had the key)
+  const [installerAudit, setInstallerAudit] = useState<
+    { id: number; tenantName: string; tenantEmail: string | null; os: string; filename: string; embeddedAuthKey: boolean; ip: string | null; at: string }[]
+  >([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  // Auto-Connect approval history (who toggled the per-tenant approval, across all tenants)
+  const [approvalHistory, setApprovalHistory] = useState<
+    { id: number; tenantId: number; tenantName: string; tenantEmail: string | null; action: string; enabled: boolean; changedBy: string; ip: string | null; at: string }[]
+  >([]);
+  const [approvalLoading, setApprovalLoading] = useState(false);
+  // Feature-toggle audit (who flipped smpp/http/rcs/etc for any tenant)
+  const [toggleAudit, setToggleAudit] = useState<
+    { id: number; tenantId: number; tenantName: string; tenantEmail: string | null; column: string | null; enabled: boolean; changedBy: string; ip: string | null; at: string }[]
+  >([]);
+  const [toggleAuditLoading, setToggleAuditLoading] = useState(false);
   // Server locations
   const [serverLocations, setServerLocations] = useState<ServerLocation[]>([
     { id: "canada", country: "Canada", city: "Toronto", countryCodes: "US,CA,MX", ipAddress: "", port: 2775, isActive: true },
@@ -89,11 +122,35 @@ export default function SuperSettingsPage() {
     // Peak hours
     if (r.settings?.peak_hours_start) setPeakHoursStart(r.settings.peak_hours_start);
     if (r.settings?.peak_hours_end) setPeakHoursEnd(r.settings.peak_hours_end);
+    // Tailscale auth key + advertise tags
+    if (r.settings?.tailscaleAuthKey) setTailscaleAuthKey(r.settings.tailscaleAuthKey);
+    if (r.settings?.tailscaleAdvertiseTags) setTailscaleAdvertiseTags(r.settings.tailscaleAdvertiseTags);
     // Server locations
     if (r.settings?.server_locations) {
       try { const locs = JSON.parse(r.settings.server_locations); setServerLocations(locs); } catch {}
     }
     setGateways(r.payments || []);
+    // Installer download audit (loaded with the same effect as everything else)
+    setAuditLoading(true);
+    try {
+      const ar = await fetch("/api/super/installer-audit?limit=20").then(r => r.json());
+      setInstallerAudit(ar.entries || []);
+    } catch { /* ignore */ }
+    setAuditLoading(false);
+    // Auto-Connect approval history — latest toggle events across all tenants
+    setApprovalLoading(true);
+    try {
+      const ar = await fetch("/api/super/auto-connect-audit?limit=10").then(r => r.json());
+      setApprovalHistory(ar.entries || []);
+    } catch { /* ignore */ }
+    setApprovalLoading(false);
+    // Feature-toggle audit — latest toggle events across all tenants
+    setToggleAuditLoading(true);
+    try {
+      const ar = await fetch("/api/super/toggle-audit?limit=10").then(r => r.json());
+      setToggleAudit(ar.entries || []);
+    } catch { /* ignore */ }
+    setToggleAuditLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -118,6 +175,8 @@ export default function SuperSettingsPage() {
         limitedPromoBadge: promoBadge,
         peakHoursStart: peakHoursStart,
         peakHoursEnd: peakHoursEnd,
+        tailscaleAuthKey: tailscaleAuthKey,
+        tailscaleAdvertiseTags: tailscaleAdvertiseTags,
         serverLocations: serverLocations,
         syncToAllTenants: true,  // ← triggers auto-sync
       }),
@@ -342,6 +401,280 @@ export default function SuperSettingsPage() {
           <strong>Clients connect to:</strong> {smppIp}:{smppPort} (SMPP v3.4, Java 21 ESME/SMSC compatible)
           {secondaryIp && <span> · Fallback: {secondaryIp}:{smppPort}</span>}
         </div>
+      </div>
+
+      {/* Tailscale Auto-Connect */}
+      <div className="bg-white rounded-xl border p-6 shadow-sm">
+        <div className="flex items-center gap-3 mb-4">
+          <h3 className="font-semibold text-lg">🌐 Tailscale Auto-Connect</h3>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${tailscaleAuthKey ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
+            {tailscaleAuthKey ? "Enabled" : "Disabled"}
+          </span>
+        </div>
+        <p className="text-sm text-slate-500 mb-4">
+          Paste a Tailscale <strong>auth key</strong> and every downloaded 3proxy installer (Linux/Windows) will connect
+          the residential machine to your tailnet <strong>automatically</strong> — no browser login URL or sign-up step needed.
+          The client machine joins the mesh, shows up in the Tailscale panel, and can host proxies immediately.
+        </p>
+        <div className="max-w-lg">
+          <label className="block text-sm font-medium mb-1">Tailscale Auth Key</label>
+          <div className="flex gap-2">
+            <input
+              type={showAuthKey ? "text" : "password"}
+              value={tailscaleAuthKey}
+              onChange={e => setTailscaleAuthKey(e.target.value)}
+              placeholder="tskey-auth-..."
+              className="flex-1 border rounded-lg px-3 py-2 text-sm font-mono"
+            />
+            <button
+              type="button"
+              onClick={() => setShowAuthKey(!showAuthKey)}
+              className="bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-xs hover:bg-slate-200 whitespace-nowrap"
+            >
+              {showAuthKey ? "Hide" : "Show"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setTailscaleAuthKey(""); setMsg("Auth key cleared — save to apply."); setTimeout(() => setMsg(""), 3000); }}
+              className="border border-red-200 text-red-600 px-3 py-2 rounded-lg text-xs hover:bg-red-50 whitespace-nowrap"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="mt-4">
+            <label className="block text-sm font-medium mb-1">Advertise Tags <span className="text-slate-400 font-normal">(optional)</span></label>
+            <input
+              type="text"
+              value={tailscaleAdvertiseTags}
+              onChange={e => setTailscaleAdvertiseTags(e.target.value)}
+              placeholder="tag:client, tag:home"
+              className="w-full border rounded-lg px-3 py-2 text-sm font-mono"
+            />
+            <p className="text-xs text-slate-400 mt-1">
+              Passed as <code className="bg-slate-100 px-1 rounded">--advertise-tags</code> when installers run <code className="bg-slate-100 px-1 rounded">tailscale up --authkey</code>.
+              <strong> Required</strong> for tag-scoped auth keys — the tags must be allowed by your tailnet ACLs.
+            </p>
+          </div>
+          <div className="mt-3 bg-blue-50 rounded-lg p-3 text-xs text-blue-700 space-y-1">
+            <p>
+              <strong>How to create a key:</strong> open{" "}
+              <a href="https://login.tailscale.com/admin/settings/keys" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-900">
+                Tailscale admin console → Settings → Keys
+              </a>{" "}
+              → <strong>Generate auth key</strong> → copy the <code className="bg-blue-100 px-1 rounded">tskey-auth-…</code> value.
+            </p>
+            <p>
+              🏷️ <strong>Tag-scoped keys:</strong> if you generate a key with <strong>tags</strong> (e.g. <code className="bg-blue-100 px-1 rounded">tag:client</code>), the
+              key only works with those tags. Fill in <strong>Advertise Tags</strong> above so installers pass them — otherwise
+              tag-scoped auth fails and machines fall back to the interactive login.
+            </p>
+            <p>
+              🔒 <strong>Security:</strong> the key is embedded in installers downloaded from tenant dashboards, so it can be
+              extracted by anyone with a tenant account. Prefer an <strong>ephemeral</strong> or short-expiry key, or a
+              <strong> tag-scoped</strong> key restricted to your residential machines — and rotate it if it ever leaves the
+              operator team. Keep it secret: it grants tailnet access.
+            </p>
+            <p>
+              👥 <strong>Per-tenant approval:</strong> the key + tags are only embedded for tenants with <strong>⚡ Auto-Connect
+              Installer</strong> enabled (Tenant Management → Edit). Unapproved tenants download plain installers with the
+              interactive login URL. Disable it for tenants you don&apos;t fully trust.
+            </p>
+          </div>
+        </div>
+        <p className="text-xs text-slate-400 mt-3">Saved with “Save &amp; Sync All Settings”. Empty key = installers fall back to the interactive login URL. Empty tags = authkey-only connect (fine for non-tag-scoped keys).</p>
+      </div>
+
+      {/* Installer Download Audit */}
+      <div className="bg-white rounded-xl border p-6 shadow-sm">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h3 className="font-semibold text-lg">🕵️ Installer Download Audit</h3>
+            <p className="text-sm text-slate-500">Which tenant downloaded a 3proxy installer — and whether it carried the auto-connect auth key</p>
+          </div>
+          <button
+            onClick={load}
+            disabled={auditLoading}
+            className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg text-xs hover:bg-slate-200 disabled:opacity-50"
+          >
+            {auditLoading ? "Loading…" : "↻ Refresh"}
+          </button>
+        </div>
+        {installerAudit.length === 0 ? (
+          <div className="text-center py-8 text-slate-400 text-sm">
+            <div className="text-3xl mb-2">📦</div>
+            <p>No installer downloads recorded yet.</p>
+            <p className="text-xs mt-1">Every download from a tenant dashboard (Linux or Windows) is logged here.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
+                <tr>
+                  <th className="px-4 py-2.5">Time</th>
+                  <th className="px-4 py-2.5">Tenant</th>
+                  <th className="px-4 py-2.5">OS</th>
+                  <th className="px-4 py-2.5">File</th>
+                  <th className="px-4 py-2.5">Auth Key</th>
+                  <th className="px-4 py-2.5">IP</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {installerAudit.map(e => (
+                  <tr key={e.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-2.5 whitespace-nowrap text-xs text-slate-500">{new Date(e.at).toLocaleString()}</td>
+                    <td className="px-4 py-2.5">
+                      <div className="font-medium">{e.tenantName}</div>
+                      <div className="text-xs text-slate-400">{e.tenantEmail}</div>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-xs uppercase">{e.os}</span>
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-slate-500">{e.filename}</td>
+                    <td className="px-4 py-2.5">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${e.embeddedAuthKey ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"}`}>
+                        {e.embeddedAuthKey ? "⚡ Embedded" : "None"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-slate-500">{e.ip || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {installerAudit.some(e => e.embeddedAuthKey) && (
+          <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+            <strong>⚠️ Auth-key downloads detected:</strong> {installerAudit.filter(e => e.embeddedAuthKey).length} of the last {installerAudit.length} downloads embedded the
+            Tailscale auto-connect key. The key is extractable from those scripts — rotate it if any downloader is not trusted.
+          </div>
+        )}
+      </div>
+
+      {/* Auto-Connect Approval History */}
+      <div className="bg-white rounded-xl border p-6 shadow-sm">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h3 className="font-semibold text-lg">🗒️ Auto-Connect Approval History</h3>
+            <p className="text-sm text-slate-500">Who enabled or disabled the ⚡ Auto-Connect Installer approval for each tenant — across the whole platform</p>
+          </div>
+          <button
+            onClick={load}
+            disabled={approvalLoading}
+            className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg text-xs hover:bg-slate-200 disabled:opacity-50"
+          >
+            {approvalLoading ? "Loading…" : "↻ Refresh"}
+          </button>
+        </div>
+        {approvalHistory.length === 0 ? (
+          <div className="text-center py-8 text-slate-400 text-sm">
+            <div className="text-3xl mb-2">🗒️</div>
+            <p>No approval changes recorded yet.</p>
+            <p className="text-xs mt-1">Toggles made in Tenant Management → Edit → ⚡ Auto-Connect Installer appear here.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
+                <tr>
+                  <th className="px-4 py-2.5">Time</th>
+                  <th className="px-4 py-2.5">Tenant</th>
+                  <th className="px-4 py-2.5">Action</th>
+                  <th className="px-4 py-2.5">By</th>
+                  <th className="px-4 py-2.5">IP</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {approvalHistory.map(e => (
+                  <tr key={e.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-2.5 whitespace-nowrap text-xs text-slate-500">{new Date(e.at).toLocaleString()}</td>
+                    <td className="px-4 py-2.5">
+                      <div className="font-medium">{e.tenantName}</div>
+                      <div className="text-xs text-slate-400">#{e.tenantId}{e.tenantEmail ? ` · ${e.tenantEmail}` : ""}</div>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${e.enabled ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}
+                        title={e.action}
+                      >
+                        {e.enabled ? "⚡ ON" : "OFF"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-xs"><AuditActor actor={e.changedBy} /></td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-slate-500">{e.ip || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {approvalHistory.length > 0 && (
+          <p className="text-xs text-slate-400 mt-3">Shows the last {approvalHistory.length} toggle events. Full per-tenant history is in Tenant Management → Edit → 🗒️ Approval history.</p>
+        )}
+      </div>
+
+      {/* Feature Toggle Audit */}
+      <div className="bg-white rounded-xl border p-6 shadow-sm">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h3 className="font-semibold text-lg">⚙️ Feature Toggle Audit</h3>
+            <p className="text-sm text-slate-500">Who enabled or disabled each feature (SMPP, HTTP API, Business API, …) for any tenant — across the whole platform</p>
+          </div>
+          <button
+            onClick={load}
+            disabled={toggleAuditLoading}
+            className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg text-xs hover:bg-slate-200 disabled:opacity-50"
+          >
+            {toggleAuditLoading ? "Loading…" : "↻ Refresh"}
+          </button>
+        </div>
+        {toggleAudit.length === 0 ? (
+          <div className="text-center py-8 text-slate-400 text-sm">
+            <div className="text-3xl mb-2">⚙️</div>
+            <p>No feature-toggle changes recorded yet.</p>
+            <p className="text-xs mt-1">Every toggle made in Tenant Management → Edit appears here.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
+                <tr>
+                  <th className="px-4 py-2.5">Time</th>
+                  <th className="px-4 py-2.5">Tenant</th>
+                  <th className="px-4 py-2.5">Toggle</th>
+                  <th className="px-4 py-2.5">Action</th>
+                  <th className="px-4 py-2.5">By</th>
+                  <th className="px-4 py-2.5">IP</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {toggleAudit.map(e => (
+                  <tr key={e.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-2.5 whitespace-nowrap text-xs text-slate-500">{new Date(e.at).toLocaleString()}</td>
+                    <td className="px-4 py-2.5">
+                      <div className="font-medium">{e.tenantName}</div>
+                      <div className="text-xs text-slate-400">#{e.tenantId}{e.tenantEmail ? ` · ${e.tenantEmail}` : ""}</div>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-xs" title={e.column || undefined}>
+                        {e.column ? TOGGLE_LABELS[e.column] || e.column : "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${e.enabled ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                        {e.enabled ? "ON" : "OFF"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-xs"><AuditActor actor={e.changedBy} /></td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-slate-500">{e.ip || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {toggleAudit.length > 0 && (
+          <p className="text-xs text-slate-400 mt-3">Shows the last {toggleAudit.length} toggle events.</p>
+        )}
       </div>
 
       {/* Promo & SMS Bonuses */}

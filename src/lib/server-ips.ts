@@ -11,6 +11,17 @@ export const ALL_SERVER_IPS = [
   "139.99.148.65",   // Australia — Sydney
 ] as const;
 
+/**
+ * Servers that must NEVER be assigned to tenants (dev/test boxes).
+ * Auto-assignment in the registration routes filters these out so tenants
+ * always land on production servers.
+ */
+export const DEV_SERVER_IPS = ["15.235.35.125"] as const;
+
+export function isDevServer(ip: string | null | undefined): boolean {
+  return !!ip && (DEV_SERVER_IPS as readonly string[]).includes(ip);
+}
+
 export const KNOWN_LABELS: Record<string, string> = {
   "15.235.35.125": "Canada — Toronto (Dev)",
   "149.56.22.232": "Canada — Toronto (Origin)",

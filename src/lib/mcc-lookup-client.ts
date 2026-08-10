@@ -63,6 +63,17 @@ export function padMnc(mnc: string | null | undefined): string {
 }
 
 /**
+ * Validate MCC/MNC format: MCC is 2-3 digits, MNC (optional) is 1-3 digits.
+ * Used to guard tenant-side writes, which now cascade into every tenant's
+ * rate tables.
+ */
+export function isValidMccMnc(mcc: string, mnc?: string | null): boolean {
+  if (!/^\d{2,3}$/.test((mcc || "").trim())) return false;
+  if (mnc && !/^\d{1,3}$/.test(mnc.trim())) return false;
+  return true;
+}
+
+/**
  * Format MCC + MNC into combined 6-digit MCCMNC code.
  * 1-digit MNC → pad to "001", 2-digit → "020", 3-digit → "998"
  * Examples: (470, "1") → "470001", (412, "20") → "412020", (544, "998") → "544998"

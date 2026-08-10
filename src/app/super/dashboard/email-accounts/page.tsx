@@ -2,14 +2,17 @@
 
 import { useState, useEffect, useCallback } from "react";
 
+// The API (/api/super/email-accounts) returns drizzle's camelCase column
+// names (isActive, diskQuotaMB, createdAt) — the page must read those, or
+// every account renders as Disabled.
 interface EmailAccount {
   id: number;
   email: string;
   name: string;
   department: string | null;
-  disk_quota_mb: number;
-  is_active: boolean;
-  created_at: string;
+  diskQuotaMB: number;
+  isActive: boolean;
+  createdAt: string;
 }
 
 const DEPARTMENTS = ["Finance", "Support", "Sales", "Engineering", "Management", "Operations", "Marketing", "HR"];
@@ -58,7 +61,7 @@ export default function EmailAccountsPage() {
         name: form.name,
         department: form.department || null,
         diskQuotaMB: parseInt(form.diskQuotaMB) || 500,
-        isActive: editing.is_active,
+        isActive: editing.isActive,
       };
       if (resetPassword && resetPwValue.length >= 8) {
         updateBody.password = resetPwValue;
@@ -122,7 +125,7 @@ export default function EmailAccountsPage() {
     await fetch(`/api/super/email-accounts?id=${account.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isActive: !account.is_active }),
+      body: JSON.stringify({ isActive: !account.isActive }),
     });
     load();
   };
@@ -145,7 +148,7 @@ export default function EmailAccountsPage() {
       name: a.name,
       password: "",
       department: a.department || "",
-      diskQuotaMB: String(a.disk_quota_mb || 500),
+      diskQuotaMB: String(a.diskQuotaMB || 500),
     });
     setShowForm(true);
   };
@@ -400,23 +403,23 @@ export default function EmailAccountsPage() {
             </thead>
             <tbody>
               {accounts.map(a => (
-                <tr key={a.id} className={`border-b hover:bg-slate-50 ${!a.is_active ? "opacity-50" : ""}`}>
+                <tr key={a.id} className={`border-b hover:bg-slate-50 ${!a.isActive ? "opacity-50" : ""}`}>
                   <td className="px-4 py-3 font-medium">{a.name}</td>
                   <td className="px-4 py-3 font-mono text-xs">{a.email}</td>
                   <td className="px-4 py-3">
                     {a.department ? <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs">{a.department}</span> : <span className="text-slate-400 text-xs">—</span>}
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs">{a.disk_quota_mb} MB</td>
+                  <td className="px-4 py-3 font-mono text-xs">{a.diskQuotaMB} MB</td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs ${a.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                      {a.is_active ? "Active" : "Disabled"}
+                    <span className={`px-2 py-0.5 rounded-full text-xs ${a.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                      {a.isActive ? "Active" : "Disabled"}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-500">{new Date(a.created_at).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500">{new Date(a.createdAt).toLocaleDateString()}</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
                       <button onClick={() => editAccount(a)} className="text-blue-600 hover:underline text-xs">Edit</button>
-                      <button onClick={() => toggleActive(a)} className="text-amber-600 hover:underline text-xs">{a.is_active ? "Disable" : "Enable"}</button>
+                      <button onClick={() => toggleActive(a)} className="text-amber-600 hover:underline text-xs">{a.isActive ? "Disable" : "Enable"}</button>
                       <button onClick={() => setDeleteConfirm(a)} className="text-red-600 hover:underline text-xs">Delete</button>
                     </div>
                   </td>

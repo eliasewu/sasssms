@@ -4,7 +4,8 @@ import { tenants } from "@/db/schema";
 import { createToken, hashPassword } from "@/lib/auth";
 import { createTenantSchema, seedMccMncRates } from "@/lib/tenant-schema";
 import { safeText, safeDecimal } from "@/lib/validation";
-import { ALL_SERVER_IPS, getSelfIp } from "@/lib/server-ips";
+import { ALL_SERVER_IPS, getSelfIp, isDevServer } from "@/lib/server-ips";
+import { notifyAdminNewTenant } from "@/lib/email-service";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
 
@@ -18,10 +19,15 @@ async function getSignupBonus(): Promise<number> {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { state, phone, googleId, name: googleName } = body;
+    const { state, phone, googleId, name: googleName, acceptTerms } = body;
 
     if (!state || !phone || !googleId) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+
+    // ── Terms & Conditions acceptance required ──
+    if (acceptTerms !== true && acceptTerms !== "true") {
+      return NextResponse.json({ error: "You must accept the Terms & Conditions to create an account." }, { status: 400 });
     }
 
     // Validate the session token (stored in password_reset_tokens)
@@ -74,14 +80,21 @@ export async function POST(request: Request) {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
-    // Auto-assign server
+    // Auto-assign server — PRODUCTION locations only. Dev servers
+    // (role "development" or in DEV_SERVER_IPS) are never assignable.
     let resolvedLocation = "auto";
     let assignedServerIp = "0.0.0.0";
     try {
       const locResult = await pool.query("SELECT value FROM platform_settings WHERE key = 'server_locations'");
       if (locResult.rows.length > 0) {
-        const locations: Array<{ id: string; ipAddress: string; isActive: boolean }> = JSON.parse(locResult.rows[0].value || "[]");
-        const active = locations.filter((l) => l.isActive && l.ipAddress && l.ipAddress !== "0.0.0.0");
+        const locations: Array<{ id: string; ipAddress: string; isActive: boolean; role?: string }> = JSON.parse(locResult.rows[0].value || "[]");
+        const active = locations.filter((l) =>
+          l.isActive &&
+          l.ipAddress &&
+          l.ipAddress !== "0.0.0.0" &&
+          l.role !== "development" &&
+          !isDevServer(l.ipAddress)
+        );
         if (active.length > 0) {
           const pick = active[Math.floor(Math.random() * active.length)];
           resolvedLocation = pick.id;
@@ -89,6 +102,16 @@ export async function POST(request: Request) {
         }
       }
     } catch { /* fallback */ }
+    // If still unset or pointing at a dev box, fall back to the global
+    // production smppServerIp (also skipping dev IPs).
+    if (!assignedServerIp || assignedServerIp === "0.0.0.0" || isDevServer(assignedServerIp)) {
+      try {
+        const globalIpResult = await pool.query("SELECT value FROM platform_settings WHERE key = 'smppServerIp'");
+        if (globalIpResult.rows.length > 0 && globalIpResult.rows[0].value && globalIpResult.rows[0].value !== "0.0.0.0" && !isDevServer(globalIpResult.rows[0].value)) {
+          assignedServerIp = globalIpResult.rows[0].value;
+        }
+      } catch { /* fallback */ }
+    }
 
     // Get the name from the request (Google profile name passed from phone page)
     // Already computed above
@@ -169,6 +192,19 @@ export async function POST(request: Request) {
         body: JSON.stringify(tenantData),
       }).catch(() => {});
     });
+
+    // ── Notify admin of the new Google-signup tenant (best-effort, non-blocking)
+    //    so they can review whether to keep Auto-Connect Installer enabled ──
+    (async () => {
+      notifyAdminNewTenant({
+        tenantName: tenant.companyName,
+        tenantEmail: tenant.email,
+        phone: safeText(phone, 50),
+        serverIp: assignedServerIp,
+        signupBonusSms: tenant.smsLimit ?? undefined,
+        viaGoogle: true,
+      }).catch(e => console.error("New-tenant admin notification failed:", e));
+    })();
 
     return response;
   } catch (error: unknown) {

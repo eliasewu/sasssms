@@ -4,7 +4,9 @@ import { pool } from "@/db";
 
 /**
  * POST — Push all MCC/MNC entries from the global database into active tenant's
- * client_rates and supplier_rates tables. Only inserts new entries (skips duplicates).
+ * client_rates and supplier_rates tables. Inserts new entries (skips duplicates)
+ * and prunes shared-default rows that no longer exist in the global database,
+ * healing drift left by a failed automatic sync.
  *
  * Body (optional):
  *   { tenantIds?: number[] }  — push only to these specific tenant IDs.
@@ -94,14 +96,16 @@ export async function POST(request: Request) {
         await client.query("SET search_path TO public"); // Start clean
         await client.query(`SET search_path TO "${schemaName}"`);
 
-        // Push to client_rates using batch WHERE NOT EXISTS to skip duplicates
+        // Push to client_rates using batch WHERE NOT EXISTS to skip duplicates.
+        // Dedup on the zero-padded MNC key so "3" and "003" are the same network.
         for (const entry of mccEntries) {
           const { rowCount } = await client.query(
             `INSERT INTO client_rates (client_id, country_code, mcc, mnc, mccmnc, operator_name, rate)
-             SELECT $1, $2, $3, $4, $3 || LPAD(COALESCE($4,''), 3, '0'), $5, $6
+             SELECT $1, $2::text, $3::text, $4::text, $3::text || LPAD(COALESCE($4::text,''), 3, '0'), $5::text, $6
              WHERE NOT EXISTS (
                SELECT 1 FROM client_rates
-               WHERE country_code = $2 AND mcc = $3 AND COALESCE(mnc,'') = $7
+               WHERE country_code = $2 AND mcc = $3
+                 AND LPAD(COALESCE(mnc,''), 3, '0') = LPAD($7::text, 3, '0')
              )`,
             [-1, entry.country_code, entry.mcc, entry.mnc || null, entry.network_name || null, "0.00025", entry.mnc || ""]
           );
@@ -113,16 +117,41 @@ export async function POST(request: Request) {
         for (const entry of mccEntries) {
           const { rowCount } = await client.query(
             `INSERT INTO supplier_rates (supplier_id, country_code, mcc, mnc, mccmnc, operator_name, cost)
-             SELECT $1, $2, $3, $4, $3 || LPAD(COALESCE($4,''), 3, '0'), $5, $6
+             SELECT $1, $2::text, $3::text, $4::text, $3::text || LPAD(COALESCE($4::text,''), 3, '0'), $5::text, $6
              WHERE NOT EXISTS (
                SELECT 1 FROM supplier_rates
-               WHERE country_code = $2 AND mcc = $3 AND COALESCE(mnc,'') = $7
+               WHERE country_code = $2 AND mcc = $3
+                 AND LPAD(COALESCE(mnc,''), 3, '0') = LPAD($7::text, 3, '0')
              )`,
             [-1, entry.country_code, entry.mcc, entry.mnc || null, entry.network_name || null, "0.00020", entry.mnc || ""]
           );
           if (rowCount && rowCount > 0) totalInserted++;
           else totalSkipped++;
         }
+
+        // Prune shared-default rows that no longer exist in the global database.
+        // This heals drift when an earlier delete-sync failed for this tenant.
+        // COALESCE on country_code so NULL (global) matches '' (tenant) rows.
+        await client.query(
+          `DELETE FROM client_rates cr
+           WHERE cr.client_id = -1
+             AND NOT EXISTS (
+               SELECT 1 FROM public.mcc_mnc_database g
+               WHERE COALESCE(g.country_code, '') = COALESCE(cr.country_code, '')
+                 AND g.mcc = cr.mcc
+                 AND LPAD(COALESCE(g.mnc, ''), 3, '0') = LPAD(COALESCE(cr.mnc, ''), 3, '0')
+             )`
+        );
+        await client.query(
+          `DELETE FROM supplier_rates sr
+           WHERE sr.supplier_id = -1
+             AND NOT EXISTS (
+               SELECT 1 FROM public.mcc_mnc_database g
+               WHERE COALESCE(g.country_code, '') = COALESCE(sr.country_code, '')
+                 AND g.mcc = sr.mcc
+                 AND LPAD(COALESCE(g.mnc, ''), 3, '0') = LPAD(COALESCE(sr.mnc, ''), 3, '0')
+             )`
+        );
 
         await client.query("COMMIT");
       } catch (e) {

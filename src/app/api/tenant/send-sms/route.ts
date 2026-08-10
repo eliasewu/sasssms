@@ -16,6 +16,8 @@ import type { CallAttempt, VoiceOtpCallResult } from "@/lib/voice-otp-engine";
 import type { RouteInfo, DlrPayload } from "@/lib/smpp-client";
 import { getOnlineOttDevices, sendOttMessage } from "@/lib/ott-pairing-engine";
 import type { OttDeviceType } from "@/lib/ott-pairing-engine";
+import { deliverBusinessApiRoute } from "@/lib/business-api-send";
+import { isBusinessApiRoute } from "@/lib/connection-types";
 import { lookupClientRate, lookupSupplierCost } from "@/lib/rates";
 import { buildUrl, evaluateCondition, extractFromResponse, parseHeaders } from "@/lib/api-connector-parser";
 import { buildRegex } from "@/lib/regex-utils";
@@ -25,9 +27,12 @@ import {
   isDlrCharged,
   isForceDlr,
   isForceDlrTimeout,
+  isForceDlrOrTimeout,
   buildForceDlrPayload,
 } from "@/lib/charging";
 import type { ChargingMode } from "@/lib/charging";
+import { isValidDestinationNumber } from "@/lib/number-validation";
+import { isDuplicateSmsSubmission, releaseSmsSubmission } from "@/lib/sms-dedupe";
 
 export const dynamic = "force-dynamic";
 
@@ -136,7 +141,7 @@ export async function POST(request: Request) {
 
   const client = clientResult.rows[0];
   const clientChargingMode = resolveChargingMode(client);
-  const clientDlrTimeout = parseInt(client.dlr_timeout as string || "60");
+  const clientDlrTimeout = parseInt(client.dlr_timeout as string || "300");
   const ratePerSms = await lookupClientRate(destination, clientId as number, tenant.schemaName);
   const clientMaxTps = parseInt(client.max_tps || "0");
   
@@ -219,7 +224,7 @@ export async function POST(request: Request) {
               s.name as supplier_name, s.connection_type
        FROM routes r
        LEFT JOIN trunks t ON r.trunk_id = t.id AND t.is_active = true
-       LEFT JOIN suppliers s ON t.supplier_id = s.id AND s.is_active = true AND s.bind_status = 'BOUND'
+       LEFT JOIN suppliers s ON t.supplier_id = s.id AND s.is_active = true AND s.bind_status IN ('BOUND', 'ACTIVE')
        WHERE r.id = $1 AND r.is_active = true`,
       [testRouteId]
     );
@@ -258,7 +263,7 @@ export async function POST(request: Request) {
        JOIN routes r ON rpr.route_id = r.id AND r.is_active = true
        LEFT JOIN route_trunks rt ON rt.route_id = r.id AND rt.is_active = true
        JOIN trunks t ON COALESCE(rt.trunk_id, r.trunk_id) = t.id AND t.is_active = true
-       JOIN suppliers s ON t.supplier_id = s.id AND s.is_active = true AND s.bind_status = 'BOUND'
+       JOIN suppliers s ON t.supplier_id = s.id AND s.is_active = true AND s.bind_status IN ('BOUND', 'ACTIVE')
        WHERE rpr.route_plan_id = $1
        ORDER BY rpr.priority ASC, COALESCE(rt.priority, 0) ASC`,
       [routePlanId]
@@ -408,6 +413,30 @@ export async function POST(request: Request) {
     console.error("Content filter check error:", err);
   }
 
+  // ── Duplicate request guard ──
+  // Placed AFTER all validation (auth, credit, TPS, routes, translations,
+  // blacklist, content filter) and immediately BEFORE any delivery. Identical
+  // submissions (same schema, client, sender, destination and content) within
+  // a short window are skipped so a client retry / double-submit can never
+  // send the same SMS twice or bill it twice — while a request that FAILED
+  // validation is never marked (its retry is allowed).
+  const dedupeInput = {
+    schemaName: tenant.schemaName,
+    clientId: clientId as number,
+    sender: String(origSender || ""),
+    destination: String(origDestination || ""),
+    content: String(origContent || ""),
+  };
+  const isDup = isDuplicateSmsSubmission(dedupeInput);
+  if (isDup) {
+    console.log(`[SEND-SMS] Duplicate request skipped (same sender/destination/content within window): ${String(origDestination).slice(0, 20)}`);
+    return NextResponse.json({
+      success: true,
+      duplicate: true,
+      message: "Duplicate request skipped — identical message was already submitted.",
+    });
+  }
+
   // ── Voice OTP handling (shared engine-based flow with retry) ──
   if (
     selectedRoute.connection_type === "VOICE_OTP" ||
@@ -415,6 +444,9 @@ export async function POST(request: Request) {
   ) {
     otpCode = extractOtp(content);
     if (!otpCode) {
+      // Invalid content for a Voice OTP route — release the dedupe marker so a
+      // corrected retry is not blocked.
+      releaseSmsSubmission(dedupeInput);
       return NextResponse.json({ error: "No 4-8 digit OTP in content" }, { status: 400 });
     }
 
@@ -453,11 +485,13 @@ export async function POST(request: Request) {
         callSid: votpResult.callSid,
         callAttempts: votpResult.callAttempts,
       });
-      pushDlrToClient(dlrCallbackUrl, votpDlrPayload).catch(() => {});
+      pushDlrToClient(dlrCallbackUrl, votpDlrPayload, tenant.schemaName).catch(() => {});
       console.log(`[VOICE-OTP] DLR pushed to client webhook: ${messageId} → ${dlrStatus} (callSid=${votpResult.callSid})`);
     }
 
     if (!votpResult.success && votpResult.errorMessage) {
+      // Failed call — release the dedupe marker so a retry can proceed.
+      releaseSmsSubmission(dedupeInput);
       return NextResponse.json({
         error: votpResult.errorMessage,
         concurrentCalls: votpResult.errorMessage?.includes("Concurrent") ? maxConcurrent : undefined,
@@ -471,13 +505,14 @@ export async function POST(request: Request) {
   const isVoiceOtp = selectedRoute.connection_type === "VOICE_OTP" || selectedRoute.connection_type === "Voice OTP";
   const isOttRoute = selectedRoute.connection_type === "WhatsApp OTT" || selectedRoute.connection_type === "Telegram OTT";
   const isCustomApi = selectedRoute.connection_type === "CUSTOM_API";
+  const isBusinessApi = isBusinessApiRoute(selectedRoute.connection_type);
 
   // ── Voice OTP: store only OTP digits in content field (no SMS text) ──
   if (isVoiceOtp && otpCode) {
     content = otpCode;
   }
 
-  if (!isVoiceOtp && !isOttRoute && !isCustomApi && allRoutes.length > 0) {
+  if (!isVoiceOtp && !isOttRoute && !isCustomApi && !isBusinessApi && allRoutes.length > 0) {
     deliveryResult = await deliverSmsWithFallback(
       tenant.tenantId,
       tenant.schemaName,
@@ -507,40 +542,63 @@ export async function POST(request: Request) {
           supplier_name: deliveryResult?.routeUsed?.supplierName,
           supplier_message_id: dlr.supplierMessageId,
         };
-        pushDlrToClient(dlrCallbackUrl, payload).catch(() => {});
+        pushDlrToClient(dlrCallbackUrl, payload, tenant.schemaName).catch(() => {});
       });
     }
   }
 
   let ottDeviceId: number | null = null;
   if (isOttRoute) {
-    const ottDeviceType: OttDeviceType = selectedRoute.connection_type === "WhatsApp OTT" ? "whatsapp" : "telegram";
-    const onlineDevices = await getOnlineOttDevices(tenant.schemaName, ottDeviceType);
-
-    if (onlineDevices.length === 0) {
-      status = "FAILED";
+    // ── Number validity: invalid destinations are REJECTED (never sent/charged) ──
+    // Validate the ORIGINAL E.164 number — translation profiles may have already
+    // rewritten the destination to a local format (e.g. BD strip +880), which
+    // would otherwise fail the country-dial-code check on valid numbers.
+    if (!isValidDestinationNumber(origDestination)) {
+      status = "REJECTED";
       dlrStatus = "FAILED";
+      if (dlrCallbackUrl) {
+        pushDlrToClient(dlrCallbackUrl, {
+          message_id: messageId,
+          destination: origDestination,
+          source: origSender,
+          status: "FAILED",
+          cost: 0,
+          timestamp: new Date().toISOString(),
+          route_name: (selectedRoute.route_name as string) || (selectedRoute.name as string) || "",
+          supplier_name: (selectedRoute.supplier_name as string) || "",
+          error: "Invalid destination number — rejected",
+        }, tenant.schemaName).catch(() => {});
+      }
+      console.log(`[OTT] Rejected invalid destination ${destination} for ${messageId} (REJECTED / FAILED DLR)`);
     } else {
-      // Round-robin: use first available (sorted by last_seen ASC for load balancing)
-      const ottDevice = onlineDevices[0];
-      ottDeviceId = ottDevice.id;
+      const ottDeviceType: OttDeviceType = selectedRoute.connection_type === "WhatsApp OTT" ? "whatsapp" : "telegram";
+      const onlineDevices = await getOnlineOttDevices(tenant.schemaName, ottDeviceType);
 
-      const ottResult = await sendOttMessage(
-        tenant.schemaName,
-        ottDevice.id,
-        destination,
-        content,
-        messageId,
-        clientId,
-        routePlanId,
-        (selectedRoute.route_id as number) || (selectedRoute.id as number),
-        (selectedRoute.trunk_id as number) || null,
-        (selectedRoute.supplier_id as number) || supplierId,
-        ratePerSms
-      );
+      if (onlineDevices.length === 0) {
+        status = "FAILED";
+        dlrStatus = "FAILED";
+      } else {
+        // Round-robin: use first available (sorted by last_seen ASC for load balancing)
+        const ottDevice = onlineDevices[0];
+        ottDeviceId = ottDevice.id;
 
-      status = ottResult.success ? "SENT" : "FAILED";
-      dlrStatus = ottResult.success ? "SENT" : "FAILED";
+        const ottResult = await sendOttMessage(
+          tenant.schemaName,
+          ottDevice.id,
+          destination,
+          content,
+          messageId,
+          clientId,
+          routePlanId,
+          (selectedRoute.route_id as number) || (selectedRoute.id as number),
+          (selectedRoute.trunk_id as number) || null,
+          (selectedRoute.supplier_id as number) || supplierId,
+          ratePerSms
+        );
+
+        status = ottResult.success ? "SENT" : "FAILED";
+        dlrStatus = ottResult.success ? "SENT" : "FAILED";
+      }
     }
   }
 
@@ -622,9 +680,84 @@ export async function POST(request: Request) {
     }
   }
 
+  // --- Business API Connector delivery (Telegram/WhatsApp via business_api_connect) ---
+  let businessApiSuccess = false;
+  let businessApiRejected = false;
+  let businessApiMessageId: string | null = null;
+  if (isBusinessApi && supplierId) {
+    try {
+      const suppResult = await tenantQuery(
+        tenant.schemaName,
+        "SELECT config FROM suppliers WHERE id = $1",
+        [supplierId]
+      );
+      const rawConfig = suppResult.rows[0]?.config;
+      const config = (typeof rawConfig === 'string' ? JSON.parse(rawConfig) : rawConfig || {}) as Record<string, unknown>;
+      const connectionId = config.business_api_connect_id as number;
+
+      if (connectionId) {
+        // ── Number-validity gate — validate the ORIGINAL E.164 (same convention
+        //    as the OTT branch: translation profiles may have rewritten the
+        //    destination to a local format by this point). Invalid → REJECTED,
+        //    never sent and never charged (billing matrix rule 5). ──
+        if (!isValidDestinationNumber(origDestination)) {
+          businessApiRejected = true;
+          status = "REJECTED";
+          dlrStatus = "FAILED";
+          if (dlrCallbackUrl) {
+            pushDlrToClient(dlrCallbackUrl, {
+              message_id: messageId,
+              destination: origDestination,
+              source: origSender,
+              status: "FAILED",
+              cost: 0,
+              timestamp: new Date().toISOString(),
+              route_name: (selectedRoute.route_name as string) || (selectedRoute.name as string) || "",
+              supplier_name: (selectedRoute.supplier_name as string) || "",
+              error: "Invalid destination number — rejected",
+            }, tenant.schemaName).catch(() => {});
+          }
+          console.log(`[BUSINESS-API] Rejected invalid destination ${destination} for ${messageId} (REJECTED / FAILED DLR)`);
+        } else {
+          const baResult = await deliverBusinessApiRoute({
+            schemaName: tenant.schemaName,
+            connectionId,
+            destination,
+            message: content,
+            sender,
+            messageId,
+            skipNumberGate: true, // origDestination already validated above
+          });
+          businessApiSuccess = baResult.success;
+          // Provider HTTP 200 = delivery accepted and there is NO real DLR path
+          // for Business API — so a success is stored as DELIVERED (like Voice
+          // OTP). Storing SENT would let the dlr-timeout-sweeper flip the row
+          // to FAILED after the window even though the client was charged at
+          // submit (billing matrix: on_dlr pending → fail, but this was never
+          // pending — the provider confirmed). DELIVERED also keeps the force
+          // block from overwriting a real confirmation with dlr_source='FORCE'.
+          status = baResult.success ? "DELIVERED" : "FAILED";
+          dlrStatus = baResult.success ? "DELIVERED" : "FAILED";
+          if (baResult.httpStatus && baResult.httpStatus >= 200 && baResult.httpStatus < 300) {
+            businessApiMessageId = messageId;
+          }
+          console.log(`[BUSINESS-API] ${messageId} → ${baResult.status} (${baResult.apiName || baResult.provider || "Business API"}) http=${baResult.httpStatus ?? "—"}${baResult.error ? " · " + baResult.error : ""}`);
+        }
+      } else {
+        console.warn(`[BUSINESS-API] No business_api_connect_id configured for supplier #${supplierId}`);
+        status = "FAILED";
+        dlrStatus = "FAILED";
+      }
+    } catch (err) {
+      console.error("Business API delivery error:", err);
+      status = "FAILED";
+      dlrStatus = "FAILED";
+    }
+  }
+
   // ── Billing: use charging_mode to decide submit vs DLR billing ──
   const resolvedSupplierId = deliveryResult?.routeUsed?.supplierId || supplierId;
-  const finalSuccess = status === "SENT" || status === "DELIVERED" || (isCustomApi && customApiSuccess) || (isVoiceOtp && callSuccess);
+  const finalSuccess = status === "SENT" || status === "DELIVERED" || (isCustomApi && customApiSuccess) || (isVoiceOtp && callSuccess) || (isBusinessApi && businessApiSuccess);
   let supplierChargingMode: ChargingMode = "on_submit";
   let supplierDlrTimeout = 60;
   if (resolvedSupplierId) {
@@ -636,17 +769,21 @@ export async function POST(request: Request) {
       );
       if (suppResult.rows.length > 0) {
         supplierChargingMode = resolveChargingMode(suppResult.rows[0]);
-        supplierDlrTimeout = parseInt(suppResult.rows[0].dlr_timeout as string || "60");
+        supplierDlrTimeout = parseInt(suppResult.rows[0].dlr_timeout as string || "300");
       }
     } catch { /* use defaults */ }
   }
 
   // ── Client cost: charge now if not on_dlr ──
+  // Business API has no real-time DLR path, so a valid send is charged at
+  // submit even for on_dlr clients (mirrors /business-api/send) — otherwise the
+  // charge would be deferred-and-lost when no DLR ever arrives.
+  const businessApiChargedAtSubmit = isBusinessApi && businessApiSuccess;
   if (!finalSuccess) {
     // FAILED — don't charge client, don't pay supplier
     supplierCost = 0;
     profit = 0;
-  } else if (isSubmitCharged(clientChargingMode)) {
+  } else if (isSubmitCharged(clientChargingMode) || businessApiChargedAtSubmit) {
     // Charge client immediately
     if (resolvedSupplierId) {
       try {
@@ -660,8 +797,9 @@ export async function POST(request: Request) {
     profit = 0;
   }
 
-  // Client cost: 0 for on_dlr, ratePerSms otherwise
-  const finalCost = (!finalSuccess || isDlrCharged(clientChargingMode)) ? 0 : ratePerSms;
+  // Client cost: 0 for on_dlr, ratePerSms otherwise (Business API always
+  // charges at submit on success)
+  const finalCost = (!finalSuccess || (isDlrCharged(clientChargingMode) && !businessApiChargedAtSubmit)) ? 0 : ratePerSms;
 
   // Insert message (store original + translated values, always SENT — real DLR will update later)
   const msgResult = await tenantQuery(
@@ -670,8 +808,8 @@ export async function POST(request: Request) {
       route_plan_id, route_id, trunk_id, supplier_id, connection_type,
       cost, supplier_cost, profit, dlr_status, dlr_timestamp, otp_code, language, message_id,
       original_sender, original_destination, original_content, translation_notes,
-      dlr_callback_url, supplier_message_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`,
+      dlr_callback_url, supplier_message_id, dlr_source)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *`,
     [
       clientId, sender, destination, content, status,
       routePlanId,
@@ -686,13 +824,21 @@ export async function POST(request: Request) {
       origSender, origDestination, origContent,
       appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null,
       dlrCallbackUrl,
-      deliveryResult?.supplierMessageId || customApiMessageId || null,
+      deliveryResult?.supplierMessageId || customApiMessageId || businessApiMessageId || null,
+      status === "REJECTED" ? "REJECTED" : null,
     ]
   );
 
+  // ── Release dedupe marker when the send FAILED so a retry can proceed ──
+  if (!finalSuccess) {
+    releaseSmsSubmission(dedupeInput);
+  }
+
   // ── Deduct SMS counter — atomic increment to avoid race conditions ──
-  // Skip for on_dlr clients (counter is charged at DLR time)
-  if (tenantData && isSubmitCharged(clientChargingMode)) {
+  // Skip for on_dlr clients (counter is charged at DLR time). Business API has
+  // no real-time DLR path, so a successful send is charged at submit even for
+  // on_dlr clients (mirrors the standalone /business-api/send endpoint).
+  if (tenantData && (isSubmitCharged(clientChargingMode) || (isBusinessApi && businessApiSuccess))) {
     await db
       .update(tenants)
       .set({ smsCounter: sql`sms_counter + 1` })
@@ -722,7 +868,7 @@ export async function POST(request: Request) {
       console.log(`[FORCE-DLR] Pushing immediate DLR for ${messageId}`);
       await tenantQuery(
         fSchemaName,
-        `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW() WHERE message_id = $1`,
+        `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW(), dlr_source = 'FORCE' WHERE message_id = $1`,
         [messageId]
       );
 
@@ -734,9 +880,10 @@ export async function POST(request: Request) {
           .where(eq(tenants.id, tenant.tenantId));
       }
 
-      // Also charge on_dlr supplier now (force_dlr preempts real DLR)
+      // Margin isolation (matrix rule 2): a CLIENT force-DLR event must NOT pay
+      // the supplier — only a force-mode supplier records cost on the outcome.
       const actualSupplierId2 = deliveryResult?.routeUsed?.supplierId || (selectedRoute.supplier_id as number) || supplierId;
-      if (isDlrCharged(supplierChargingMode) && actualSupplierId2) {
+      if (isForceDlrOrTimeout(supplierChargingMode) && actualSupplierId2) {
         try {
           const supCost = await lookupSupplierCost(origDestination, actualSupplierId2 as number, tenant.schemaName);
           await tenantQuery(
@@ -754,7 +901,7 @@ export async function POST(request: Request) {
           cost: fRatePerSms, routeName: fRouteName,
           supplierName: fSupplierName, forceDlr: true,
         });
-        pushDlrToClient(dlrCallbackUrl, forcePayload).catch(() => {});
+        pushDlrToClient(dlrCallbackUrl, forcePayload, tenant.schemaName).catch(() => {});
         console.log(`[FORCE-DLR] Immediate DLR pushed to client webhook: ${messageId} → DELIVERED`);
       }
     } else {
@@ -784,7 +931,10 @@ export async function POST(request: Request) {
                 .set({ smsCounter: sql`sms_counter + 1` })
                 .where(eq(tenants.id, tenant.tenantId));
             }
-            if (isDlrCharged(supplierChargingMode) && existingSuppCost === 0) {
+            // Margin isolation (matrix rule 2): a CLIENT force-DLR timeout must
+            // NOT pay the supplier — only a supplier running force_dlr /
+            // force_dlr_timeout itself records cost on vendor timeout.
+            if (isForceDlrOrTimeout(supplierChargingMode) && existingSuppCost === 0) {
               try {
                 const actualSupplierId3 = deliveryResult?.routeUsed?.supplierId || (selectedRoute.supplier_id as number) || supplierId;
                 updateSuppCost = actualSupplierId3 ? await lookupSupplierCost(origDestination, actualSupplierId3 as number, tenant.schemaName) : existingSuppCost;
@@ -794,7 +944,7 @@ export async function POST(request: Request) {
 
             await tenantQuery(
               fSchemaName,
-              `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW(),
+              `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW(), dlr_source = 'FORCE_TIMEOUT',
                cost = $2, supplier_cost = $3, profit = $4 WHERE message_id = $1`,
               [messageId, updateCost, updateSuppCost, updateProfit]
             );
@@ -807,7 +957,7 @@ export async function POST(request: Request) {
                 cost: fRatePerSms, routeName: fRouteName,
                 supplierName: fSupplierName, forceDlr: true,
               });
-              pushDlrToClient(dlrCallbackUrl, forcePayload).catch(() => {});
+              pushDlrToClient(dlrCallbackUrl, forcePayload, tenant.schemaName).catch(() => {});
               console.log(`[FORCE-DLR] Timeout DLR pushed to client webhook: ${messageId} → DELIVERED`);
             }
           } else {
@@ -821,7 +971,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    success: isVoiceOtp ? (callSuccess || dlrStatus === "DELIVERED") : (isOttRoute || isCustomApi ? status === "SENT" : (deliveryResult?.success ?? false)),
+    success: isVoiceOtp ? (callSuccess || dlrStatus === "DELIVERED") : (isOttRoute || isCustomApi || isBusinessApi ? status === "SENT" || status === "DELIVERED" : (deliveryResult?.success ?? false)),
     message: msgResult.rows[0],
     messageId,
     routing: {
@@ -836,7 +986,7 @@ export async function POST(request: Request) {
     cost: isDlrCharged(clientChargingMode) ? 0 : (finalSuccess ? ratePerSms : 0),
     supplierCost,
     profit,
-    supplierMessageId: deliveryResult?.supplierMessageId || customApiMessageId || null,
+    supplierMessageId: deliveryResult?.supplierMessageId || customApiMessageId || businessApiMessageId || null,
     dlr: { status: dlrStatus, pushed_to: client.dlr_callback_url || client.webhook_url || null },
     ott: ottDeviceId ? {
       deviceId: ottDeviceId,

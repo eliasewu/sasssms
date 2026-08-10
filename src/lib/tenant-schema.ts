@@ -1,4 +1,5 @@
 import { pool } from "@/db";
+import { padMnc } from "@/lib/mcc-lookup-client";
 
 export async function createTenantSchema(schemaName: string): Promise<void> {
   const client = await pool.connect();
@@ -34,7 +35,7 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       is_active BOOLEAN DEFAULT true, enable_http_api BOOLEAN DEFAULT false,
       http_api_key VARCHAR(255), force_dlr BOOLEAN DEFAULT false,
       charging_mode VARCHAR(50) DEFAULT 'on_submit', dlr_timeout_mode VARCHAR(50),
-      dlr_timeout INTEGER, dlr_callback_url TEXT, webhook_url TEXT,
+      dlr_timeout INTEGER DEFAULT 300, dlr_callback_url TEXT, webhook_url TEXT,
       bind_status VARCHAR(20) DEFAULT 'UNBOUND', last_bind_time TIMESTAMP,
       updated_at TIMESTAMP DEFAULT NOW(), deleted_at TIMESTAMP, deleted_by VARCHAR(255),
       created_at TIMESTAMP DEFAULT NOW())`);
@@ -55,7 +56,7 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       address_range VARCHAR(100), inbound_mode BOOLEAN DEFAULT false, api_url TEXT, api_key TEXT,
       currency VARCHAR(10) DEFAULT 'USD',
       force_dlr BOOLEAN DEFAULT false, charging_mode VARCHAR(50) DEFAULT 'on_submit',
-      dlr_timeout INTEGER, is_active BOOLEAN DEFAULT true, config TEXT,
+      dlr_timeout INTEGER DEFAULT 300, is_active BOOLEAN DEFAULT true, config TEXT,
       bind_status VARCHAR(20) DEFAULT 'UNBOUND', last_bind_time TIMESTAMP,
       updated_at TIMESTAMP DEFAULT NOW(), deleted_at TIMESTAMP, deleted_by VARCHAR(255),
       gsm_device_id INTEGER, connector_id INTEGER, created_at TIMESTAMP DEFAULT NOW())`);
@@ -127,6 +128,19 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       original_content TEXT, translation_notes TEXT,
       supplier_message_id VARCHAR(255),
       last_dlr_poll_at TIMESTAMP,
+      dlr_source VARCHAR(20),
+      created_at TIMESTAMP DEFAULT NOW())`),
+
+      // DLR webhook delivery log — records each HTTP DLR push to an external client
+      safeQuery(`CREATE TABLE IF NOT EXISTS dlr_webhook_logs (
+      id SERIAL PRIMARY KEY,
+      message_id VARCHAR(100),
+      dlr_status VARCHAR(50),
+      pushed_to TEXT,
+      http_status INTEGER,
+      response TEXT,
+      success BOOLEAN DEFAULT false,
+      error TEXT,
       created_at TIMESTAMP DEFAULT NOW())`),
 
       safeQuery(`CREATE TABLE IF NOT EXISTS sms_inbox (
@@ -178,7 +192,14 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       phone_number VARCHAR(20), api_config TEXT, proxy_id INTEGER,
       qr_code TEXT, qr_session TEXT, qr_expires_at TIMESTAMP,
       status VARCHAR(20) DEFAULT 'OFFLINE', last_seen TIMESTAMP,
-      is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`),
+      is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW(),
+      -- Per-device send quotas (daily 250 / monthly 1000 by default)
+      daily_limit INTEGER NOT NULL DEFAULT 250,
+      monthly_limit INTEGER NOT NULL DEFAULT 1000,
+      daily_sent INTEGER NOT NULL DEFAULT 0,
+      monthly_sent INTEGER NOT NULL DEFAULT 0,
+      daily_reset_date DATE DEFAULT CURRENT_DATE,
+      monthly_reset_month VARCHAR(7) DEFAULT to_char(CURRENT_DATE, 'YYYY-MM'))`),
 
       safeQuery(`CREATE TABLE IF NOT EXISTS proxy_config (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, proxy_type VARCHAR(50) DEFAULT 'residential',
@@ -282,7 +303,7 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
       dlr_success_condition TEXT, dlr_status_path TEXT,
       dlr_delivered_value VARCHAR(100) DEFAULT 'Delivered',
       dlr_poll_seconds INTEGER DEFAULT 30,
-      dlr_timeout_seconds INTEGER DEFAULT 3600,
+      dlr_timeout_seconds INTEGER DEFAULT 300,
       is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`),
 
     // ── MCC/MNC-based Translation Engine ──
@@ -815,17 +836,20 @@ export async function seedMccMncRates(schemaName: string): Promise<void> {
     let inserted = 0;
     let skipped = 0;
 
-    // Insert into client_rates (placeholder client_id = -1 for shared defaults)
+    // Insert into client_rates (placeholder client_id = -1 for shared defaults).
+    // MNC is stored zero-padded and deduplicated on the padded key so "3" and
+    // "003" are treated as the same network.
     for (const entry of mccEntries) {
       try {
         const { rowCount } = await client.query(
           `INSERT INTO client_rates (client_id, country_code, mcc, mnc, operator_name, rate, mccmnc)
-           SELECT -1, $1, $2, $3, $4, 0.00025, $2 || LPAD(COALESCE($3,''), 3, '0')
+           SELECT -1, $1::text, $2::text, $3::text, $4::text, 0.00025, $2::text || LPAD(COALESCE($3::text,''), 3, '0')
            WHERE NOT EXISTS (
              SELECT 1 FROM client_rates
-             WHERE country_code = $1 AND mcc = $2 AND COALESCE(mnc,'') = COALESCE($3,'')
+             WHERE country_code = $1 AND mcc = $2
+               AND LPAD(COALESCE(mnc,''), 3, '0') = LPAD(COALESCE($3,''), 3, '0')
            )`,
-          [entry.country_code, entry.mcc, entry.mnc || null, entry.network_name || null]
+          [entry.country_code, entry.mcc, padMnc(entry.mnc) || null, entry.network_name || null]
         );
         if (rowCount && rowCount > 0) inserted++; else skipped++;
       } catch { skipped++; }
@@ -836,12 +860,13 @@ export async function seedMccMncRates(schemaName: string): Promise<void> {
       try {
         const { rowCount } = await client.query(
           `INSERT INTO supplier_rates (supplier_id, country_code, mcc, mnc, operator_name, cost, mccmnc)
-           SELECT -1, $1, $2, $3, $4, 0.00020, $2 || LPAD(COALESCE($3,''), 3, '0')
+           SELECT -1, $1::text, $2::text, $3::text, $4::text, 0.00020, $2::text || LPAD(COALESCE($3::text,''), 3, '0')
            WHERE NOT EXISTS (
              SELECT 1 FROM supplier_rates
-             WHERE country_code = $1 AND mcc = $2 AND COALESCE(mnc,'') = COALESCE($3,'')
+             WHERE country_code = $1 AND mcc = $2
+               AND LPAD(COALESCE(mnc,''), 3, '0') = LPAD(COALESCE($3,''), 3, '0')
            )`,
-          [entry.country_code, entry.mcc, entry.mnc || null, entry.network_name || null]
+          [entry.country_code, entry.mcc, padMnc(entry.mnc) || null, entry.network_name || null]
         );
         if (rowCount && rowCount > 0) inserted++; else skipped++;
       } catch { skipped++; }

@@ -35,7 +35,8 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   type WASocket,
 } from "@whiskeysockets/baileys";
-import { SocksProxyAgent } from "socks-proxy-agent";
+import { buildGramJsProxyConfig, buildOttProxyAgent } from "@/lib/proxy-connect";
+import { pushDlrWebhook } from "@/lib/dlr-webhook-log";
 // @ts-ignore -- telegram is an optional dependency without types
 import { TelegramClient } from "telegram";
 // @ts-ignore -- telegram/sessions is an optional dependency without types
@@ -149,17 +150,7 @@ function getPool(): Pool {
 
 // ── Proxy Helper ──
 
-function buildSocksProxyUrl(device: DeviceRecord): string | null {
-  if (!device.proxy_host || !device.proxy_port) return null;
-  const protocol = device.proxy_protocol || "socks5";
-  const auth =
-    device.proxy_username && device.proxy_password
-      ? `${encodeURIComponent(device.proxy_username)}:${encodeURIComponent(device.proxy_password)}@`
-      : device.proxy_username
-        ? `${encodeURIComponent(device.proxy_username)}@`
-        : "";
-  return `${protocol}://${auth}${device.proxy_host}:${device.proxy_port}`;
-}
+
 
 // ── WhatsApp Client (baileys) ──
 
@@ -244,7 +235,15 @@ async function startWhatsAppClient(
 ): Promise<DeviceConnection | null> {
   const { schema_name: schemaName, id: deviceId } = device;
   const poolKey = `${schemaName}:${deviceId}`;
-  const proxyUrl = buildSocksProxyUrl(device);
+  // Protocol-aware residential proxy (3proxy + Tailscale): SOCKS5/SOCKS4 via
+  // SocksProxyAgent, HTTP/HTTPS via HttpsProxyAgent — shared builder.
+  const { agent } = buildOttProxyAgent({
+    host: device.proxy_host,
+    port: device.proxy_port,
+    protocol: device.proxy_protocol,
+    username: device.proxy_username,
+    password: device.proxy_password,
+  });
 
   log("INFO", "Starting WhatsApp client", deviceId, schemaName);
   await restoreWhatsAppSession(schemaName, deviceId, device.api_config);
@@ -253,7 +252,6 @@ async function startWhatsAppClient(
 
   try {
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
-    const agent = proxyUrl ? new SocksProxyAgent(proxyUrl) : undefined;
     const { version, isLatest } = await fetchLatestBaileysVersion();
     log("DEBUG", `Baileys v${version.join(".")}, latest: ${isLatest}`, deviceId, schemaName);
 
@@ -407,7 +405,7 @@ async function startWhatsAppClient(
           // Push DLR when receipt indicates delivery
           if (dlrResult.rows.length > 0 && (u.receipt as any)?.messageId) {
             const { dlr_callback_url, message_id, destination } = dlrResult.rows[0] as Record<string, string>;
-            pushOttDlr(dlr_callback_url || null, message_id, destination, "DELIVERED", "WhatsApp OTT");
+            pushOttDlr(dlr_callback_url || null, message_id, destination, "DELIVERED", "WhatsApp OTT", schemaName);
           }
         } catch (err) {
           log("ERROR", `DLR update failed: ${err}`, deviceId, schemaName);
@@ -457,16 +455,15 @@ async function startTelegramClient(
   log("INFO", "Starting Telegram client", deviceId, schemaName);
   const stringSession = new StringSession(sessionStr);
 
-  let proxyConfig: any = undefined;
-  if (device.proxy_host && device.proxy_port) {
-    proxyConfig = {
-      ip: device.proxy_host,
-      port: device.proxy_port,
-      socksType: 5,
-      username: device.proxy_username || undefined,
-      password: device.proxy_password || undefined,
-    };
-  }
+  // GramJS proxy (Node equivalent of Telethon/Pyrogram). SOCKS5/SOCKS4 only;
+  // socksType derives from the stored proxy protocol.
+  const proxyConfig = buildGramJsProxyConfig({
+    host: device.proxy_host,
+    port: device.proxy_port,
+    protocol: device.proxy_protocol,
+    username: device.proxy_username,
+    password: device.proxy_password,
+  });
 
   try {
     const client = new TelegramClient(stringSession, telegramApiId, telegramApiHash, {
@@ -628,7 +625,7 @@ async function startTelegramClient(
           await pg.query(`SET search_path TO public`);
           if (dlrResult.rows.length > 0) {
             const { dlr_callback_url, message_id, destination } = dlrResult.rows[0] as Record<string, string>;
-            pushOttDlr(dlr_callback_url || null, message_id, destination, "DELIVERED", "Telegram OTT");
+            pushOttDlr(dlr_callback_url || null, message_id, destination, "DELIVERED", "Telegram OTT", schemaName);
           }
         } catch (err) {
           log("ERROR", `Telegram DLR update failed: ${err}`, deviceId, schemaName);
@@ -737,31 +734,25 @@ async function pushOttDlr(
   messageId: string,
   destination: string,
   dlrStatus: string,
-  connectionType: string
+  connectionType: string,
+  schemaName: string
 ): Promise<void> {
   if (!dlrCallbackUrl) return;
-  try {
-    const payload = {
+  const ok = await pushDlrWebhook(
+    dlrCallbackUrl,
+    {
       message_id: messageId,
       destination,
       status: dlrStatus,
       connection_type: connectionType,
       timestamp: new Date().toISOString(),
-    };
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
-    await fetch(dlrCallbackUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    log("DEBUG", `DLR pushed to ${dlrCallbackUrl} for ${messageId} → ${dlrStatus}`);
-  } catch {
-    // Fire-and-forget — client callback failures are non-critical
-  }
+    },
+    schemaName,
+    messageId,
+    dlrStatus,
+    getPool()
+  );
+  log("DEBUG", `DLR pushed to ${dlrCallbackUrl} for ${messageId} → ${dlrStatus} (http ${ok ? "2xx" : "failed"})`);
 }
 
 // ── Message Poller ──
@@ -827,7 +818,7 @@ async function deliverMessage(msg: PendingMessage): Promise<void> {
 
     // Push DLR to client HTTP callback
     const newDlrStatus = deviceType === "telegram" ? "DELIVERED" : "SENT";
-    pushOttDlr(msg.dlr_callback_url, msg.message_id, msg.destination, newDlrStatus, msg.connection_type);
+    pushOttDlr(msg.dlr_callback_url, msg.message_id, msg.destination, newDlrStatus, msg.connection_type, msg.schema_name);
   } catch (err) {
     log("ERROR", `Delivery failed: ${err}`, conn.deviceId, schemaName);
     let becameFailed = false;
@@ -849,7 +840,7 @@ async function deliverMessage(msg: PendingMessage): Promise<void> {
 
     // Push FAILED DLR when message permanently fails
     if (becameFailed) {
-      pushOttDlr(msg.dlr_callback_url, msg.message_id, msg.destination, "FAILED", msg.connection_type);
+      pushOttDlr(msg.dlr_callback_url, msg.message_id, msg.destination, "FAILED", msg.connection_type, msg.schema_name);
     }
   }
 }

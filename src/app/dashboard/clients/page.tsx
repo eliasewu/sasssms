@@ -37,7 +37,7 @@ export default function ClientPage() {
     smppUsername: "", smppPassword: "", smppAllowedIp: "", smppPort: "2775", smppSystemType: "ESME", maxTps: "10",
     billingMode: "prepaid", currency: "USD",
     routePlanId: "", enableHttpApi: false, httpApiKey: "",
-    chargingMode: "on_submit", dlrTimeout: "60", webhookUrl: "",
+    chargingMode: "on_submit", dlrTimeout: "300", webhookUrl: "",
   });
 
   const load = useCallback(async () => {
@@ -109,7 +109,7 @@ export default function ClientPage() {
       routePlanId: c.route_plan_id?.toString() || "", enableHttpApi: c.enable_http_api || false,
       httpApiKey: c.http_api_key || "",
       chargingMode: c.charging_mode || (c.force_dlr ? "force_dlr" : (c.billing_mode === "dlr" ? "on_dlr" : "on_submit")),
-      dlrTimeout: (c.dlr_timeout || 60).toString(), webhookUrl: c.webhook_url || "",
+      dlrTimeout: (c.dlr_timeout || 300).toString(), webhookUrl: c.webhook_url || "",
     });
     setShowForm(true);
   };

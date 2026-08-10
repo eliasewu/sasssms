@@ -32,6 +32,7 @@ export async function register() {
       { initSupplierConnections },
       { syncAllBindStatus },
       { startDlrPolling },
+      { startDlrTimeoutSweeper },
       { startOtpForwarder },
       { checkPackageExpiry, autoRenewSubscriptions },
       { startSupplierUnbindAlerts },
@@ -41,6 +42,7 @@ export async function register() {
       import("@/lib/smpp-client"),
       import("../sync-bind-status"),
       import("@/lib/dlr-poller"),
+      import("@/lib/dlr-timeout-sweeper"),
       import("@/lib/otp-forwarder"),
       import("@/lib/email-service"),
       import("@/lib/supplier-unbind-alert"),
@@ -83,6 +85,13 @@ export async function register() {
     // Start CUSTOM_API DLR polling worker (every 5s, per-connector cadence)
     startDlrPolling();
     console.log("  DLR Polling: Auto-polling CUSTOM_API DLR URLs every 5s (per-connector cadence)");
+
+    // Start stale-DLR timeout sweeper (every 60s): resolves SENT/PENDING
+    // messages across ALL flows after the dlr_timeout window (default 5 min).
+    // on_dlr pending → FAILED/undelivered (no charge); force_dlr_timeout →
+    // fake DELIVRD + charge client with ZERO supplier payout (matrix).
+    startDlrTimeoutSweeper();
+    console.log("  DLR Sweeper: Stale pending DLRs auto-resolved after 5 min (on_dlr → fail/undelivered, force_timeout → fake DELIVRD)");
 
     // Start OTP Forwarding worker (every 10s, extracts OTP from inbox, forwards to suppliers)
     startOtpForwarder();

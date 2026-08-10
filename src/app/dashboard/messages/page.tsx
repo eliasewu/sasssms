@@ -16,6 +16,7 @@ interface Message {
   connection_type: string | null;
   cost: string;
   dlr_status: string | null;
+  dlr_source?: string;
   dlr_timestamp?: string;
   otp_code: string | null;
   language: string | null;
@@ -25,6 +26,7 @@ interface Message {
   trunk_id: number;
   supplier_id: number;
   message_id: string;
+  supplier_message_id?: string;
   campaign_id: number;
   created_at: string;
   // Translation-related
@@ -83,6 +85,8 @@ export default function DetailedSmsLogsPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [selectedMsg, setSelectedMsg] = useState<Message | null>(null);
+  const [resending, setResending] = useState<string | null>(null);
+  const [resendResult, setResendResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [filter, setFilter] = useState({ status: "", clientId: "", search: "", connectionType: "" });
   const [loading, setLoading] = useState(true);
   const limit = 25;
@@ -129,7 +133,9 @@ export default function DetailedSmsLogsPage() {
         deliver_success: m.dlr_status === "DELIVERED" ? 1 : 0,
         deliver_fail: m.dlr_status === "FAILED" ? 1 : 0,
         route_name: (m as any).route_name || (m as any).route_plan_name || `Route #${m.route_id || 0}`,
-        channel: (m as any).trunk_name || `Trunk #${m.trunk_id || 0}`,
+        // Business API messages show the connector name ("Telegram Main Bot · telegram")
+        // instead of the generic trunk fallback.
+        channel: (m as any).business_api_name || (m as any).trunk_name || `Trunk #${m.trunk_id || 0}`,
         device: "",
         ports: 0,
         slot: 0,
@@ -151,8 +157,10 @@ export default function DetailedSmsLogsPage() {
         done_time: m.created_at,
         duration: 0,
         supplier_user: (m as any).supplier_name || `Supplier #${m.supplier_id || 0}`,
-        in_msg_id: String(Date.now() - m.id * 1000),
-        out_msg_id: String(Date.now() - m.id * 500),
+        // Real message IDs — message_id is the platform ID, supplier_message_id
+        // is the SMSC/gateway-assigned ID from the delivery receipt.
+        in_msg_id: m.message_id || String(m.id),
+        out_msg_id: m.supplier_message_id || "",
         sms_bytes: (m.content || "").length,
         dest_sms: m.content || "",
         dest_sms_bytes: (m.content || "").length,
@@ -168,14 +176,51 @@ export default function DetailedSmsLogsPage() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { const i = setInterval(load, 15000); return () => clearInterval(i); }, [load]);
 
+  // Manually re-push the DLR webhook for a message (debug client integrations)
+  const resendDlr = async (messageId: string) => {
+    setResending(messageId);
+    setResendResult(null);
+    try {
+      const res = await fetch("/api/tenant/dlr-webhook-logs/resend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setResendResult({ ok: false, text: data.error || `HTTP ${res.status}` });
+        return;
+      }
+      const log = data.log;
+      const detail = log
+        ? `HTTP ${log.http_status ?? "—"} · ${log.success ? "delivered" : "failed"}${log.response ? ` · ${log.response.slice(0, 200)}` : ""}${log.error ? ` · ${log.error}` : ""}`
+        : "pushed (no log entry yet)";
+      setResendResult({ ok: data.ok, text: detail });
+    } catch {
+      setResendResult({ ok: false, text: "Network error" });
+    } finally {
+      setResending(null);
+    }
+  };
+
   const statusColors: Record<string, string> = {
     QUEUED: "bg-slate-100 text-slate-700", SENT: "bg-blue-100 text-blue-700",
     DELIVERED: "bg-green-100 text-green-700", FAILED: "bg-red-100 text-red-700",
   };
 
+  // ── DLR source badges — distinguishes synthetic (forced) DLR results from
+  //    real carrier receipts. Set by the force-DLR billing logic + sweeper. ──
+  const dlrSourceMeta: Record<string, { label: string; cls: string; title: string }> = {
+    FORCE: { label: "⚡ Force DLR", cls: "bg-purple-100 text-purple-700", title: "Synthetic DELIVERED pushed immediately (force_dlr mode) — client charged" },
+    FORCE_TIMEOUT: { label: "⏱ Forced timeout", cls: "bg-amber-100 text-amber-700", title: "Synthetic DELIVERED pushed after the force-DLR timeout — client charged, supplier NOT paid" },
+    DLR_TIMEOUT: { label: "⌛ DLR timeout", cls: "bg-orange-100 text-orange-700", title: "No real DLR within the window — marked fail/undelivered, not charged" },
+    REJECTED: { label: "🚫 Rejected", cls: "bg-red-100 text-red-700", title: "Invalid destination rejected before sending" },
+  };
+
   // ── Column filters (client-side, within the current server-loaded page) ──
   const msgFilters: ColumnFilterDef[] = useMemo(() => [
     { key: "id", placeholder: "ID..." },
+    { key: "out_msg_id", placeholder: "Supplier ID..." },
     { key: "consumer_user", placeholder: "Consumer..." },
     { key: "alias", placeholder: "Alias..." },
     { key: "sender", placeholder: "Sender..." },
@@ -189,6 +234,7 @@ export default function DetailedSmsLogsPage() {
     { key: "channel", placeholder: "Channel..." },
     { key: "send_result", placeholder: "Success / Fail..." },
     { key: "deliver_result", placeholder: "DLR..." },
+    { key: "dlr_source", placeholder: "DLR Source (FORCE / FORCE_TIMEOUT / DLR_TIMEOUT / REJECTED)..." },
     { key: "ip", placeholder: "IP..." },
   ], []);
   const { values, set, toggle, showFilters, hasActive, filterData } = useColumnFilters(msgFilters);
@@ -203,6 +249,16 @@ export default function DetailedSmsLogsPage() {
           <p className="text-sm text-slate-500">Detailed message delivery logs with routing information</p>
         </div>
         <div className="flex gap-3">
+          <a
+            href={`/api/tenant/messages/export?${new URLSearchParams({
+              ...(filter.status ? { status: filter.status } : {}),
+              ...(filter.connectionType ? { connectionType: filter.connectionType } : {}),
+            }).toString()}`}
+            className="inline-flex items-center gap-1.5 border rounded-lg px-3 py-2 text-sm bg-white hover:bg-blue-50 hover:border-blue-300 transition text-slate-700"
+            title="Download all matching messages as CSV (includes Msg ID and Supplier ID)"
+          >
+            ⬇ CSV
+          </a>
           <FilterToggle showFilters={showFilters} hasActive={hasActive} activeCount={activeFilterCount} onClick={toggle} />
           <input value={filter.search} onChange={e => setFilter({...filter, search: e.target.value})} placeholder="Search msg ID, content..." className="border rounded-lg px-3 py-2 text-sm w-48" />
           <select value={filter.connectionType} onChange={e => { setFilter({...filter, connectionType: e.target.value}); setPage(0); }} className="border rounded-lg px-3 py-2 text-sm">
@@ -212,6 +268,7 @@ export default function DetailedSmsLogsPage() {
             <option value="WhatsApp OTT">💬 WhatsApp OTT</option>
             <option value="Telegram OTT">✈️ Telegram OTT</option>
             <option value="CUSTOM_API">🔌 Custom API</option>
+            <option value="Business API">📨 Business API</option>
           </select>
           <select value={filter.status} onChange={e => { setFilter({...filter, status: e.target.value}); setPage(0); }} className="border rounded-lg px-3 py-2 text-sm">
             <option value="">All Statuses</option>
@@ -239,7 +296,7 @@ export default function DetailedSmsLogsPage() {
       )}
 
       {loading ? (
-        <SkeletonTable cols={16} rows={12} />
+        <SkeletonTable cols={18} rows={12} />
       ) : (
       <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -247,6 +304,8 @@ export default function DetailedSmsLogsPage() {
             <thead className="bg-slate-100 sticky top-0">
               <tr>
                 <th className="text-left px-2 py-2 font-medium text-slate-500">ID</th>
+                <th className="text-left px-2 py-2 font-medium text-slate-500">Msg ID</th>
+                <th className="text-left px-2 py-2 font-medium text-slate-500">Supplier ID</th>
                 <th className="text-left px-2 py-2 font-medium text-slate-500">Consumer</th>
                 <th className="text-left px-2 py-2 font-medium text-slate-500">Alias</th>
                 <th className="text-left px-2 py-2 font-medium text-slate-500">Sender</th>
@@ -267,8 +326,12 @@ export default function DetailedSmsLogsPage() {
             </thead>
             <tbody>
               {filteredMessages.map(m => (
-                <tr key={m.id} className="border-b hover:bg-blue-50/30 cursor-pointer" onClick={() => setSelectedMsg(selectedMsg?.id === m.id ? null : m)}>
+                <tr key={m.id} className="border-b hover:bg-blue-50/30 cursor-pointer" onClick={() => { setSelectedMsg(selectedMsg?.id === m.id ? null : m); setResendResult(null); }}>
                   <td className="px-2 py-2 font-mono text-[11px] font-bold text-blue-600">{m.id}</td>
+                  <td className="px-2 py-2 font-mono text-[10px] max-w-[130px] truncate" title={m.message_id}>{m.message_id}</td>
+                  <td className="px-2 py-2 font-mono text-[10px] max-w-[130px] truncate" title={m.out_msg_id || "No supplier ID yet — arrives with the real DLR"}>
+                    {m.out_msg_id || <span className="text-slate-300">—</span>}
+                  </td>
                   <td className="px-2 py-2 font-mono text-[10px] max-w-[100px] truncate" title={m.consumer_user}>{m.consumer_user}</td>
                   <td className="px-2 py-2 font-mono text-[10px] max-w-[100px] truncate">{m.alias}</td>
                   <td className="px-2 py-2">{m.sender}</td>
@@ -291,7 +354,14 @@ export default function DetailedSmsLogsPage() {
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${m.send_result === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{m.send_result}</span>
                   </td>
                   <td className="px-2 py-2">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${m.deliver_result === 'Success' ? 'bg-green-100 text-green-700' : m.deliver_result === 'Pending' ? 'bg-slate-100 text-slate-600' : 'bg-red-100 text-red-700'}`}>{m.deliver_result || "Pending"}</span>
+                    <div className="flex flex-col gap-1">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium inline-block w-fit ${m.deliver_result === 'Success' ? 'bg-green-100 text-green-700' : m.deliver_result === 'Pending' ? 'bg-slate-100 text-slate-600' : 'bg-red-100 text-red-700'}`}>{m.deliver_result || "Pending"}</span>
+                      {m.dlr_source && dlrSourceMeta[m.dlr_source] ? (
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium inline-block w-fit ${dlrSourceMeta[m.dlr_source].cls}`} title={dlrSourceMeta[m.dlr_source].title}>{dlrSourceMeta[m.dlr_source].label}</span>
+                      ) : (m.dlr_status === "DELIVERED" || m.dlr_status === "FAILED") ? (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium inline-block w-fit bg-emerald-50 text-emerald-700" title="Real DLR received from the carrier/supplier — not synthetic">🛰 Real DLR</span>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-2 py-2 font-mono text-[10px]">{m.ip}</td>
                   <td className="px-2 py-2 text-[10px] whitespace-nowrap">{new Date(m.created_at).toLocaleString()}</td>
@@ -321,7 +391,10 @@ export default function DetailedSmsLogsPage() {
             <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center z-10">
               <div>
                 <h3 className="font-semibold text-lg">SMS Detail - ID: {selectedMsg.id}</h3>
-                <p className="text-xs text-slate-500">In Msg ID: {selectedMsg.in_msg_id} | Out Msg ID: {selectedMsg.out_msg_id}</p>
+                <p className="text-xs text-slate-500 font-mono">
+                  Msg ID: {selectedMsg.in_msg_id}
+                  {selectedMsg.out_msg_id ? ` | Supplier Msg ID: ${selectedMsg.out_msg_id}` : ""}
+                </p>
               </div>
               <button onClick={() => setSelectedMsg(null)} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
             </div>
@@ -368,12 +441,37 @@ export default function DetailedSmsLogsPage() {
                     <p className="text-slate-500 text-xs mb-0.5">Deliver result</p>
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${selectedMsg.deliver_result === 'Success' ? 'bg-green-100 text-green-700' : 'bg-slate-100'}`}>{selectedMsg.deliver_result || "Pending"}</span>
                   </div>
+                  <div>
+                    <p className="text-slate-500 text-xs mb-0.5">DLR source</p>
+                    {selectedMsg.dlr_source && dlrSourceMeta[selectedMsg.dlr_source] ? (
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${dlrSourceMeta[selectedMsg.dlr_source].cls}`} title={dlrSourceMeta[selectedMsg.dlr_source].title}>{dlrSourceMeta[selectedMsg.dlr_source].label}</span>
+                    ) : (selectedMsg.dlr_status === "DELIVERED" || selectedMsg.dlr_status === "FAILED") ? (
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-700" title="Real DLR received from the carrier/supplier — not synthetic">🛰 Real DLR</span>
+                    ) : (
+                      <span className="text-sm text-slate-500">—</span>
+                    )}
+                  </div>
                   {selectedMsg.deliver_fail_reason && (
                     <div className="col-span-3">
                       <p className="text-slate-500 text-xs mb-0.5">Deliver fail reason</p>
                       <span className="text-red-600 text-sm">{selectedMsg.deliver_fail_reason}</span>
                     </div>
                   )}
+                  <div className="col-span-3 flex items-center gap-3 mt-1">
+                    <button
+                      onClick={() => resendDlr(selectedMsg.message_id)}
+                      disabled={resending !== null}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition disabled:opacity-50"
+                      title="Re-send the DLR webhook to the client's callback URL (for debugging)"
+                    >
+                      {resending === selectedMsg.message_id ? "Re-pushing..." : "🔁 Re-push DLR Webhook"}
+                    </button>
+                    {resendResult && (
+                      <span className={`text-xs font-mono ${resendResult.ok ? "text-green-600" : "text-red-600"}`}>
+                        {resendResult.ok ? "✓ " : "✗ "}{resendResult.text}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Timing */}
@@ -452,8 +550,11 @@ export default function DetailedSmsLogsPage() {
 
                 {/* IDs and IP */}
                 <div className="col-span-full grid grid-cols-3 gap-4 bg-slate-50 rounded-lg p-4">
-                  <DetailField label="In msg id" value={selectedMsg.in_msg_id} />
-                  <DetailField label="Out msg id" value={selectedMsg.out_msg_id} />
+                  <DetailField label="Message ID" value={selectedMsg.in_msg_id} />
+                  <DetailField
+                    label="Supplier Msg ID"
+                    value={selectedMsg.out_msg_id || "— (no DLR yet)"}
+                  />
                   <DetailField label="IP" value={selectedMsg.ip} />
                 </div>
               </div>

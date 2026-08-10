@@ -8,7 +8,7 @@ import { useColumnFilters, FilterRow, FilterToggle, type ColumnFilterDef } from 
 import { SkeletonTable } from "@/components/loading-states";
 import { genCode, genId, genPwd } from "@/lib/id-generators";
 
-const CONNECTION_TYPES = ["SMPP", "ANDROID_SMS", "HTTP API", "Email", "WhatsApp OTT", "Telegram OTT", "Voice OTP", "Local Bypass", "RCS", "Flash SMS"];
+const CONNECTION_TYPES = ["SMPP", "ANDROID_SMS", "HTTP API", "Email", "WhatsApp OTT", "Telegram OTT", "Voice OTP", "Local Bypass", "RCS", "Flash SMS", "Business API"];
 const SMPP_VERSIONS = ["3.3", "3.4", "5.0"];
 const BIND_TYPES = ["TRX", "TX", "RX", "TX_RX"];
 
@@ -28,14 +28,16 @@ interface Supplier {
   smpp_version: string; bind_type: string; address_ton: number; address_npi: number;
   address_range: string; inbound_mode: boolean;  api_url: string; api_key?: string; connector_id: number;
   currency: string; charging_mode: string; dlr_timeout: number; force_dlr: boolean;
-  is_active: boolean; bind_status: string; bind_error?: string;
+  is_active: boolean; bind_status: string; bind_error?: string; config?: string | null;
 }
 interface Connector { id: number; name: string; type: string; provider: string; region: string; api_url?: string; }
+interface BusinessApiConn { id: number; name: string; provider: string; api_url?: string; is_active?: boolean; }
 
 export default function SupplierPage() {
   const searchParams = useSearchParams();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
+  const [businessApis, setBusinessApis] = useState<BusinessApiConn[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
@@ -53,18 +55,21 @@ export default function SupplierPage() {
     inboundMode: false,
     apiUrl: "", apiKey: "",
     currency: "USD", initialBalance: "0", creditLimit: "0",
-    chargingMode: "on_submit", dlrTimeout: "60",
+    chargingMode: "on_submit", dlrTimeout: "300",
+    businessApiConnectId: "",
   });
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [sr, cr] = await Promise.all([
+      const [sr, cr, br] = await Promise.all([
         fetch("/api/tenant/suppliers", { cache: "no-store" }).then(r => r.json()),
         fetch("/api/tenant/connectors", { cache: "no-store" }).then(r => r.json()).catch(() => ({ connectors: [] })),
+        fetch("/api/tenant/business-api", { cache: "no-store" }).then(r => r.json()).catch(() => ({ apis: [] })),
       ]);
       setSuppliers(sr.suppliers || []);
       setConnectors(cr.connectors || []);
+      setBusinessApis(br.apis || []);
     } catch (err) {
       console.error("Failed to load suppliers:", err);
     } finally {
@@ -136,9 +141,13 @@ export default function SupplierPage() {
       creditLimit: form.creditLimit || "0",
         forceDlr: form.chargingMode === "force_dlr" || form.chargingMode === "force_dlr_timeout",
         chargingMode: form.chargingMode,
-        dlrTimeout: parseInt(form.dlrTimeout) || 60,
+        dlrTimeout: parseInt(form.dlrTimeout) || 300,
         connectorId: (form as any).connectorId ? parseInt((form as any).connectorId) : null,
-        config: form.connectionType === "VOICE_OTP" ? JSON.stringify({ type: "voice_otp" }) : null,
+        config: form.connectionType === "VOICE_OTP"
+          ? JSON.stringify({ type: "voice_otp" })
+          : form.connectionType === "Business API"
+            ? JSON.stringify({ business_api_connect_id: form.businessApiConnectId ? parseInt(form.businessApiConnectId) : null })
+            : null,
       };
 
     try {
@@ -188,7 +197,13 @@ export default function SupplierPage() {
       currency: s.currency || "USD",
       initialBalance: "0", creditLimit: "0",
       chargingMode: s.charging_mode || (s.force_dlr ? "force_dlr" : "on_submit"),
-      dlrTimeout: (s.dlr_timeout || 60).toString(),
+      dlrTimeout: (s.dlr_timeout || 300).toString(),
+      businessApiConnectId: (() => {
+        try {
+          const cfg = typeof s.config === "string" ? JSON.parse(s.config) : (s.config || {});
+          return cfg.business_api_connect_id ? String(cfg.business_api_connect_id) : "";
+        } catch { return ""; }
+      })(),
     });
     setShowForm(true);
   };
@@ -471,6 +486,25 @@ export default function SupplierPage() {
             )}
 
             {/* API Settings + Connector Dropdown */}
+            {form.connectionType === "Business API" && (
+              <section className="bg-slate-50 rounded-xl p-5">
+                <h4 className="font-semibold mb-3">📨 Business API Connection</h4>
+                <p className="text-xs text-slate-500 mb-3">Route through a connected Telegram / WhatsApp Business API config (managed on the Business API page). The supplier's <code className="text-xs bg-slate-200 px-1 rounded">business_api_connect_id</code> is stored in <code className="text-xs bg-slate-200 px-1 rounded">config</code>.</p>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">Select Business API Connection</label>
+                  <select value={form.businessApiConnectId} onChange={e => setForm({...form, businessApiConnectId: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
+                    <option value="">-- Select Business API Connection --</option>
+                    {businessApis.filter(a => a.is_active !== false).map(a => (
+                      <option key={a.id} value={a.id}>{a.name} ({a.provider}){a.api_url ? " — " + a.api_url : ""}</option>
+                    ))}
+                  </select>
+                  {businessApis.length === 0 && (
+                    <p className="text-xs text-amber-600 mt-1">No Business API connections found. Create one on the <a href="/dashboard/business-api" className="underline">Business API page</a> first.</p>
+                  )}
+                </div>
+              </section>
+            )}
+
             {["HTTP API", "RCS", "Flash SMS", "WhatsApp OTT", "Telegram OTT", "Email"].includes(form.connectionType) && (
               <section className="bg-slate-50 rounded-xl p-5">
                 <h4 className="font-semibold mb-3">🌐 API Connector</h4>

@@ -15,12 +15,16 @@ export default function MccMncSuperPage() {
   const [form, setForm] = useState({ mcc: "", mnc: "", countryCode: "", countryName: "", networkName: "" });
   const [msg, setMsg] = useState("");
   const [msgError, setMsgError] = useState("");
+  // Cleanup stats — how many duplicate entries the dedup migration auto-removed
+  const [cleanup, setCleanup] = useState<{ removed: number; removedAt: string | null } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [showPushModal, setShowPushModal] = useState(false);
   const [tenants, setTenants] = useState<{id:number; companyName:string; schemaName:string; email:string}[]>([]);
   const [selectedTenantIds, setSelectedTenantIds] = useState<Set<number>>(new Set());
   const [tenantSearch, setTenantSearch] = useState("");
+  // Bump after any successful mutation — the effect below auto-refetches the list
+  const [refreshKey, setRefreshKey] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const flash = (text: string, err = false) => {
@@ -28,12 +32,24 @@ export default function MccMncSuperPage() {
     else { setMsg(text); setTimeout(() => setMsg(""), 5000); }
   };
 
+  // Short summary of the auto-sync to tenants, e.g. "· synced to 12 tenants"
+  const syncText = (sync: { tenants?: number; failed?: number } | null | undefined, verb: string) => {
+    if (!sync || !sync.tenants) return "";
+    const failed = sync.failed ? ` · ${sync.failed} tenant${sync.failed === 1 ? "" : "s"} failed to sync` : "";
+    return ` · ${verb} ${sync.tenants} tenant${sync.tenants === 1 ? "" : "s"}${failed}`;
+  };
+
   const load = useCallback(async () => {
     const r = await fetch("/api/mcc-mnc").then(r => r.json());
     setData(r.data || []);
+    setCleanup(r.cleanup || null);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // Auto-refresh the entry list on mount and after every successful
+  // add/edit/delete/upload (refreshKey bump) — handlers no longer call load().
+  useEffect(() => { load(); }, [load, refreshKey]);
+
+  const refresh = () => setRefreshKey(k => k + 1);
 
   const filtered = data.filter(d =>
     (d.countryName || "").toLowerCase().includes(search.toLowerCase()) ||
@@ -47,14 +63,16 @@ export default function MccMncSuperPage() {
   // ── Add ──
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch("/api/mcc-mnc", {
+    const r = await fetch("/api/mcc-mnc", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
     });
+    const j = await r.json();
+    if (j.error) { flash(j.error, true); return; }
     setShowForm(false); setForm({ mcc: "", mnc: "", countryCode: "", countryName: "", networkName: "" });
-    load();
-    flash("MCC/MNC entry added");
+    refresh();
+    flash(`MCC/MNC entry added${syncText(j.sync, "synced to")}`);
   };
 
   // ── Inline Edit ──
@@ -70,22 +88,26 @@ export default function MccMncSuperPage() {
       flash("MCC and Country Name are required", true);
       return;
     }
-    await fetch(`/api/mcc-mnc/${id}`, {
+    const r = await fetch(`/api/mcc-mnc/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(editValues),
     });
+    const j = await r.json();
+    if (j.error) { flash(j.error, true); return; } // keep the editor open so the user can fix it
     setEditingId(null);
-    load();
-    flash("Entry updated");
+    refresh();
+    flash(`Entry updated${syncText(j.sync, "synced to")}`);
   };
 
   // ── Delete ──
   const handleDelete = async (id: number) => {
-    if (!confirm("Delete this MCC/MNC entry?")) return;
-    await fetch(`/api/mcc-mnc/${id}`, { method: "DELETE" });
-    load();
-    flash("Entry deleted");
+    if (!confirm("Delete this MCC/MNC entry? It will also be removed from all tenants' shared rate tables.")) return;
+    const r = await fetch(`/api/mcc-mnc/${id}`, { method: "DELETE" });
+    const j = await r.json();
+    if (j.error) { flash(j.error, true); return; }
+    refresh();
+    flash(`Entry deleted${syncText(j.sync, "removed from")}`);
   };
 
   // ── CSV File Upload ──
@@ -149,7 +171,7 @@ export default function MccMncSuperPage() {
       flash(`Uploaded ${inserted} entries (${skipped} duplicates skipped) from ${file.name}`);
       setShowUpload(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      load();
+      refresh();
     } catch {
       flash("Upload failed — check file format", true);
     } finally {
@@ -243,6 +265,33 @@ export default function MccMncSuperPage() {
 
       {msg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">{msg}</div>}
       {msgError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{msgError}</div>}
+
+      {/* Cleanup notice — shown while the dedup cleanup record exists */}
+      {cleanup && cleanup.removed > 0 && (
+        <div className="flex items-start gap-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl px-4 py-3">
+          <span className="text-lg leading-none mt-0.5">🧹</span>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-800">
+              {cleanup.removed.toLocaleString()} duplicate entries auto-removed
+              {cleanup.removedAt && !isNaN(new Date(cleanup.removedAt).getTime()) && (
+                <> on <span className="whitespace-nowrap">{new Date(cleanup.removedAt).toLocaleDateString()}</span></>
+              )}
+            </p>
+            <p className="text-xs text-amber-700/80 mt-0.5">
+              MNC codes were normalized to 3 digits (e.g. <code className="font-mono bg-amber-100 px-1 rounded">3 → 003</code>), so the
+              same network can no longer appear twice.
+            </p>
+          </div>
+          <button
+            onClick={() => setCleanup(null)}
+            className="text-amber-600 hover:text-amber-800 text-lg leading-none transition shrink-0"
+            aria-label="Dismiss cleanup notice"
+            title="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* CSV Upload Modal */}
       {showUpload && (
@@ -355,7 +404,7 @@ export default function MccMncSuperPage() {
             </tr>
           </thead>
           <tbody>
-            {filtered.slice(0, 300).map(d => {
+            {filtered.map(d => {
               const isEditing = editingId === d.id;
               return (
                 <tr key={d.id} className={`border-b hover:bg-slate-50 ${isEditing ? "bg-blue-50" : ""}`}>
@@ -403,7 +452,7 @@ export default function MccMncSuperPage() {
             {filtered.length === 0 && <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-400">No entries found.</td></tr>}
           </tbody>
         </table>
-        {filtered.length > 300 && <div className="px-5 py-3 bg-slate-50 text-xs text-slate-500">Showing 300 of {filtered.length} results. Refine search for more.</div>}
+        {filtered.length > 300 && <div className="px-5 py-3 bg-slate-50 text-xs text-slate-500">Showing all {filtered.length.toLocaleString()} results.</div>}
       </div>
 
       {/* Stats */}

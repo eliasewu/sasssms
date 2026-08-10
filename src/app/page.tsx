@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import StatusBadge from "@/components/StatusBadge";
+import { APK_VERSION, APK_SIZE_MB } from "@/lib/apk-config";
 
 const TAWKTO_ID = process.env.NEXT_PUBLIC_TAWKTO_ID || "";
 
@@ -289,11 +290,17 @@ export default function LandingPage() {
     setLoading(true);
     setError("");
     const fd = new FormData(e.currentTarget);
+    const acceptTerms = fd.get("acceptTerms") === "on";
+    if (!acceptTerms) {
+      setLoading(false);
+      return setError("You must accept the Terms & Conditions to create an account.");
+    }
     const body: Record<string, string> = {
       companyName: fd.get("companyName") as string,
       email: fd.get("email") as string,
       phone: fd.get("phone") as string,
       password: fd.get("password") as string,
+      acceptTerms: "true",
     };
     const res = await fetch("/api/auth/register", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -334,6 +341,15 @@ export default function LandingPage() {
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label><input name="phone" type="tel" required className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Password *</label><input name="password" type="password" required minLength={6} className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition" /></div>
 
+              <label className="flex items-start gap-2.5 text-xs text-gray-600 cursor-pointer select-none">
+                <input name="acceptTerms" type="checkbox" required className="mt-0.5 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 accent-blue-600" />
+                <span>
+                  I have read and agree to the{" "}
+                  <Link href="/terms" className="text-blue-600 font-medium hover:underline">Terms &amp; Conditions</Link>{" "}
+                  and the{" "}
+                  <Link href="/privacy" className="text-blue-600 font-medium hover:underline">Privacy Policy</Link>.
+                </span>
+              </label>
               <div className="bg-green-50 border border-green-200 rounded-lg p-3"><p className="text-xs text-green-700">✓ No Setup Fees • ✓ No Hidden Fees • ✓ Pay Only For What You Use</p></div>
               <button disabled={loading} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 rounded-lg font-semibold disabled:opacity-50 shadow-lg">{loading ? "Creating..." : "Create Account →"}</button>
               <div className="relative my-4"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div><div className="relative flex justify-center text-xs"><span className="bg-white px-3 text-gray-400">or sign up with</span></div></div>
@@ -808,13 +824,14 @@ export default function LandingPage() {
                   </div>
                   <div>
                     <h3 className="text-2xl font-bold text-gray-900">Android App</h3>
-                    <p className="text-green-600 text-sm font-medium">SMS Gateway • v1.0.0</p>
+                    <p className="text-green-600 text-sm font-medium">SMS Gateway • v{APK_VERSION}</p>
                   </div>
                 </div>
 
                 <div className="space-y-3 mb-6">
                   {[
                     { icon: "📨", text: "Send & receive SMS via SMPP" },
+                    { icon: "🌐", text: "REST/HTTP gateway mode (no inbound port needed)" },
                     { icon: "🔗", text: "Auto-connect to nearest server" },
                     { icon: "📊", text: "Real-time delivery reports" },
                     { icon: "🔐", text: "Encrypted communication" },
@@ -832,7 +849,7 @@ export default function LandingPage() {
                     <>
                       <a href={downloadUrl || "/api/tenant/android-app/download"} className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-3.5 rounded-xl font-semibold hover:from-green-600 hover:to-emerald-700 transition shadow-lg shadow-green-500/25 group-hover:shadow-green-500/40 text-center inline-flex items-center justify-center gap-2">
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                        Download APK (65 MB)
+                        Download APK ({APK_SIZE_MB} MB)
                       </a>
                       <p className="text-xs text-gray-400 text-center">
                         You&apos;re signed in — <a href="/dashboard/android-app" className="text-blue-500 hover:text-blue-600 underline">view setup guide</a>
@@ -851,7 +868,7 @@ export default function LandingPage() {
                 <div className="mt-6 pt-6 border-t border-gray-100">
                   <div className="flex items-center justify-between text-xs text-gray-400">
                     <span>🟢 Android 7.0+</span>
-                    <span>📦 65 MB</span>
+                    <span>📦 {APK_SIZE_MB} MB</span>
                     <span>🔄 Auto-updates</span>
                   </div>
                 </div>

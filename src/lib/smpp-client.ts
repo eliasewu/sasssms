@@ -11,6 +11,8 @@
 import smpp from "smpp";
 import { pool } from "@/db";
 import { lookupSupplierCost } from "@/lib/rates";
+import { enqueueRestMt, isRestGatewayOnline } from "@/lib/gateway-rest-registry";
+import { pushDlrWebhook } from "@/lib/dlr-webhook-log";
 
 const smppLib: any = smpp;
 type SmppSession = any;
@@ -306,7 +308,7 @@ async function processSupplierDlr(
 
   // Also push HTTP DLR if client has callback URL
   if (delivery.dlrCallbackUrl) {
-    pushHttpDlr(delivery.dlrCallbackUrl, dlrPayload);
+    pushHttpDlr(delivery.dlrCallbackUrl, dlrPayload, delivery.schemaName);
   }
 
   // Clean up
@@ -314,16 +316,14 @@ async function processSupplierDlr(
 }
 
 /**
- * Push DLR to client via HTTP callback (fire-and-forget)
+ * Push DLR to client via HTTP callback (fire-and-forget) and record the
+ * delivery attempt in the tenant's dlr_webhook_logs for verification.
  */
-async function pushHttpDlr(url: string, dlr: DlrPayload) {
+async function pushHttpDlr(url: string, dlr: DlrPayload, schemaName: string) {
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
-    await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    await pushDlrWebhook(
+      url,
+      {
         message_id: dlr.messageId,
         supplier_message_id: dlr.supplierMessageId,
         status: dlr.status,
@@ -333,10 +333,11 @@ async function pushHttpDlr(url: string, dlr: DlrPayload) {
         done_date: dlr.doneDate,
         error_code: dlr.errorCode,
         timestamp: new Date().toISOString(),
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
+      },
+      schemaName,
+      dlr.messageId,
+      dlr.status
+    );
   } catch (err) {
     console.error(`[SMPP-CLIENT] HTTP DLR push failed:`, err);
   }
@@ -923,6 +924,56 @@ export function sendViaSupplierServerSession(
     return Promise.resolve({ success: false, supplierMessageId: "", errorCode: 14 });
   }
 
+  // ── Android gateways (system_type=ANDROID_SMS) receive MT via DELIVER_SM ──
+  // The Net2APP Android APK only answers DELIVER_SM for MT (SUBMIT_SM is reserved
+  // for MO). Sending SUBMIT_SM to an Android gateway would hang waiting for a
+  // response the app never sends, so push DELIVER_SM directly for these sessions.
+  if ((sess as any).systemType === "ANDROID_SMS") {
+    return new Promise((resolve) => {
+      // The phone can hold the ACK for seconds (paced SMS queue), so bound the
+      // wait — a phone that dies mid-queue must not wedge the route forever.
+      const RESPONSE_TIMEOUT_MS = 30_000;
+      let settled = false;
+      const finish = (r: { success: boolean; supplierMessageId: string; errorCode?: number }) => {
+        if (!settled) { settled = true; clearTimeout(timer); resolve(r); }
+      };
+      const timer = setTimeout(() => {
+        console.warn(`[SMPP-SRV] Android MT DELIVER_SM response timeout for ${messageId} via supplier #${supplierId} — will retry`);
+        finish({ success: false, supplierMessageId: "", errorCode: 1 });
+      }, RESPONSE_TIMEOUT_MS);
+      try {
+        console.log(`[SMPP-SRV] Android MT: DELIVER_SM to supplier #${supplierId} (${sess.systemId}): dst=${destination} our_id=${messageId}`);
+        sess.session.send(
+          new smppLib.PDU("deliver_sm", {
+            source_addr_ton: determineTon(source),
+            source_addr_npi: determineNpi(source),
+            source_addr: source,
+            dest_addr_ton: determineTon(destination),
+            dest_addr_npi: determineNpi(destination),
+            destination_addr: destination,
+            short_message: { message: content },
+            esm_class: 0,
+            registered_delivery: 1,
+            data_coding: 0,
+          }),
+          (resp: { command_status: number }) => {
+            clearTimeout(timer);
+            if (resp.command_status === 0) {
+              console.log(`[SMPP-SRV] Android MT DELIVER_SM accepted by supplier #${supplierId}: ${messageId}`);
+              finish({ success: true, supplierMessageId: messageId, errorCode: undefined });
+            } else {
+              console.warn(`[SMPP-SRV] Android MT DELIVER_SM rejected by supplier #${supplierId}: status=${resp.command_status}`);
+              finish({ success: false, supplierMessageId: "", errorCode: resp.command_status || 1 });
+            }
+          }
+        );
+      } catch (err) {
+        console.error(`[SMPP-SRV] Android MT deliver_sm error via supplier #${supplierId}:`, err);
+        finish({ success: false, supplierMessageId: "", errorCode: 1 });
+      }
+    });
+  }
+
   // ── Try SUBMIT_SM first (standard MT — triggers proper DLR tracking) ──
   return new Promise((resolve) => {
     try {
@@ -1033,31 +1084,55 @@ export function deliverSmsWithFallback(
     const route = sortedRoutes[index];
     if (index > 0) fallbackUsed = true;
 
-    // Check if supplier has ANY active connection (CLIENT or passed-in SERVER sessions)
-    const hasServerSession = serverSessions?.has(`supplier:${tenantId}:${route.supplierId}`);
+    // Check if supplier has ANY active connection (CLIENT, passed-in SERVER
+    // sessions, or HTTP REST-registered gateway). SERVER-mode sessions also
+    // live on globalThis (Next.js module isolation) — consult both so HTTP/API
+    // paths can reach GSM gateways that registered to us.
+    const _g = globalThis as typeof globalThis & { __activeSupplierSessions?: Map<string, unknown> };
+    const gSessions = _g.__activeSupplierSessions;
+    const serverKey = `supplier:${tenantId}:${route.supplierId}`;
+    const hasSmpSession = serverSessions?.has(serverKey) || gSessions?.has(serverKey);
+    const hasRestSession = isRestGatewayOnline(tenantId, route.supplierId);
+    const hasServerSession = hasSmpSession || hasRestSession;
     if (!isSupplierConnected(tenantId, route.supplierId) && !hasServerSession) {
       console.log(`[SMPP-CLIENT] Route "${route.routeName}" supplier ${route.supplierId} not connected — falling back`);
       failedCount++;
       return tryNextRoute(index + 1);
     }
 
-    // Attempt delivery: prefer SERVER-mode if supplier has an active server session
-    // (avoids wasteful CLIENT-mode attempt for GSM modems that connect to us)
-    let result: { success: boolean; supplierMessageId: string; errorCode?: number };
-    if (hasServerSession) {
-      // Supplier is connected via SERVER-mode → use it directly (skip CLIENT-mode)
-      result = await sendViaSupplierServerSession(
-        tenantId,
-        route.supplierId,
-        source,
-        destination,
-        content,
-        messageId,
-        serverSessions
-      );
-    } else {
+    // Attempt delivery: REST-registered gateway → enqueue MT for HTTP polling;
+    // SERVER-mode SMPP session → push DELIVER_SM/SUBMIT_SM; else CLIENT-mode.
+    const attemptDelivery = (): Promise<{ success: boolean; supplierMessageId: string; errorCode?: number }> => {
+      if (hasRestSession && !hasSmpSession) {
+        const queued = enqueueRestMt(
+          tenantId,
+          route.supplierId,
+          messageId,
+          source,
+          destination,
+          content
+        );
+        if (queued) {
+          console.log(`[SMPP-CLIENT] Enqueued MT ${messageId} for REST gateway supplier ${route.supplierId} (HTTP poll)`);
+          return Promise.resolve({ success: true, supplierMessageId: messageId, errorCode: undefined });
+        }
+        console.log(`[SMPP-CLIENT] REST gateway ${route.supplierId} queue unavailable — falling back`);
+        return Promise.resolve({ success: false, supplierMessageId: "", errorCode: 14 });
+      }
+      if (hasSmpSession) {
+        // Supplier is connected via SERVER-mode → use it directly (skip CLIENT-mode)
+        return sendViaSupplierServerSession(
+          tenantId,
+          route.supplierId,
+          source,
+          destination,
+          content,
+          messageId,
+          serverSessions
+        );
+      }
       // Try CLIENT-mode connection
-      result = await sendViaSupplierConnection(
+      return sendViaSupplierConnection(
         tenantId,
         route.supplierId,
         source,
@@ -1065,10 +1140,29 @@ export function deliverSmsWithFallback(
         content,
         messageId
       );
+    };
+
+    // ── High-TPS support: retry transient failures with backoff ──
+    // GSM/Android gateways have a physical send rate and a bounded SMS queue;
+    // under a burst they may briefly reject (e.g. "queue full"). Retrying with
+    // backoff lets the burst drain instead of dropping the message. The route
+    // only counts as failed after all attempts are exhausted.
+    const RETRY_DELAYS_MS = [1000, 3000, 7000];
+    let result = await attemptDelivery();
+    // Skip burst-retries for the "no connection available" sentinel (errorCode
+    // 14): a CLIENT supplier that isn't bound won't come back within the retry
+    // window (its reconnect backoff is ≥30s), so fall back immediately rather
+    // than burning 11s per message. Server-session (Android gateway) attempts
+    // always retry — a full SMS queue or a reconnecting phone recovers fast.
+    const retryable = !(!hasServerSession && result.errorCode === 14);
+    for (let attempt = 0; retryable && !result.success && attempt < RETRY_DELAYS_MS.length; attempt++) {
+      console.log(`[SMPP-CLIENT] Delivery attempt ${attempt + 2} for ${messageId} via "${route.routeName}" supplier ${route.supplierId} in ${RETRY_DELAYS_MS[attempt] / 1000}s (burst backoff)`);
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+      result = await attemptDelivery();
     }
 
     if (!result.success) {
-      console.log(`[SMPP-CLIENT] Delivery failed via route "${route.routeName}" supplier ${route.supplierId} — falling back`);
+      console.log(`[SMPP-CLIENT] Delivery failed after retries via route "${route.routeName}" supplier ${route.supplierId} — falling back`);
       failedCount++;
       return tryNextRoute(index + 1);
     }
@@ -1107,6 +1201,29 @@ export function deliverSmsWithFallback(
  */
 export function registerDlrCallback(messageId: string, callback: DlrCallback): void {
   dlrCallbacks.set(messageId, callback);
+}
+
+/**
+ * Fire the registered DLR callback for a message (used by the REST gateway
+ * result path — a phone reports delivery over HTTPS instead of SMPP DELIVER_SM,
+ * so the callback registered at submit time must be triggered explicitly).
+ *
+ * ONE-SHOT: the callback is removed before invoking, so a retried result POST
+ * (e.g. after a network timeout) is a harmless no-op instead of double-charging
+ * the client or double-incrementing counters.
+ * Returns true if a callback was found and invoked.
+ */
+export function triggerDlrCallback(messageId: string, dlr: DlrPayload): boolean {
+  const callback = dlrCallbacks.get(messageId);
+  if (!callback) return false;
+  dlrCallbacks.delete(messageId);
+  try {
+    callback(dlr);
+    return true;
+  } catch (err) {
+    console.error(`[SMPP] DLR callback error for ${messageId}:`, err);
+    return false;
+  }
 }
 
 /**
@@ -1169,6 +1286,9 @@ export function isSupplierConnected(tenantId: number, supplierId: number): boole
     const key = `supplier:${tenantId}:${supplierId}`;
     if (serverSessions.has(key)) return true;
   }
+
+  // REST-registered (HTTP) gateways count as connected too
+  if (isRestGatewayOnline(tenantId, supplierId)) return true;
 
   return false;
 }

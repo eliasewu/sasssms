@@ -5,9 +5,9 @@ import { hashPassword, createToken } from "@/lib/auth";
 import { createTenantSchema, seedMccMncRates } from "@/lib/tenant-schema";
 import { eq } from "drizzle-orm";
 import { safeInt, safeDecimal, safeText } from "@/lib/validation";
-import { ALL_SERVER_IPS, getSelfIp } from "@/lib/server-ips";
+import { ALL_SERVER_IPS, getSelfIp, isDevServer } from "@/lib/server-ips";
 import { registerLimiter, getClientIp } from "@/lib/rate-limit";
-import { sendTenantWelcomeEmail, getAdminEmail } from "@/lib/email-service";
+import { sendTenantWelcomeEmail, notifyAdminNewTenant } from "@/lib/email-service";
 
 async function getSignupBonus(): Promise<number> {
   try {
@@ -19,7 +19,13 @@ async function getSignupBonus(): Promise<number> {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { companyName, email, phone, password } = body;
+    const { companyName, email, phone, password, acceptTerms } = body;
+
+    // ── Terms & Conditions acceptance required ──
+    if (acceptTerms !== true && acceptTerms !== "true") {
+      return NextResponse.json({ error: "You must accept the Terms & Conditions to create an account." }, { status: 400 });
+    }
+
     // Auto-assign a random active server — server IPs are never exposed to users
     let resolvedLocation = "";
     let assignedServerIp = "0.0.0.0";
@@ -68,12 +74,20 @@ export async function POST(request: Request) {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
-    // ── Auto-assign server: pick a random active location from platform_settings ──
+    // ── Auto-assign server: pick a random active PRODUCTION location from
+    //    platform_settings. Dev servers (role "development" or in DEV_SERVER_IPS)
+    //    are never assignable — tenants only land on production boxes. ──
     try {
       const locResult = await pool.query("SELECT value FROM platform_settings WHERE key = 'server_locations'");
       if (locResult.rows.length > 0) {
-        const locations: Array<{ id: string; ipAddress: string; isActive: boolean }> = JSON.parse(locResult.rows[0].value || "[]");
-        const active = locations.filter(l => l.isActive && l.ipAddress && l.ipAddress !== "0.0.0.0");
+        const locations: Array<{ id: string; ipAddress: string; isActive: boolean; role?: string }> = JSON.parse(locResult.rows[0].value || "[]");
+        const active = locations.filter(l =>
+          l.isActive &&
+          l.ipAddress &&
+          l.ipAddress !== "0.0.0.0" &&
+          l.role !== "development" &&
+          !isDevServer(l.ipAddress)
+        );
         if (active.length > 0) {
           const pick = active[Math.floor(Math.random() * active.length)];
           resolvedLocation = pick.id;
@@ -81,11 +95,12 @@ export async function POST(request: Request) {
         }
       }
     } catch (e) { console.error("Server location lookup failed:", e); }
-    // Fall back to global smppServerIp if no active locations found
-    if (!assignedServerIp || assignedServerIp === "0.0.0.0") {
+    // Fall back to global smppServerIp if no active PRODUCTION locations found
+    // (skip dev IPs here too)
+    if (!assignedServerIp || assignedServerIp === "0.0.0.0" || isDevServer(assignedServerIp)) {
       try {
         const globalIpResult = await pool.query("SELECT value FROM platform_settings WHERE key = 'smppServerIp'");
-        if (globalIpResult.rows.length > 0 && globalIpResult.rows[0].value && globalIpResult.rows[0].value !== "0.0.0.0") {
+        if (globalIpResult.rows.length > 0 && globalIpResult.rows[0].value && globalIpResult.rows[0].value !== "0.0.0.0" && !isDevServer(globalIpResult.rows[0].value)) {
           assignedServerIp = globalIpResult.rows[0].value;
         }
       } catch { /* use hardcoded fallback */ }
@@ -175,35 +190,17 @@ export async function POST(request: Request) {
         body: JSON.stringify(tenantData),
       }).catch(e => console.error(`[Replicate] Failed to sync tenant to ${ip}:`, e.message));
     });
-    // ── Notify admin of new registration (best-effort, non-blocking) ──
-    const signupBonusSms = tenant.smsLimit; // reuse already-fetched value
+    // ── Notify admin of new registration (best-effort, non-blocking) so they
+    //    can review whether to keep Auto-Connect Installer enabled for them ──
     (async () => {
-      try {
-        const nodemailer = await import("nodemailer");
-        const transporter = nodemailer.default.createTransport({
-          host: process.env.SMTP_HOST || "mail.net2app.com",
-          port: parseInt(process.env.SMTP_PORT || "587"),
-          secure: parseInt(process.env.SMTP_PORT || "587") === 465,
-          auth: { user: process.env.SMTP_USER || "welcome@net2app.com", pass: process.env.SMTP_PASS || "" },
-          tls: { rejectUnauthorized: false }, // allow self-signed certs on localhost
-        });
-        await transporter.sendMail({
-          from: `"Net2APP Notifications" <${process.env.SMTP_USER || "welcome@net2app.com"}>`,
-          to: await getAdminEmail(),
-          subject: `🆕 New Tenant: ${tenant.companyName}`,
-          html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
-            <h2 style="color:#2563eb;">New Tenant Registration</h2>
-            <p><strong>Company:</strong> ${tenant.companyName}</p>
-            <p><strong>Email:</strong> ${tenant.email}</p>
-            <p><strong>Phone:</strong> ${safeText(phone, 50)}</p>
-            <p><strong>Plan:</strong> Starter (${platformRate}/SMS)</p>
-            <p><strong>SMS Credits:</strong> ${signupBonusSms}</p>
-            <p><strong>Server IP:</strong> ${assignedServerIp}</p>
-            <hr style="margin:20px 0" />
-            <p style="color:#94a3b8;font-size:11px;">📱 WhatsApp: +971505380825 | Net2APP Platform</p>
-          </div>`,
-        });
-      } catch { /* notification is best-effort */ }
+      notifyAdminNewTenant({
+        tenantName: tenant.companyName,
+        tenantEmail: tenant.email,
+        phone: safeText(phone, 50),
+        serverIp: assignedServerIp,
+        signupBonusSms: tenant.smsLimit ?? undefined,
+        platformRate,
+      }).catch(e => console.error("New-tenant admin notification failed:", e));
     })();
 
     // ── Send welcome email to tenant (best-effort, non-blocking) ──

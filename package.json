@@ -15,9 +15,14 @@
     "test:smpp-e2e": "npx tsx src/lib/__tests__/smpp-e2e.test.ts",
     "test:id-generators": "npx tsx src/lib/__tests__/id-generators.test.ts",
     "test:voice-otp-dlr": "npx tsx src/lib/__tests__/voice-otp-dlr.test.ts",
+    "test:dlr-timeout-sweeper": "npx tsx src/lib/__tests__/dlr-timeout-sweeper.test.ts",
+    "test:mcc-mnc-sync": "npx tsx src/lib/__tests__/mcc-mnc-sync.test.ts",
+    "test:auto-connect-audit": "npx tsx src/lib/__tests__/auto-connect-audit.test.ts",
+    "test:tenant-toggle-audit": "npx tsx src/lib/__tests__/tenant-toggle-audit.test.ts",
+    "test:sms-dedupe": "npx tsx src/lib/__tests__/sms-dedupe.test.ts",
     "test:voice-otp-e2e": "npx tsx scripts/test-voice-otp-e2e.ts",
     "test:voice-otp-call": "npx tsx scripts/test-voice-otp-call.ts",
-    "test:unit": "npm run test:id-generators && npm run test:voice-otp-dlr",
+    "test:unit": "npm run test:id-generators && npm run test:voice-otp-dlr && npm run test:dlr-timeout-sweeper && npm run test:sms-dedupe",
     "prepare": "echo skip"
   },
   "dependencies": {
@@ -49,6 +54,7 @@
     "remark-gfm": "^4.0.1",
     "smpp": "^0.6.0-rc.4",
     "socks-proxy-agent": "^10.1.0",
+    "https-proxy-agent": "^7.0.6",
     "uuid": "^14.0.1",
     "xlsx": "^0.18.5"
   },

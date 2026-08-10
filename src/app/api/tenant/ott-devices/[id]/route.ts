@@ -31,6 +31,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   if (body.status !== undefined) { fields.push(`status = $${idx++}`); values.push(body.status); }
   if (body.proxyId !== undefined) { fields.push(`proxy_id = $${idx++}`); values.push(body.proxyId ? parseInt(body.proxyId) : null); }
   if (body.isActive !== undefined) { fields.push(`is_active = $${idx++}`); values.push(body.isActive); }
+  if (body.dailyLimit !== undefined && body.dailyLimit !== null && body.dailyLimit !== "") {
+    const v = parseInt(body.dailyLimit);
+    if (Number.isFinite(v) && v > 0) { fields.push(`daily_limit = $${idx++}`); values.push(v); }
+  }
+  if (body.monthlyLimit !== undefined && body.monthlyLimit !== null && body.monthlyLimit !== "") {
+    const v = parseInt(body.monthlyLimit);
+    if (Number.isFinite(v) && v > 0) { fields.push(`monthly_limit = $${idx++}`); values.push(v); }
+  }
 
   if (fields.length === 0) return NextResponse.json({ error: "No fields" }, { status: 400 });
 

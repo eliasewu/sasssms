@@ -263,7 +263,7 @@ export default function QuickWizardPage() {
   const [currency, setCurrency] = useState("USD");
   const [routePlanId, setRoutePlanId] = useState("");
   const [chargingMode, setChargingMode] = useState("on_submit");
-  const [dlrTimeout, setDlrTimeout] = useState("60");
+  const [dlrTimeout, setDlrTimeout] = useState("300");
   const [enableHttpApi, setEnableHttpApi] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState("");
 
@@ -346,7 +346,7 @@ export default function QuickWizardPage() {
       enableHttpApi,
       forceDlr: chargingMode === "force_dlr" || chargingMode === "force_dlr_timeout",
       chargingMode,
-      dlrTimeout: parseInt(dlrTimeout) || 60,
+      dlrTimeout: parseInt(dlrTimeout) || 300,
       webhookUrl: webhookUrl || null,
     };
 
@@ -370,7 +370,7 @@ export default function QuickWizardPage() {
       currency,
       forceDlr: chargingMode === "force_dlr" || chargingMode === "force_dlr_timeout",
       chargingMode,
-      dlrTimeout: parseInt(dlrTimeout) || 60,
+      dlrTimeout: parseInt(dlrTimeout) || 300,
     };
 
     try {

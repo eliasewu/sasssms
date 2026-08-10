@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { verifyToken, type TenantToken } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
+import MmsForwardToggle from "./mms-toggle";
 
 interface SmsInbox {
   id: number;
@@ -34,6 +35,9 @@ export default async function InboxPage() {
       <div>
         <h2 className="text-xl font-bold text-slate-800">SMS Inbox (MO)</h2>
         <p className="text-sm text-slate-500">Mobile-originated incoming messages</p>
+      </div>
+      <div className="bg-white rounded-xl border px-5 py-4">
+        <MmsForwardToggle />
       </div>
       <div className="bg-white rounded-xl border overflow-hidden">
         <table className="w-full text-sm">

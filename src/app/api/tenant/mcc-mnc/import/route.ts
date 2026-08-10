@@ -33,19 +33,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Global MCC/MNC database is empty" }, { status: 400 });
     }
 
-    // Build set of existing entries to skip
+    // Build set of existing entries to skip (zero-padded MNC key, so "3" and
+    // "003" are treated as the same network)
     const existingResult = await tenantQuery(
       tenant.schemaName,
       `SELECT mcc, mnc FROM ${targetTable} WHERE ${entityColumn} = $1`,
       [parseInt(entityId)]
     );
     const existingSet = new Set(
-      existingResult.rows.map((r: { mcc: string; mnc: string }) => `${r.mcc}|${r.mnc || ""}`)
+      existingResult.rows.map((r: { mcc: string; mnc: string }) => `${r.mcc}|${(r.mnc || "").padStart(3, "0")}`)
     );
 
     // Filter to only new entries
     const newEntries = globalEntries.filter(
-      (e: { mcc: string; mnc: string | null }) => !existingSet.has(`${e.mcc}|${e.mnc || ""}`)
+      (e: { mcc: string; mnc: string | null }) => !existingSet.has(`${e.mcc}|${(e.mnc || "").padStart(3, "0")}`)
     );
 
     let inserted = 0;
@@ -60,14 +61,20 @@ export async function POST(request: Request) {
       let paramIdx = 1;
 
       for (const entry of batch) {
-        valuesClauses.push(`($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, $${paramIdx + 4}, $${paramIdx + 5}, true)`);
-        params.push(parseInt(entityId), entry.country_code, entry.mcc, entry.mnc || null, entry.network_name || null, defaultRate);
-        paramIdx += 6;
+        valuesClauses.push(`($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, $${paramIdx + 4}, $${paramIdx + 5}, true, $${paramIdx + 6})`);
+        // Store the canonical zero-padded MNC + matching mccmnc
+        const mncPadded = entry.mnc ? entry.mnc.padStart(3, "0") : null;
+        params.push(
+          parseInt(entityId), entry.country_code, entry.mcc, mncPadded,
+          entry.network_name || null, defaultRate,
+          entry.mcc ? entry.mcc + (entry.mnc || "").padStart(3, "0") : null
+        );
+        paramIdx += 7;
       }
 
       await tenantQuery(
         tenant.schemaName,
-        `INSERT INTO ${targetTable} (${entityColumn}, country_code, mcc, mnc, operator_name, ${valueColumn}, is_active) VALUES ${valuesClauses.join(", ")}`,
+        `INSERT INTO ${targetTable} (${entityColumn}, country_code, mcc, mnc, operator_name, ${valueColumn}, is_active, mccmnc) VALUES ${valuesClauses.join(", ")}`,
         params
       );
       inserted += batch.length;

@@ -22,17 +22,36 @@ interface SupplierSummary {
   count: number;
   cost: number;
 }
+interface DlrSummary {
+  dlr_status: string;
+  count: number;
+}
+
+// Colors per DLR status so the delivery chart is scannable at a glance.
+const DLR_COLORS: Record<string, string> = {
+  DELIVERED: "bg-emerald-500",
+  FAILED: "bg-red-500",
+  UNDELIV: "bg-rose-400",
+  REJECTED: "bg-orange-500",
+  EXPIRED: "bg-amber-500",
+  PENDING: "bg-slate-300",
+  ENROUTE: "bg-sky-400",
+  SENT: "bg-indigo-400",
+  UNKNOWN: "bg-slate-400",
+};
+const DLR_DEFAULT_COLOR = "bg-slate-400";
 
 async function getReportData(
   type: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  connectionType: string
 ): Promise<{
   volume: VolumePoint[];
   byClient: ClientSummary[];
   bySupplier: SupplierSummary[];
   byConnectionType: { connection_type: string; count: number }[];
-  dlrSummary: { dlr_status: string; count: number }[];
+  dlrSummary: DlrSummary[];
 }> {
   const cookieStore = await cookies();
   const heads = await headers();
@@ -42,6 +61,7 @@ async function getReportData(
     (process.env.NODE_ENV === "production" ? "https" : "http");
   const baseUrl = `${protocol}://${host}`;
   const params = new URLSearchParams({ type, startDate, endDate });
+  if (connectionType) params.set("connectionType", connectionType);
   const res = await fetch(`${baseUrl}/api/tenant/reports?${params}`, {
     headers: { Cookie: cookieStore.toString() },
     cache: "no-store",
@@ -57,9 +77,15 @@ function isValidDate(d: string): boolean {
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: { type?: string; startDate?: string; endDate?: string };
+  searchParams: {
+    type?: string;
+    startDate?: string;
+    endDate?: string;
+    connectionType?: string;
+  };
 }) {
   const type = searchParams.type || "daily";
+  const connectionType = searchParams.connectionType || "";
   const startRaw =
     searchParams.startDate &&
     isValidDate(searchParams.startDate)
@@ -73,7 +99,7 @@ export default async function ReportsPage({
   const startIso = new Date(startRaw).toISOString();
   const endIso = new Date(endRaw + "T23:59:59.999Z").toISOString();
 
-  const data = await getReportData(type, startIso, endIso);
+  const data = await getReportData(type, startIso, endIso, connectionType);
 
   const v = (data.volume as VolumePoint[]) || [];
   const totalMsgs = v.reduce((s, x) => s + parseInt(x.count || "0"), 0);
@@ -83,6 +109,24 @@ export default async function ReportsPage({
   const maxVol = Math.max(...v.map((x) => parseInt(x.count || "0")), 1);
   const byClient = (data.byClient as ClientSummary[]) || [];
   const bySupplier = (data.bySupplier as SupplierSummary[]) || [];
+  const dlrSummary = (data.dlrSummary as DlrSummary[]) || [];
+  const byConnectionType = (data.byConnectionType as {
+    connection_type: string;
+    count: number;
+  }[]) || [];
+  const deliveredCount = dlrSummary
+    .filter((d) => d.dlr_status === "DELIVERED")
+    .reduce((s, d) => s + d.count, 0);
+  // REJECTED is excluded here: those rows were never sent (gate rejection),
+  // so they're not delivery failures — including them would deflate the rate.
+  const failedCount = dlrSummary
+    .filter((d) => ["FAILED", "UNDELIV", "EXPIRED"].includes(d.dlr_status))
+    .reduce((s, d) => s + d.count, 0);
+  const deliveryRate =
+    deliveredCount + failedCount > 0
+      ? (deliveredCount / (deliveredCount + failedCount)) * 100
+      : null;
+  const maxDlr = Math.max(...dlrSummary.map((x) => x.count), 1);
 
   return (
     <div className="space-y-6">
@@ -99,6 +143,7 @@ export default async function ReportsPage({
           defaultType={type}
           defaultStart={startRaw}
           defaultEnd={endRaw}
+          defaultConnectionType={connectionType}
         />
       </div>
 
@@ -159,6 +204,24 @@ export default async function ReportsPage({
             %
           </p>
         </div>
+        <div className="bg-white rounded-xl border p-4">
+          <p className="text-sm text-slate-500">
+            {connectionType ? `Delivery Rate (${connectionType})` : "Delivery Rate"}
+          </p>
+          <p
+            className={`text-2xl font-bold ${
+              deliveryRate === null
+                ? "text-slate-400"
+                : deliveryRate >= 80
+                  ? "text-emerald-600"
+                  : deliveryRate >= 50
+                    ? "text-amber-600"
+                    : "text-red-600"
+            }`}
+          >
+            {deliveryRate === null ? "—" : `${deliveryRate.toFixed(1)}%`}
+          </p>
+        </div>
       </div>
 
       {/* Volume Chart */}
@@ -190,6 +253,62 @@ export default async function ReportsPage({
           })}
         </div>
       </div>
+
+      {/* DLR Delivery Stats — charted per status; scope with the connection
+          type filter to chart Business API (or any channel) delivery. */}
+      {dlrSummary.length > 0 && (
+        <div className="bg-white rounded-xl border p-6">
+          <h3 className="font-semibold mb-1">
+            Delivery Stats
+            {connectionType && (
+              <span className="ml-2 text-xs font-normal text-blue-600 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5">
+                {connectionType}
+              </span>
+            )}
+          </h3>
+          <p className="text-xs text-slate-500 mb-4">
+            Messages by DLR result{" "}
+            {connectionType
+              ? `delivered via ${connectionType}`
+              : "across all connection types"}{" "}
+            in the selected period
+          </p>
+          <div className="space-y-2">
+            {dlrSummary.map((d, i) => {
+              const color =
+                DLR_COLORS[d.dlr_status?.toUpperCase() || ""] ||
+                DLR_DEFAULT_COLOR;
+              const pct =
+                deliveredCount + failedCount > 0 &&
+                ["DELIVERED", "FAILED", "UNDELIV", "EXPIRED"].includes(
+                  d.dlr_status
+                )
+                  ? ((d.count / (deliveredCount + failedCount)) * 100).toFixed(1)
+                  : null;
+              return (
+                <div key={i} className="flex items-center gap-3 text-sm">
+                  <span className="w-24 shrink-0 font-medium text-slate-600">
+                    {d.dlr_status || "unknown"}
+                  </span>
+                  <div className="flex-1 h-5 bg-slate-100 rounded overflow-hidden">
+                    <div
+                      className={`h-full ${color} transition-all`}
+                      style={{ width: `${(d.count / maxDlr) * 100}%` }}
+                      title={`${d.count} messages`}
+                    />
+                  </div>
+                  <span className="w-16 shrink-0 text-right font-mono text-slate-600">
+                    {d.count.toLocaleString()}
+                  </span>
+                  <span className="w-14 shrink-0 text-right text-xs text-slate-400">
+                    {pct === null ? "" : `${pct}%`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Revenue vs Cost vs Profit Chart */}
       <div className="bg-white rounded-xl border p-6">
@@ -239,6 +358,39 @@ export default async function ReportsPage({
           })}
         </div>
       </div>
+
+      {/* Connection Type Breakdown — hidden when scoped to one type */}
+      {!connectionType && byConnectionType.length > 0 && (
+        <div className="bg-white rounded-xl border p-6">
+          <h3 className="font-semibold mb-4">By Connection Type</h3>
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="text-left px-4 py-2">Type</th>
+                <th className="text-right px-4 py-2">Messages</th>
+                <th className="text-right px-4 py-2">Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {byConnectionType.map((t, i) => (
+                <tr key={i} className="border-t">
+                  <td className="px-4 py-2 font-medium">
+                    {t.connection_type || "Unset"}
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    {t.count.toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2 text-right text-slate-500">
+                    {totalMsgs > 0
+                      ? `${((t.count / totalMsgs) * 100).toFixed(1)}%`
+                      : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Client Breakdown */}
       {byClient.length > 0 && (

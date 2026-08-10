@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 import { batchEnrichMccMnc } from "@/lib/rates";
+import { enrichBusinessApiNames } from "@/lib/business-api-send";
 
 export const dynamic = "force-dynamic";
 
@@ -69,10 +70,14 @@ export async function GET(request: Request) {
   if (status) { countQuery += ` AND status = $${cidx++}`; countParams.push(status); }
   if (connectionType) { countQuery += ` AND connection_type = $${cidx++}`; countParams.push(connectionType); }
 
+  // Resolve Business API connectors so the SMS Logs shows the provider name
+  // (e.g. "Telegram Main Bot · telegram") instead of the generic label.
+  const enriched = await enrichBusinessApiNames(tenant.schemaName, messages);
+
   const countResult = await tenantQuery(tenant.schemaName, countQuery, countParams);
 
   return NextResponse.json({
-    messages,
+    messages: enriched,
     total: parseInt(countResult.rows[0]?.total || "0"),
   });
 }

@@ -30,6 +30,8 @@ export default function MccMncPage() {
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
   const [msgError, setMsgError] = useState("");
+  // Cleanup stats — how many duplicate entries the dedup migration auto-removed
+  const [cleanup, setCleanup] = useState<{ removed: number; removedAt: string | null } | null>(null);
 
   // Modals
   const [showAddForm, setShowAddForm] = useState(false);
@@ -65,12 +67,15 @@ export default function MccMncPage() {
       setLoading(true);
       const params = new URLSearchParams();
       if (searchTerm) params.set("search", searchTerm);
-      params.set("limit", "1000");
+      // Fetch the whole database (the table is ~2.7k rows, rendered in a
+      // scrollable container) so the list is never silently truncated.
+      params.set("limit", "100000");
       const r = await fetch(`/api/tenant/mcc-mnc?${params}`);
       if (!r.ok) throw new Error("Failed to load");
       const j = await r.json();
       setData(j.data || []);
       setTotal(j.total || 0);
+      setCleanup(j.cleanup || null);
       setError("");
     } catch {
       setError("Failed to load MCC/MNC database.");
@@ -267,6 +272,33 @@ export default function MccMncPage() {
       {msgError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{msgError}</div>}
       {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
 
+      {/* Cleanup notice — shown while the dedup cleanup record exists */}
+      {cleanup && cleanup.removed > 0 && (
+        <div className="flex items-start gap-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl px-4 py-3">
+          <span className="text-lg leading-none mt-0.5">🧹</span>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-800">
+              {cleanup.removed.toLocaleString()} duplicate entries auto-removed
+              {cleanup.removedAt && !isNaN(new Date(cleanup.removedAt).getTime()) && (
+                <> on <span className="whitespace-nowrap">{new Date(cleanup.removedAt).toLocaleDateString()}</span></>
+              )}
+            </p>
+            <p className="text-xs text-amber-700/80 mt-0.5">
+              MNC codes were normalized to 3 digits (e.g. <code className="font-mono bg-amber-100 px-1 rounded">3 → 003</code>), so the
+              same network can no longer appear twice.
+            </p>
+          </div>
+          <button
+            onClick={() => setCleanup(null)}
+            className="text-amber-600 hover:text-amber-800 text-lg leading-none transition shrink-0"
+            aria-label="Dismiss cleanup notice"
+            title="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* ── Add Single Entry Form ── */}
       {showAddForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowAddForm(false)}>
@@ -451,7 +483,7 @@ export default function MccMncPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.slice(0, 500).map(d => {
+              {filtered.map(d => {
                 const isEditing = editingId === d.id;
                 return (
                 <tr key={d.id} className={`border-b hover:bg-slate-50 transition ${isEditing ? "bg-blue-50" : ""}`}>
@@ -511,9 +543,9 @@ export default function MccMncPage() {
             </tbody>
           </table>
         </div>
-        {filtered.length > 500 && (
+        {filtered.length > 0 && (
           <div className="px-5 py-3 bg-slate-50 text-xs text-slate-500 border-t">
-            Showing 500 of {filtered.length} results. Refine search for more specific results.
+            Showing all {filtered.length.toLocaleString()} results.
           </div>
         )}
       </div>

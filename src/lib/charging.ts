@@ -56,6 +56,13 @@ export function isForceDlrTimeout(mode: ChargingMode): boolean {
 }
 
 /**
+ * Returns true if this mode forces a DLR outcome (immediate or timed).
+ */
+export function isForceDlrOrTimeout(mode: ChargingMode | null | undefined): boolean {
+  return !!mode && (mode === "force_dlr" || mode === "force_dlr_timeout");
+}
+
+/**
  * Returns true if this mode defers charging until DLR arrives.
  */
 export function isDlrCharged(mode: ChargingMode): boolean {

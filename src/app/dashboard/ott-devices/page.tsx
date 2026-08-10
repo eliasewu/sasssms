@@ -8,6 +8,8 @@ interface OttDevice {
   qr_code: string | null; qr_session: string | null; qr_expires_at: string | null;
   proxy_id: number | null; status: string; last_seen: string; is_active: boolean;
   api_config: string | null;
+  daily_limit?: number; monthly_limit?: number;
+  daily_sent?: number; monthly_sent?: number;
 }
 interface ProxyConfig {
   id: number; name: string; host: string; port: number; protocol: string; proxy_type: string; is_active: boolean;
@@ -27,6 +29,7 @@ export default function OttDevicesPage() {
   const [form, setForm] = useState({
     name: "", deviceType: "whatsapp", phoneNumber: "", proxyId: "",
     telegramApiId: "", telegramApiHash: "",
+    dailyLimit: "250", monthlyLimit: "1000",
   });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -49,7 +52,7 @@ export default function OttDevicesPage() {
   }, []);
 
   const resetForm = () => {
-    setForm({ name: "", deviceType: "whatsapp", phoneNumber: "", proxyId: "", telegramApiId: "", telegramApiHash: "" });
+    setForm({ name: "", deviceType: "whatsapp", phoneNumber: "", proxyId: "", telegramApiId: "", telegramApiHash: "", dailyLimit: "250", monthlyLimit: "1000" });
     setEditingId(null);
     setShowForm(false);
   };
@@ -138,6 +141,8 @@ export default function OttDevicesPage() {
       proxyId: device.proxy_id ? String(device.proxy_id) : "",
       telegramApiId: "",
       telegramApiHash: "",
+      dailyLimit: device.daily_limit != null ? String(device.daily_limit) : "250",
+      monthlyLimit: device.monthly_limit != null ? String(device.monthly_limit) : "1000",
     });
 
     // If it's a Telegram device with stored api_config, pre-fill credentials
@@ -162,6 +167,8 @@ export default function OttDevicesPage() {
         name: form.name,
         phoneNumber: form.phoneNumber || null,
         proxyId: form.proxyId ? parseInt(form.proxyId) : null,
+        dailyLimit: form.dailyLimit ? parseInt(form.dailyLimit) : undefined,
+        monthlyLimit: form.monthlyLimit ? parseInt(form.monthlyLimit) : undefined,
       };
 
       if (form.deviceType === "telegram" && (form.telegramApiId || form.telegramApiHash)) {
@@ -192,6 +199,8 @@ export default function OttDevicesPage() {
         deviceType: form.deviceType,
         phoneNumber: form.phoneNumber || null,
         proxyId: parseInt(form.proxyId) || null,
+        dailyLimit: form.dailyLimit ? parseInt(form.dailyLimit) : 250,
+        monthlyLimit: form.monthlyLimit ? parseInt(form.monthlyLimit) : 1000,
       };
 
       if (form.deviceType === "telegram" && (form.telegramApiId || form.telegramApiHash)) {
@@ -312,6 +321,36 @@ export default function OttDevicesPage() {
               </select>
             </div>
 
+            {/* Per-device send quotas */}
+            <div className="col-span-2 border-t pt-4 mt-2">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-3">
+                <p className="text-sm text-emerald-700">
+                  <strong>📊 Send Quotas</strong> — each device is capped at <strong>{form.dailyLimit || 250}/day</strong> and
+                  <strong> {form.monthlyLimit || 1000}/month</strong> to keep the WhatsApp/Telegram account safe.
+                </p>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Daily Limit</label>
+              <input
+                type="number"
+                min={1}
+                value={form.dailyLimit}
+                onChange={e => setForm({...form, dailyLimit: e.target.value})}
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Monthly Limit</label>
+              <input
+                type="number"
+                min={1}
+                value={form.monthlyLimit}
+                onChange={e => setForm({...form, monthlyLimit: e.target.value})}
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+
             {/* Telegram API credentials */}
             {form.deviceType === "telegram" && (
               <>
@@ -382,6 +421,22 @@ export default function OttDevicesPage() {
                 {d.proxy_id ? proxies.find(p => p.id === d.proxy_id)?.name || `#${d.proxy_id}` : "None ⚠️"}
               </span>
             </div>
+
+            {/* Quota usage */}
+            {d.daily_limit != null && (
+              <QuotaBar
+                label="Daily"
+                used={d.daily_sent ?? 0}
+                limit={d.daily_limit}
+              />
+            )}
+            {d.monthly_limit != null && (
+              <QuotaBar
+                label="Monthly"
+                used={d.monthly_sent ?? 0}
+                limit={d.monthly_limit}
+              />
+            )}
             <div className="flex gap-2 mt-3 pt-3 border-t">
               {d.status === "ONLINE" ? (
                 <button onClick={() => unpairDevice(d)} className="bg-amber-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-amber-600 flex-1">
@@ -518,6 +573,30 @@ export default function OttDevicesPage() {
         </div>
       )}
       {confirmModal}
+    </div>
+  );
+}
+
+/** Per-device quota progress bar */
+function QuotaBar({ label, used, limit }: { label: string; used: number; limit: number }) {
+  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  const exhausted = used >= limit;
+  const color = exhausted
+    ? "bg-red-500"
+    : pct >= 80
+      ? "bg-amber-500"
+      : "bg-emerald-500";
+  return (
+    <div className="mb-2">
+      <div className="flex items-center justify-between text-xs mb-1">
+        <span className="text-slate-500 font-medium">{label}</span>
+        <span className={`font-mono ${exhausted ? "text-red-600 font-semibold" : "text-slate-500"}`}>
+          {used.toLocaleString()}/{limit.toLocaleString()}
+        </span>
+      </div>
+      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+      </div>
     </div>
   );
 }

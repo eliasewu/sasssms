@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getTenantFromRequest } from "@/lib/auth";
 import { pool } from "@/db";
+import { padMnc, isValidMccMnc } from "@/lib/mcc-lookup-client";
+import { syncMccMncToTenants, type MccMncSyncStats } from "@/lib/mcc-mnc-sync";
 import * as XLSX from "xlsx";
 
 interface ParsedEntry {
@@ -133,16 +135,30 @@ export async function POST(request: Request) {
   try {
     let inserted = 0;
     let skipped = 0;
+    let syncTenants = 0;
+    let syncFailures = 0;
+    let syncRows = 0;
 
     const batchSize = 50;
     for (let i = 0; i < entries.length; i += batchSize) {
       const batch = entries.slice(i, i + batchSize);
       
       for (const entry of batch) {
-        // Check duplicate
+        // Tenant uploads cascade into every tenant's rate tables, so skip
+        // malformed keys (MCC 2-3 digits, MNC 1-3 digits).
+        if (!isValidMccMnc(entry.mcc, entry.mnc)) {
+          skipped++;
+          continue;
+        }
+
+        // Store the canonical zero-padded MNC ("3" → "003") and dedupe on the
+        // padded key, so "3" and "003" are treated as the same network.
+        const mncPadded = padMnc(entry.mnc) || null;
+
+        // Check duplicate (mcc + padded mnc)
         const { rows: existing } = await client.query(
-          "SELECT id FROM mcc_mnc_database WHERE mcc = $1 AND COALESCE(mnc,'') = $2 AND country_code = $3",
-          [entry.mcc, entry.mnc || "", entry.countryCode]
+          "SELECT id FROM mcc_mnc_database WHERE mcc = $1 AND LPAD(COALESCE(mnc,''), 3, '0') = $2 AND country_code = $3",
+          [entry.mcc, padMnc(entry.mnc), entry.countryCode]
         );
 
         if (existing.length > 0) {
@@ -151,19 +167,36 @@ export async function POST(request: Request) {
         }
 
         await client.query(
-          `INSERT INTO mcc_mnc_database (mcc, mnc, country_code, country_name, network_name, language)
-           VALUES ($1,$2,$3,$4,$5,$6)`,
-          [entry.mcc, entry.mnc, entry.countryCode, entry.countryName, entry.networkName, entry.language]
+          `INSERT INTO mcc_mnc_database (mcc, mnc, country_code, country_name, network_name, language, mccmnc)
+           VALUES ($1::text,$2::text,$3::text,$4::text,$5::text,$6::text, $1::text || LPAD(COALESCE($2::text,''), 3, '0'))`,
+          [entry.mcc, mncPadded, entry.countryCode, entry.countryName, entry.networkName, entry.language]
         );
         inserted++;
+
+        // Propagate this new global entry to every active tenant's shared-
+        // default rate rows (client_id=-1 / supplier_id=-1) immediately, so a
+        // later row failing never leaves earlier inserts unsynced.
+        const s = await syncMccMncToTenants(
+          pool,
+          { mcc: entry.mcc, mnc: mncPadded, countryCode: entry.countryCode || "", networkName: entry.networkName },
+          "create"
+        );
+        syncTenants = Math.max(syncTenants, s.tenants);
+        syncFailures += s.failed;
+        syncRows += s.inserted;
       }
     }
+
+    const sync: MccMncSyncStats | null = inserted > 0
+      ? { tenants: syncTenants, failed: syncFailures, inserted: syncRows, updated: 0, deleted: 0 }
+      : null;
 
     return NextResponse.json({
       success: true,
       inserted,
       skipped,
       totalEntries: entries.length,
+      sync,
       message: `Uploaded ${inserted} entries (${skipped} skipped) from ${file.name}`,
     });
   } catch (error) {

@@ -72,6 +72,31 @@ export async function PUT(request: Request) {
   if (body.peakHoursStart !== undefined) await upsert("peak_hours_start", body.peakHoursStart);
   if (body.peakHoursEnd !== undefined) await upsert("peak_hours_end", body.peakHoursEnd);
 
+  // Tailscale auth key — embedded into the per-tenant 3proxy installers so new
+  // residential machines join the tailnet automatically (no browser login).
+  // Reject malformed keys so a bad paste never ships inside installers.
+  if (body.tailscaleAuthKey !== undefined) {
+    const key = String(body.tailscaleAuthKey).trim();
+    if (key !== "" && !/^tskey-[a-zA-Z0-9-]+$/.test(key)) {
+      return NextResponse.json({ error: "Invalid Tailscale auth key — must start with tskey-" }, { status: 400 });
+    }
+    await upsert("tailscaleAuthKey", key);
+  }
+
+  // Tailscale advertise tags (e.g. "tag:client, tag:home") — passed to
+  // `tailscale up --advertise-tags=...` by the installers. Tag-scoped auth
+  // keys REQUIRE these tags to authenticate, so this rides alongside the key.
+  if (body.tailscaleAdvertiseTags !== undefined) {
+    const tags = String(body.tailscaleAdvertiseTags).trim();
+    if (tags !== "" && !/^[a-zA-Z0-9:,\- ]+$/.test(tags)) {
+      return NextResponse.json(
+        { error: "Invalid Tailscale advertise tags — use comma-separated tag:name values (e.g. tag:client, tag:home)" },
+        { status: 400 }
+      );
+    }
+    await upsert("tailscaleAdvertiseTags", tags);
+  }
+
   // Server locations (stored as JSON in platform_settings)
   if (body.serverLocations !== undefined) await upsert("server_locations", JSON.stringify(body.serverLocations));
 

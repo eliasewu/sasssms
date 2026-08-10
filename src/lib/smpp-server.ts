@@ -31,11 +31,10 @@ import {
   requeueDlrsPersist,
   loadAllDlrsFromDb,
   startDlrCleanupPersist,
-} from "@/lib/dlr-queue-persist";
-import {
-  validateBind,
+} from "@/lib/dlr-queue-persist";import { validateBind,
   extractRemoteAddress,
 } from "@/lib/smpp-bind-validator";
+import { isMmsForwardEnabled, isMmsPlaceholder } from "@/lib/mms-forward";
 import { lookupClientRate, lookupSupplierCost } from "@/lib/rates";
 import {
   resolveChargingMode,
@@ -43,12 +42,17 @@ import {
   isDlrCharged,
   isForceDlr,
   isForceDlrTimeout,
+  isForceDlrOrTimeout,
 } from "@/lib/charging";
+import { isValidDestinationNumber } from "@/lib/number-validation";
+import { isBusinessApiRoute } from "@/lib/connection-types";
 import type { ChargingMode } from "@/lib/charging";
 import { executeVoiceOtpCall } from "@/lib/voice-otp-engine";
 import { buildVoiceOtpSmppDlrMessage } from "@/lib/voice-otp-dlr";
 import { applyTranslations, applyEntityTranslations } from "@/lib/translation-engine";
 import { buildUrl, evaluateCondition, extractFromResponse, parseHeaders } from "@/lib/api-connector-parser";
+import { isRestGatewayOnline, enqueueRestMt } from "@/lib/gateway-rest-registry";
+import { isDuplicateSmsSubmission, releaseSmsSubmission } from "@/lib/sms-dedupe";
 // OTT engine imported dynamically in processSubmitSm to avoid pulling baileys
 // (and its ESM-only transitive deps) into consumers that never use OTT routes.
 
@@ -324,9 +328,14 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
 
           console.log(`[SMPP-SRV] MO DELIVER_SM from ${ss.systemId}: ${src} → ${dest}: ${text.substring(0, 40)}`);
 
-          // Store in sms_inbox
+          // Store in sms_inbox — skip [MMS] notifications when the tenant
+          // disabled MMS forwarding (ack the phone either way).
           pool.connect().then(async (dbClient) => {
             try {
+              if (isMmsPlaceholder(text) && !(await isMmsForwardEnabled(ss.tenantId))) {
+                console.log(`[SMPP-SRV] Dropped [MMS] MO from ${src} (MMS forwarding disabled for tenant ${ss.tenantId})`);
+                return;
+              }
               await dbClient.query(`SET search_path TO "${ss.schemaName}"`);
               await dbClient.query(
                 `INSERT INTO sms_inbox (sender, destination, content, supplier_id) VALUES ($1, $2, $3, $4)`,
@@ -712,6 +721,16 @@ async function processSubmitSm(
   const origSrc = (pdu.source_addr as string) || "";
   const origContent = (pdu.short_message as { message: string })?.message || "";
 
+  // Dedupe key for this submission — declared at function scope so both the
+  // delivery path and the outer catch can release it when the send fails.
+  const dedupeInput = {
+    schemaName: es.schemaName,
+    clientId: es.clientId,
+    sender: origSrc,
+    destination: origDest,
+    content: origContent,
+  };
+
   try {
     const client = await pool.connect();
     try {
@@ -803,6 +822,18 @@ async function processSubmitSm(
         return { success: false, messageId, errorCode: 8 };
       }
 
+      // ── Duplicate request guard ──
+      // Placed AFTER all validation (client, route plan, routes, MCC filtering)
+      // and immediately BEFORE delivery. Identical SMPP submissions (same
+      // schema, client, sender, destination and content) within a short window
+      // are skipped so a client retry / double-submit can never send the same
+      // SMS twice or bill it twice — while a submit that FAILED validation is
+      // never marked (its retry is allowed).
+      if (isDuplicateSmsSubmission(dedupeInput)) {
+        console.log(`[SMPP] Duplicate submit_sm skipped (same request within window): ${origDest.slice(0, 20)}`);
+        return { success: true, messageId };
+      }
+
       // ── Apply Supplier-Level Translations (after route selection, before delivery) ──
       const firstRoute = filteredRoutes[0];
       if (firstRoute.supplierId) {
@@ -827,7 +858,7 @@ async function processSubmitSm(
       // ── Supplier cost & profit lookup (same as HTTP API) ──
       const resolvedSupplierId = firstRoute.supplierId;
       let supplierChargingMode: ChargingMode = "on_submit";
-      let supplierDlrTimeout = 60;
+      let supplierDlrTimeout = 300;
       let supplierCost = 0;
       let profit = 0;
       if (resolvedSupplierId) {
@@ -838,7 +869,7 @@ async function processSubmitSm(
           );
           if (suppRows.length > 0) {
             supplierChargingMode = resolveChargingMode(suppRows[0]);
-            supplierDlrTimeout = parseInt(suppRows[0].dlr_timeout as string || "60");
+            supplierDlrTimeout = parseInt(suppRows[0].dlr_timeout as string || "300");
           }
           supplierCost = await lookupSupplierCost(origDest, resolvedSupplierId, es.schemaName);
           profit = ratePerSms - supplierCost;
@@ -849,7 +880,7 @@ async function processSubmitSm(
 
       // ── Resolve client charging mode ──
       const clientChargingMode = resolveChargingMode(c);
-      const clientDlrTimeout = parseInt(c.dlr_timeout as string || "60");
+      const clientDlrTimeout = parseInt(c.dlr_timeout as string || "300");
 
       // ── Check connection type: handle Voice OTP / OTT / CUSTOM_API routes specially ──
       const firstRouteFinal = filteredRoutes[0];
@@ -859,6 +890,7 @@ async function processSubmitSm(
       if (connType === "VOICE_OTP" || connType === "Voice OTP") {
         const otpCode = content.match(/\b(\d{4,8})\b/)?.[1] || null;
         if (!otpCode) {
+          releaseSmsSubmission(dedupeInput);
           return { success: false, messageId, errorCode: 10 }; // RINVDSTADR = invalid content
         }
 
@@ -948,6 +980,7 @@ async function processSubmitSm(
             console.error(`[SMPP] Voice OTP failure DLR push error:`, dlrErr);
           }
 
+          releaseSmsSubmission(dedupeInput);
           return { success: false, messageId, errorCode: 1 };
         }
       }
@@ -957,51 +990,86 @@ async function processSubmitSm(
         const ottDeviceType = connType === "WhatsApp OTT" ? "whatsapp" as const : "telegram" as const;
 
         let ottSuccess = false;
-        try {
-          const { getOnlineOttDevices, sendOttMessage } = await import("@/lib/ott-pairing-engine");
-          const onlineDevices = await getOnlineOttDevices(es.schemaName, ottDeviceType);
-          if (onlineDevices.length > 0) {
-            const ottDevice = onlineDevices[0];
-            const ottResult = await sendOttMessage(
-              es.schemaName, ottDevice.id, dest, content, messageId,
-              es.clientId, c.route_plan_id,
-              firstRouteFinal.routeId, firstRouteFinal.trunkId,
-              firstRouteFinal.supplierId, ratePerSms
-            );
-            ottSuccess = ottResult.success;
-            console.log(`[SMPP] OTT message via ${connType} device #${ottDevice.id}: ${ottSuccess ? "SENT" : "FAILED"} → ${dest}`);
-          } else {
-            console.warn(`[SMPP] No online ${ottDeviceType} devices available for route "${firstRouteFinal.routeName}"`);
+        // Number validity: invalid destinations are REJECTED — never sent/charged,
+        // DLR result surfaces as fail/undelivered (billing matrix rule 5).
+        // Validate the ORIGINAL E.164 number — translation profiles may have
+        // rewritten dest to a local format (e.g. BD strip +880) by this point.
+        const ottRejected = !isValidDestinationNumber(origDest);
+        if (ottRejected) {
+          console.log(`[SMPP] OTT rejected invalid destination ${dest} for ${messageId} (REJECTED / FAILED DLR)`);
+        } else {
+          try {
+            const { getOnlineOttDevices, sendOttMessage } = await import("@/lib/ott-pairing-engine");
+            const onlineDevices = await getOnlineOttDevices(es.schemaName, ottDeviceType);
+            if (onlineDevices.length > 0) {
+              const ottDevice = onlineDevices[0];
+              const ottResult = await sendOttMessage(
+                es.schemaName, ottDevice.id, dest, content, messageId,
+                es.clientId, c.route_plan_id,
+                firstRouteFinal.routeId, firstRouteFinal.trunkId,
+                firstRouteFinal.supplierId, ratePerSms
+              );
+              ottSuccess = ottResult.success;
+              console.log(`[SMPP] OTT message via ${connType} device #${ottDevice.id}: ${ottSuccess ? "SENT" : "FAILED"} → ${dest}`);
+            } else {
+              console.warn(`[SMPP] No online ${ottDeviceType} devices available for route "${firstRouteFinal.routeName}"`);
+            }
+          } catch (err) {
+            console.error("[SMPP] OTT delivery error:", err);
           }
-        } catch (err) {
-          console.error("[SMPP] OTT delivery error:", err);
         }
 
-        const ottClientCost = ottSuccess && !isDlrCharged(clientChargingMode) ? ratePerSms : 0;
-        const ottSuppCost = ottSuccess && !isDlrCharged(supplierChargingMode) ? supplierCost : 0;
+        const ottClientCost = !ottRejected && ottSuccess && !isDlrCharged(clientChargingMode) ? ratePerSms : 0;
+        const ottSuppCost = !ottRejected && ottSuccess && !isDlrCharged(supplierChargingMode) ? supplierCost : 0;
         const ottProfit = ottClientCost - ottSuppCost;
+        const ottStatus = ottRejected ? 'REJECTED' : (ottSuccess ? 'SENT' : 'FAILED');
+        const ottDlrStatus = ottRejected ? 'FAILED' : (ottSuccess ? 'SENT' : 'FAILED');
 
         await client.query(
-          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id, dlr_timestamp,
+          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id, dlr_timestamp, dlr_source,
            original_sender, original_destination, original_content, translation_notes)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
           [es.clientId, src, dest, content,
-           ottSuccess ? 'SENT' : 'FAILED',
+           ottStatus,
            c.route_plan_id, firstRouteFinal.routeId, firstRouteFinal.trunkId,
            firstRouteFinal.supplierId, connType,
            ottClientCost,
            ottSuppCost,
            ottProfit,
-           ottSuccess ? 'SENT' : 'FAILED',
+           ottDlrStatus,
            messageId,
-           ottSuccess ? null : new Date(),
+           !ottRejected && ottSuccess ? null : new Date(),
+           ottRejected ? 'REJECTED' : null,
            origSrc, origDest, origContent,
            appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null]
         );
 
+        // Rejected destination → push fail/undelivered DLR back to the ESME client now
+        if (ottRejected) {
+          try {
+            const now = new Date();
+            es.session.send(
+              new smpp.PDU("deliver_sm", {
+                source_addr: dest,
+                destination_addr: src,
+                short_message: {
+                  message: `id:${messageId} sub:001 dlvrd:000 submit date:${String(now.getTime()).slice(0, 10)} done date:${String(now.getTime()).slice(0, 10)} stat:UNDELIV err:999 text:UNDELIV`,
+                },
+                esm_class: 4,
+                registered_delivery: 0,
+                data_coding: 0,
+              })
+            );
+            console.log(`[SMPP] OTT rejected DLR pushed to ESME: ${messageId} → UNDELIV`);
+          } catch (dlrErr) {
+            console.error(`[SMPP] OTT rejected DLR push error:`, dlrErr);
+          }
+        }
+
         if (ottSuccess) {
           return { success: true, messageId };
         } else {
+          releaseSmsSubmission(dedupeInput);
           return { success: false, messageId, errorCode: 1 };
         }
       }
@@ -1109,6 +1177,120 @@ async function processSubmitSm(
           return { success: true, messageId };
         } else {
           console.log(`[SMPP] Custom API FAILED via SMPP: ${dest} — ${firstRouteFinal.routeName}`);
+          releaseSmsSubmission(dedupeInput);
+          return { success: false, messageId, errorCode: 1 };
+        }
+      }
+
+      // ── Business API routes: deliver via business_api_connect (Telegram/WhatsApp) ──
+      if (isBusinessApiRoute(connType)) {
+        let businessApiSuccess = false;
+        let businessApiRejected = false;
+        let businessApiMessageId: string | null = null;
+
+        try {
+          const { rows: suppRows } = await client.query(
+            "SELECT config FROM suppliers WHERE id = $1",
+            [firstRouteFinal.supplierId]
+          );
+          const rawConfig = suppRows[0]?.config;
+          const supplierConfig = (typeof rawConfig === 'string' ? JSON.parse(rawConfig) : rawConfig || {}) as Record<string, unknown>;
+          const connectionId = supplierConfig.business_api_connect_id as number;
+
+          if (connectionId) {
+            // Number-validity gate — validate the ORIGINAL E.164 (translation
+            // profiles may have rewritten dest to a local format by now).
+            // Invalid → REJECTED, never sent/charged, DLR fail/undelivered
+            // (billing matrix rule 5).
+            if (!isValidDestinationNumber(origDest)) {
+              businessApiRejected = true;
+              console.log(`[SMPP] Business API rejected invalid destination ${dest} for ${messageId} (REJECTED / FAILED DLR)`);
+            } else {
+              const { deliverBusinessApiRoute } = await import("@/lib/business-api-send");
+              const baResult = await deliverBusinessApiRoute({
+                schemaName: es.schemaName,
+                connectionId,
+                destination: dest,
+                message: content,
+                sender: src,
+                messageId,
+                skipNumberGate: true, // origDest already validated above
+              });
+              businessApiSuccess = baResult.success;
+              if (baResult.httpStatus && baResult.httpStatus >= 200 && baResult.httpStatus < 300) {
+                businessApiMessageId = messageId;
+              }
+              console.log(`[SMPP] Business API: ${messageId} → ${baResult.status} (${baResult.apiName || baResult.provider || "Business API"}) http=${baResult.httpStatus ?? "—"}${baResult.error ? " · " + baResult.error : ""}`);
+            }
+          } else {
+            console.warn(`[SMPP] No business_api_connect_id configured for supplier #${firstRouteFinal.supplierId}`);
+          }
+        } catch (err) {
+          console.error("[SMPP] Business API delivery error:", err);
+        }
+
+        // Provider HTTP 200 = delivery accepted and there is NO real DLR path
+        // for Business API — store as DELIVERED (like Voice OTP) so the
+        // dlr-timeout-sweeper never flips a charged message to FAILED, and the
+        // DB row matches the DELIVRD we push to the ESME below.
+        const baStatus = businessApiRejected ? 'REJECTED' : (businessApiSuccess ? 'DELIVERED' : 'FAILED');
+        const baDlrStatus = businessApiRejected ? 'FAILED' : (businessApiSuccess ? 'DELIVERED' : 'FAILED');
+        // Business API has no DLR path → charge at submit on success (both modes)
+        const businessApiClientCost = !businessApiRejected && businessApiSuccess ? ratePerSms : 0;
+        const businessApiSuppCost = !businessApiRejected && businessApiSuccess && !isDlrCharged(supplierChargingMode) ? supplierCost : 0;
+        const businessApiProfit = businessApiClientCost - businessApiSuppCost;
+
+        await client.query(
+          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id, dlr_timestamp, dlr_source,
+           original_sender, original_destination, original_content, translation_notes)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+          [es.clientId, src, dest, content,
+           baStatus,
+           c.route_plan_id, firstRouteFinal.routeId, firstRouteFinal.trunkId,
+           firstRouteFinal.supplierId, connType,
+           businessApiClientCost, businessApiSuppCost, businessApiProfit,
+           baDlrStatus,
+           messageId,
+           new Date(),
+           businessApiRejected ? 'REJECTED' : null,
+           origSrc, origDest, origContent,
+           appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null]
+        );
+
+        // Charge client at submit on success (Business API has no DLR path)
+        if (businessApiSuccess && !businessApiRejected) {
+          pool.query(
+            `UPDATE tenants SET sms_counter = COALESCE(sms_counter, 0) + 1 WHERE id = $1`,
+            [es.tenantId]
+          ).catch(() => {});
+        }
+
+        // Push DLR back to the ESME client: DELIVRD on success, UNDELIV on reject/fail
+        try {
+          const now = new Date();
+          const stat = businessApiSuccess ? "DELIVRD" : "UNDELIV";
+          const err = businessApiSuccess ? "000" : (businessApiRejected ? "999" : "001");
+          es.session.send(
+            new smpp.PDU("deliver_sm", {
+              source_addr: dest,
+              destination_addr: src,
+              short_message: {
+                message: `id:${messageId} sub:001 dlvrd:${businessApiSuccess ? "001" : "000"} submit date:${String(now.getTime()).slice(0, 10)} done date:${String(now.getTime()).slice(0, 10)} stat:${stat} err:${err} text:${stat}`,
+              },
+              esm_class: 4,
+              registered_delivery: 0,
+              data_coding: 0,
+            })
+          );
+          console.log(`[SMPP] Business API DLR pushed to ESME: ${messageId} → ${stat}`);
+        } catch (dlrErr) {
+          console.error(`[SMPP] Business API DLR push error:`, dlrErr);
+        }
+
+        if (businessApiSuccess) {
+          return { success: true, messageId };
+        } else {
+          releaseSmsSubmission(dedupeInput);
           return { success: false, messageId, errorCode: 1 };
         }
       }
@@ -1145,8 +1327,30 @@ async function processSubmitSm(
           } catch (err) {
             console.error(`[SMPP] Android SMS deliver_sm error:`, err);
           }
+        } else if (isRestGatewayOnline(es.tenantId, firstRouteFinal.supplierId)) {
+          // Phone connected via REST (HTTPS) — SMPP port may be firewalled from
+          // mobile networks, so the app registers + polls over HTTPS instead.
+          // Enqueue the MT; the phone picks it up on its next poll and sends
+          // it natively via the SIM. Outcome reported back to /gateway/result.
+          androidSuccess = enqueueRestMt(
+            es.tenantId,
+            firstRouteFinal.supplierId,
+            messageId,
+            src,
+            dest,
+            content
+          );
+          if (androidSuccess) {
+            console.log(`[SMPP] Android SMS (REST): MT enqueued for supplier #${firstRouteFinal.supplierId} → ${dest}`);
+            pool.query(
+              `UPDATE android_gateway_devices SET sms_sent_count = sms_sent_count + 1, last_seen = NOW() WHERE supplier_id = $1 AND tenant_id = $2`,
+              [firstRouteFinal.supplierId, es.tenantId]
+            ).catch(() => {});
+          } else {
+            console.warn(`[SMPP] Android SMS (REST): enqueue failed for supplier #${firstRouteFinal.supplierId} (offline or queue full)`);
+          }
         } else {
-          console.warn(`[SMPP] No active Android gateway session for supplier #${firstRouteFinal.supplierId} (key: ${supplierKey})`);
+          console.warn(`[SMPP] No active Android gateway session or REST registration for supplier #${firstRouteFinal.supplierId} (key: ${supplierKey})`);
         }
 
         const androidClientCost = androidSuccess && !isDlrCharged(clientChargingMode) ? ratePerSms : 0;
@@ -1251,6 +1455,7 @@ async function processSubmitSm(
           });
           return { success: true, messageId };
         }
+        releaseSmsSubmission(dedupeInput);
         return { success: false, messageId, errorCode: 1 };
       }
 
@@ -1277,9 +1482,9 @@ async function processSubmitSm(
         const suppCost = isDlrCharged(supplierChargingMode) ? 0 : supplierCost;
         const msgProfit = clientCost - suppCost;
         await client.query(
-          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id,
+          `INSERT INTO messages (client_id, sender, destination, content, status, route_plan_id, route_id, trunk_id, supplier_id, connection_type, cost, supplier_cost, profit, dlr_status, message_id, supplier_message_id,
            original_sender, original_destination, original_content, translation_notes)
-           VALUES ($1,$2,$3,$4,'SENT',$5,$6,$7,$8,$9,$10,$11,$12,'SENT',$13,$14,$15,$16,$17)`,
+           VALUES ($1,$2,$3,$4,'SENT',$5,$6,$7,$8,$9,$10,$11,$12,'SENT',$13,$14,$15,$16,$17,$18)`,
           [
             es.clientId, src, dest, content,
             c.route_plan_id,
@@ -1291,6 +1496,9 @@ async function processSubmitSm(
             suppCost,
             msgProfit,
             messageId,
+            // Real SMSC/gateway-assigned message ID for DLR correlation — shown
+            // in the SMS logs alongside our platform message_id.
+            deliveryResult.supplierMessageId || null,
             origSrc, origDest, origContent, appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null,
           ]
         );
@@ -1413,7 +1621,7 @@ async function processSubmitSm(
               try {
                 await chargeDbc.query(`SET search_path TO "${schemaName}"`);
                 await chargeDbc.query(
-                  `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW(),
+                  `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW(), dlr_source = 'FORCE',
                    cost = $2, supplier_cost = $3, profit = $4 WHERE message_id = $1`,
                   [messageId, ratePerSms, suppCost, ratePerSms - suppCost]
                 );
@@ -1428,13 +1636,15 @@ async function processSubmitSm(
                   await chargeDbc.query(`SET search_path TO "${schemaName}"`);
                   console.log(`[SMPP] force_dlr: charged client #${clientId} (on_dlr) for ${messageId}`);
                 }
-                // Also charge on_dlr supplier (force_dlr preempts real DLR)
-                if (isDlrCharged(supplierChargingMode)) {
+                // Margin isolation (matrix rule 2): a CLIENT force-DLR event must
+                // NOT pay the supplier — only a supplier running force_dlr /
+                // force_dlr_timeout itself records cost on the forced outcome.
+                if (isForceDlrOrTimeout(supplierChargingMode)) {
                   await chargeDbc.query(
                     `UPDATE messages SET supplier_cost = $1, profit = cost - $1 WHERE message_id = $2`,
                     [supplierCost, messageId]
                   );
-                  console.log(`[SMPP] force_dlr: supplier cost applied (on_dlr) for ${messageId}`);
+                  console.log(`[SMPP] force_dlr: supplier cost applied (force mode) for ${messageId}`);
                 }
               } finally {
                 await chargeDbc.query(`SET search_path TO public`);
@@ -1508,12 +1718,13 @@ async function processSubmitSm(
                     if (isDlrCharged(clientChargingMode) && existingCost === 0) {
                       updateCost = ratePerSms;
                     }
-                    if (isDlrCharged(supplierChargingMode) && existingSuppCost === 0) {
+                    // Margin isolation: only a force-mode supplier gets paid on timeout
+                    if (isForceDlrOrTimeout(supplierChargingMode) && existingSuppCost === 0) {
                       updateSuppCost = supplierCost;
                     }
 
                     await checkClient.query(
-                      `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW(),
+                      `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW(), dlr_source = 'FORCE_TIMEOUT',
                        cost = $2, supplier_cost = $3, profit = $2 - $3 WHERE message_id = $1`,
                       [messageId, updateCost, updateSuppCost]
                     );
@@ -1607,6 +1818,7 @@ async function processSubmitSm(
         );
 
         console.log(`[SMPP] SMS delivery FAILED after ${deliveryResult.failedRoutes} route(s): ${deliveryResult.errorMessage}`);
+        releaseSmsSubmission(dedupeInput);
         return { success: false, messageId, errorCode: 1 };
       }
     } finally {
@@ -1615,6 +1827,7 @@ async function processSubmitSm(
     }
   } catch (err) {
     console.error("[SMPP] processSubmitSm error:", err);
+    releaseSmsSubmission(dedupeInput);
     return { success: false, messageId, errorCode: 1 };
   }
 }
@@ -1836,12 +2049,17 @@ async function processSupplierSubmitSm(
     try {
       await dbClient.query(`SET search_path TO "${ss.schemaName}"`);
 
-      // Store inbound MO message
-      await dbClient.query(
-        `INSERT INTO sms_inbox (sender, destination, content, supplier_id)
-         VALUES ($1, $2, $3, $4)`,
-        [src, dest, content, ss.supplierId]
-      );
+      // Store inbound MO message — skip [MMS] notifications when the tenant
+      // disabled MMS forwarding.
+      if (isMmsPlaceholder(content) && !(await isMmsForwardEnabled(ss.tenantId))) {
+        console.log(`[SMPP-SRV] Dropped [MMS] MO from ${src} (MMS forwarding disabled for tenant ${ss.tenantId})`);
+      } else {
+        await dbClient.query(
+          `INSERT INTO sms_inbox (sender, destination, content, supplier_id)
+           VALUES ($1, $2, $3, $4)`,
+          [src, dest, content, ss.supplierId]
+        );
+      }
 
       console.log(`[SMPP-SRV] Inbound MO from ${src} → ${dest} via supplier #${ss.supplierId}: ${content.substring(0, 40)}`);
     } finally {

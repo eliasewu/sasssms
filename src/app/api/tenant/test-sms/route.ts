@@ -228,15 +228,18 @@ export async function POST(request: Request) {
     dlrStatus = success ? "DELIVERED" : "FAILED";
   }
 
-  // Insert test message record (cost = 0 for free tests)
-  const dlrCallbackUrl = (client.dlr_callback_url || client.webhook_url || null) as string | null;
+  // Insert test message record (cost = 0 for free tests).
+  // Test messages are INTERNAL — DLR is never forwarded to the external
+  // client webhook. dlr_callback_url is stored as NULL so the OTT worker
+  // skips the webhook push for test OTT sends too; the status shows up as
+  // DELIVERED/FAILED in the SMS logs instead.
   const msgResult = await tenantQuery(
     tenant.schemaName,
     `INSERT INTO messages (client_id, sender, destination, content, status,
       route_plan_id, route_id, trunk_id, supplier_id, connection_type,
       cost, supplier_cost, profit, dlr_status, dlr_timestamp, message_id, log_type, dlr_callback_url,
       original_sender, original_destination, original_content, translation_notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,$11,$12,$13,$14,$15,'test',$16,$17,$18,$19,$20) RETURNING *`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,$11,$12,$13,$14,$15,'test',NULL,$16,$17,$18,$19) RETURNING *`,
     [
       clientId,
       sender,
@@ -253,7 +256,6 @@ export async function POST(request: Request) {
       dlrStatus,
       dlrStatus === "DELIVERED" ? new Date() : null,
       messageId,
-      dlrCallbackUrl,
       origSender,
       origDestination,
       origContent,
@@ -280,7 +282,7 @@ export async function POST(request: Request) {
       connectionType: selectedRoute.connection_type,
     },
     cost: 0,
-    dlr: { status: dlrStatus, pushed_to: dlrCallbackUrl },
+    dlr: { status: dlrStatus, pushed_to: null, forwarded: false },
     ott: ottDeviceId ? {
       deviceId: ottDeviceId,
       deviceType: selectedRoute.connection_type,

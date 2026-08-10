@@ -70,7 +70,8 @@ export async function POST(request: Request) {
       // ── CLIENT-mode supplier: we connect to them ──
       // API/HTTP suppliers don't need SMPP binding
       const connType = (entity.connection_type as string) || "SMPP";
-      if (connType !== "SMPP") {
+      const isSmppBased = connType === "SMPP" || connType === "ANDROID_SMS";
+      if (!isSmppBased) {
         await tenantQuery(
           tenant.schemaName,
           "UPDATE suppliers SET bind_status = $1, updated_at = NOW() WHERE id = $2",

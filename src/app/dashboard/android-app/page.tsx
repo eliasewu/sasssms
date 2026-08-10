@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { APK_VERSION, APK_SIZE_MB } from "@/lib/apk-config";
 
 export default function AndroidAppPage() {
   const [shareLink, setShareLink] = useState<string | null>(null);
@@ -33,8 +34,9 @@ export default function AndroidAppPage() {
           📱 SMS Gateway Mobile Apps
         </h1>
         <p className="text-slate-500">
-          Turn your phone into an SMPP SMS gateway. Available for Android —
-          iOS coming soon. Auto-connects to all Net2APP servers.
+          Turn your phone into an SMS gateway that connects over SMPP or
+          REST/HTTP. Available for Android — iOS coming soon. Auto-connects to
+          all Net2APP servers.
         </p>
       </div>
 
@@ -51,10 +53,10 @@ export default function AndroidAppPage() {
           </div>
           <div className="flex-1">
             <h2 className="text-lg font-semibold text-slate-800">
-              net2app v1.0.0
+              net2app v{APK_VERSION}
             </h2>
             <p className="text-sm text-slate-500 mt-1">
-              Production-signed APK · 63 MB · Android 7.0+
+              Production-signed APK · {APK_SIZE_MB} MB · Android 7.0+
             </p>
             <div className="flex items-center gap-2 mt-1">
               <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full border border-green-200">
@@ -62,6 +64,12 @@ export default function AndroidAppPage() {
               </span>
               <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200">
                 SMPP v3.4
+              </span>
+              <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full border border-purple-200">
+                🌐 REST/HTTP Mode
+              </span>
+              <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full border border-green-200">
+                🚀 High-TPS Ready
               </span>
             </div>
           </div>
@@ -71,7 +79,7 @@ export default function AndroidAppPage() {
           href="/api/tenant/android-app/download"
           className="mt-5 w-full py-3 rounded-lg font-semibold text-white bg-blue-600 hover:bg-blue-700 transition text-center block"
         >
-          ⬇️ Download APK (63 MB)
+          ⬇️ Download APK v{APK_VERSION} ({APK_SIZE_MB} MB)
         </a>
 
         {/* Shareable Link + QR */}
@@ -206,7 +214,9 @@ export default function AndroidAppPage() {
                 >
                   Suppliers →
                 </Link>
-                . Set system_type to <code>ANDROID_SMS</code>.
+                . Set system_type to <code>ANDROID_SMS</code>. Save the{" "}
+                <strong>SMPP username &amp; password</strong> you set — the app
+                will ask for them.
               </p>
               <Link
                 href="/dashboard/suppliers?create=ANDROID_SMS"
@@ -221,9 +231,12 @@ export default function AndroidAppPage() {
               3
             </span>
             <span>
-              <strong>Open the app</strong> and enter your supplier SMPP
-              credentials. The app auto-discovers all Net2APP servers and
-              connects to each one.
+              <strong>Open the app</strong> — on first launch it will ask for
+              your <strong>SMPP username and password</strong>. Enter your
+              supplier&apos;s credentials and the app auto-discovers and binds
+              to Net2APP servers on port 2775 (or choose{" "}
+              <strong>REST/HTTP</strong> mode when no inbound port can be
+              reached).
             </span>
           </li>
           <li className="flex gap-3">
@@ -261,6 +274,7 @@ export default function AndroidAppPage() {
         </h2>
         <div className="grid grid-cols-2 gap-3 text-sm">
           {[
+            "Dual connection mode — SMPP bind or REST/HTTP",
             "Multi-server SMPP connectivity",
             "Auto server discovery",
             "24/7 background service",
@@ -268,7 +282,13 @@ export default function AndroidAppPage() {
             "Delivery reports (DLR)",
             "Auto-reconnect on failures",
             "Auto-start on boot",
-            "Activity log",
+            "Activity log + reconnect counter",
+            "Dual-SIM detection & selection",
+            "Battery-optimization exemption",
+            "Default SMS app setup",
+            "Crash reporting (remote diagnostics)",
+            "High-TPS paced SMS queue",
+            "Remote server IP/port override",
           ].map((f) => (
             <div key={f} className="flex items-center gap-2 text-slate-600">
               <span className="text-green-500 shrink-0">✓</span>

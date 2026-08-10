@@ -99,8 +99,79 @@ function sshExecSafe(
   }
 }
 
+export interface ServerResources {
+  cpuPercent: number | null;
+  ramUsedGb: number | null;
+  ramTotalGb: number | null;
+  ramPercent: number | null;
+  diskUsed: string | null;
+  diskTotal: string | null;
+  diskPercent: number | null;
+  load1: number | null;
+}
+
 /**
- * Check if a server is healthy by SSH-ing in and verifying PM2 + ports.
+ * Parse the labeled resource block echoed by the SSH health command.
+ * Every line is `KEY:<value>` so parsing is robust and quote-safe.
+ * Exported for unit testing.
+ */
+export function parseResources(output: string): ServerResources | null {
+  const cpuLine = output.match(/CPU:([^\n]*)/)?.[1]?.trim() || "";
+  const memLine = output.match(/MEM:([^\n]*)/)?.[1]?.trim() || "";
+  const diskLine = output.match(/DISK:([^\n]*)/)?.[1]?.trim() || "";
+  const loadLine = output.match(/LOAD:([^\n]*)/)?.[1]?.trim() || "";
+
+  if (!cpuLine && !memLine && !diskLine && !loadLine) return null;
+
+  // CPU: "%Cpu(s): 12.3 us, ... 84.9 id, ..." → used = 100 - idle
+  let cpuPercent: number | null = null;
+  const idleMatch = cpuLine.match(/([\d.]+)\s*id,/);
+  if (idleMatch) {
+    const idle = parseFloat(idleMatch[1]);
+    if (!Number.isNaN(idle)) cpuPercent = Math.round((100 - idle) * 10) / 10;
+  }
+
+  // MEM: free -m → "Mem: total used free shared buff/cache available"
+  let ramUsedGb: number | null = null;
+  let ramTotalGb: number | null = null;
+  let ramPercent: number | null = null;
+  const memParts = memLine.split(/\s+/);
+  if (memParts.length >= 3 && memParts[0] === "Mem:") {
+    const total = parseInt(memParts[1], 10);
+    const used = parseInt(memParts[2], 10);
+    if (!Number.isNaN(total) && !Number.isNaN(used) && total > 0) {
+      ramTotalGb = Math.round((total / 1024) * 10) / 10;
+      ramUsedGb = Math.round((used / 1024) * 10) / 10;
+      ramPercent = Math.round((used / total) * 1000) / 10;
+    }
+  }
+
+  // DISK: df -h / → "Filesystem Size Used Avail Use% Mounted on"
+  let diskUsed: string | null = null;
+  let diskTotal: string | null = null;
+  let diskPercent: number | null = null;
+  const diskParts = diskLine.split(/\s+/);
+  if (diskParts.length >= 5 && diskParts[0] !== "Filesystem") {
+    diskTotal = diskParts[1];
+    diskUsed = diskParts[2];
+    const pct = parseInt(diskParts[4], 10);
+    if (!Number.isNaN(pct)) diskPercent = pct;
+  }
+
+  // LOAD: /proc/loadavg → "0.50 0.42 0.35 ..." (1-min average)
+  let load1: number | null = null;
+  const loadPart = loadLine.split(/\s+/)[0];
+  if (loadPart) {
+    const l = parseFloat(loadPart);
+    if (!Number.isNaN(l)) load1 = l;
+  }
+
+  return { cpuPercent, ramUsedGb, ramTotalGb, ramPercent, diskUsed, diskTotal, diskPercent, load1 };
+}
+
+/**
+ * Check if a server is healthy by SSH-ing in and verifying PM2 + ports,
+ * and collect live CPU / RAM / storage usage for the per-server usage view.
  */
 async function healthCheckServer(loc: ServerLocation): Promise<{
   healthStatus: ServerLocation["healthStatus"];
@@ -108,6 +179,7 @@ async function healthCheckServer(loc: ServerLocation): Promise<{
   uptime?: string;
   pm2Status?: string;
   ports?: string;
+  resources?: ServerResources;
 }> {
   if (!loc.ipAddress || !loc.sshUser) {
     return { healthStatus: "unknown", details: "No IP or SSH user configured" };
@@ -129,6 +201,10 @@ async function healthCheckServer(loc: ServerLocation): Promise<{
 
   const healthCmd = [
     'echo "UPTIME:$(uptime -p)"',
+    'echo "CPU:$(top -bn1 | grep %Cpu | sed -n 1p)"',
+    'echo "MEM:$(free -m | sed -n 2p)"',
+    'echo "DISK:$(df -h / | sed -n 2p)"',
+    'echo "LOAD:$(cat /proc/loadavg | sed -n 1p)"',
     'PM2_HOME=/root/.pm2 pm2 list --no-color 2>&1 | grep -E "online|errored|stopped" | head -5',
     'echo "PORTS:"',
     'ss -tlnp 2>/dev/null | grep -E "5556|2775|80|443" | awk \'{print $4}\'',
@@ -146,6 +222,8 @@ async function healthCheckServer(loc: ServerLocation): Promise<{
     return { healthStatus: "unknown", details: `SSH error: ${error.substring(0, 120)}` };
   }
 
+  const resources = parseResources(output);
+
   if (output.includes("online")) {
     const uptime = output.match(/UPTIME:(.+)/)?.[1]?.trim() || "";
     const ports = output.match(/PORTS:([\s\S]*)/)?.[1]?.trim() || "";
@@ -156,6 +234,7 @@ async function healthCheckServer(loc: ServerLocation): Promise<{
       uptime,
       pm2Status: "online",
       ports: ports || "ports detected",
+      resources: resources ?? undefined,
     };
   }
 
@@ -163,6 +242,7 @@ async function healthCheckServer(loc: ServerLocation): Promise<{
     healthStatus: "offline",
     details: "PM2 not running or ports not listening",
     uptime: output.match(/UPTIME:(.+)/)?.[1]?.trim(),
+    resources: resources ?? undefined,
   };
 }
 

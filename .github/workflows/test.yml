@@ -113,6 +113,21 @@ jobs:
           END $$;
           SQL
 
+      - name: MCC/MNC Sync Tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/app_db
+        run: npm run test:mcc-mnc-sync
+
+      - name: Auto-Connect Audit Trigger Tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/app_db
+        run: npm run test:auto-connect-audit
+
+      - name: Feature-Toggle Audit Trigger Tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/app_db
+        run: npm run test:tenant-toggle-audit
+
       - name: Voice OTP E2E Tests
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/app_db

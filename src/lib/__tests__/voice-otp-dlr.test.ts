@@ -511,7 +511,7 @@ test("integration: payload is JSON-serializable (no Date or undefined values)", 
 
 test("integration: pushDlrToClient export is callable (type-check import)", () => {
   assertEqual(typeof pushDlrToClient, "function", "pushDlrToClient is a function");
-  assertEqual(pushDlrToClient.length, 2, "pushDlrToClient takes 2 parameters");
+  assertTrue(pushDlrToClient.length >= 2, "pushDlrToClient accepts (url, payload) plus optional schemaName");
 });
 
 // ═══════════════════════════════════════════════════════════

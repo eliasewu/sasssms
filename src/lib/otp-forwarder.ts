@@ -112,6 +112,18 @@ async function processTenantInbox(
 
     // 3. Process each inbox message against rules
     for (const msg of inboxMessages as InboxMessage[]) {
+      // MMS notifications are forwarded by the Android gateway as [MMS]
+      // placeholder MOs so they are never silently lost — but they must never
+      // be treated as OTP sources (no auto-replies to MMS senders).
+      if (msg.content && msg.content.startsWith("[MMS]")) {
+        await pgClient.query(
+          `INSERT INTO otp_forward_logs (inbox_message_id, original_sender, original_content, forward_status)
+           VALUES ($1, $2, $3, 'SKIPPED')`,
+          [msg.id, msg.sender, msg.content]
+        );
+        continue;
+      }
+
       let matched = false;
 
       for (const rule of rules as OtpRule[]) {

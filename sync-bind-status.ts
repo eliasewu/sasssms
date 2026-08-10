@@ -18,6 +18,7 @@ const SERVER_MODE_GRACE_PERIOD_MS = 120_000; // 2 minutes after server start
 import { pool } from "@/db";
 import { isClientSessionActive, isSupplierServerSessionActive } from "@/lib/smpp-server";
 import { isSupplierConnected } from "@/lib/smpp-client";
+import { isRestGatewayOnline } from "@/lib/gateway-rest-registry";
 
 export async function syncAllBindStatus() {
   // Read __serverStartTime at call time (NOT at module load time) because
@@ -66,12 +67,12 @@ export async function syncAllBindStatus() {
 
         // ── Non-SMPP Suppliers: set to ACTIVE ──
         await client.query(
-          "UPDATE suppliers SET bind_status = 'ACTIVE', updated_at = NOW() WHERE connection_type != 'SMPP' AND is_active = true AND bind_status != 'ACTIVE'"
+          "UPDATE suppliers SET bind_status = 'ACTIVE', updated_at = NOW() WHERE connection_type != 'SMPP' AND is_active = true AND bind_status NOT IN ('ACTIVE', 'BOUND')"
         );
 
         // ── SMPP Suppliers ──
         const { rows: suppliers } = await client.query(
-          "SELECT id, name, supplier_code, connection_mode, bind_status FROM suppliers WHERE connection_type = 'SMPP' AND is_active = true"
+          "SELECT id, name, supplier_code, connection_mode, bind_status FROM suppliers WHERE (connection_type = 'SMPP' OR (connection_type = 'ANDROID_SMS' AND connection_mode = 'SERVER')) AND is_active = true"
         );
 
         for (const s of suppliers) {
@@ -84,7 +85,10 @@ export async function syncAllBindStatus() {
 
           let hasSession: boolean;
           if (s.connection_mode === "SERVER") {
-            hasSession = isSupplierServerSessionActive(t.id, s.id);
+            // Connected via SMPP server-session OR HTTP REST registration
+            hasSession =
+              isSupplierServerSessionActive(t.id, s.id) ||
+              isRestGatewayOnline(t.id, s.id);
           } else {
             hasSession = isSupplierConnected(t.id, s.id);
           }

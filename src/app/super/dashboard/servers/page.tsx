@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useConfirmModal } from "@/components/confirm-modal";
 
 interface ServerLocation {
@@ -12,6 +12,34 @@ interface ServerLocation {
 interface HealthInfo {
   healthStatus: string; details: string;
   uptime?: string; pm2Status?: string; ports?: string;
+  resources?: {
+    cpuPercent: number | null; ramUsedGb: number | null; ramTotalGb: number | null;
+    ramPercent: number | null; diskUsed: string | null; diskTotal: string | null;
+    diskPercent: number | null; load1: number | null;
+  };
+}
+
+/** Color for a usage gauge based on how full it is. */
+function gaugeColor(pct: number | null | undefined): string {
+  if (pct === null || pct === undefined) return "bg-slate-200";
+  if (pct < 60) return "bg-emerald-500";
+  if (pct < 85) return "bg-amber-500";
+  return "bg-red-500";
+}
+
+function UsageBar({ label, pct, sub }: { label: string; pct: number | null; sub: string }) {
+  const p = pct ?? 0;
+  return (
+    <div>
+      <div className="flex justify-between text-[10px] mb-0.5">
+        <span className="text-slate-500 font-medium">{label}</span>
+        <span className="font-mono text-slate-600">{sub}</span>
+      </div>
+      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full ${gaugeColor(pct)}`} style={{ width: `${Math.min(100, p)}%` }} />
+      </div>
+    </div>
+  );
 }
 
 const FLAG_MAP: Record<string, string> = {
@@ -40,15 +68,40 @@ export default function ServersPage() {
 
   const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
 
+  // Set false on unmount so background health-check fetches don't setState
+  // after the component is gone.
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   const loadServers = useCallback(async () => {
     try {
       const res = await fetch("/api/super/servers");
       const data = await res.json();
-      setServers(data.servers || []);
+      const list = data.servers || [];
+      setServers(list);
+      // Render the list immediately — health checks (SSH, up to ~15s each) run
+      // in parallel in the background so an unreachable server never blocks
+      // the page.
+      setLoading(false);
+
+      const active = list.filter((x: { ipAddress: string }) => x.ipAddress);
+      await Promise.allSettled(
+        active.map(async (s: { id: string }) => {
+          try {
+            const hr = await fetch(`/api/super/servers?check=${s.id}`);
+            const hd = await hr.json();
+            if (mountedRef.current) setHealthData((prev) => ({ ...prev, [s.id]: hd.health }));
+          } catch {
+            if (mountedRef.current) setHealthData((prev) => ({
+              ...prev,
+              [s.id]: { healthStatus: "offline", details: "Check failed — network error" },
+            }));
+          }
+        })
+      );
     } catch (err) {
       setMsg("Failed to load servers");
       setTimeout(() => setMsg(""), 3000);
-    } finally {
       setLoading(false);
     }
   }, []);
@@ -407,6 +460,43 @@ export default function ServersPage() {
                     {healthData[loc.id].ports && (
                       <p className="text-slate-600 font-mono mt-0.5">Ports: {healthData[loc.id].ports}</p>
                     )}
+
+                    {/* Live resource usage: CPU / RAM / Storage */}
+                    {healthData[loc.id].resources && (
+                      <div className="mt-2.5 pt-2.5 border-t border-black/5 space-y-2">
+                        <p className="font-medium text-slate-500 text-[10px] uppercase tracking-wide">📊 Resource Usage</p>
+                        <UsageBar
+                          label="CPU"
+                          pct={healthData[loc.id].resources!.cpuPercent}
+                          sub={
+                            healthData[loc.id].resources!.cpuPercent !== null
+                              ? `${healthData[loc.id].resources!.cpuPercent}%`
+                              : "—"
+                          }
+                        />
+                        <UsageBar
+                          label="RAM"
+                          pct={healthData[loc.id].resources!.ramPercent}
+                          sub={
+                            healthData[loc.id].resources!.ramUsedGb !== null
+                              ? `${healthData[loc.id].resources!.ramUsedGb} / ${healthData[loc.id].resources!.ramTotalGb} GB`
+                              : "—"
+                          }
+                        />
+                        <UsageBar
+                          label="Storage"
+                          pct={healthData[loc.id].resources!.diskPercent}
+                          sub={
+                            healthData[loc.id].resources!.diskUsed
+                              ? `${healthData[loc.id].resources!.diskUsed} / ${healthData[loc.id].resources!.diskTotal}`
+                              : "—"
+                          }
+                        />
+                        {healthData[loc.id].resources!.load1 !== null && (
+                          <p className="text-[10px] text-slate-400">Load (1m): {healthData[loc.id].resources!.load1}</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -471,6 +561,7 @@ export default function ServersPage() {
       {/* Info Banner */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-600">
         <strong>🖥️ How it works:</strong> Deploy servers to each location. When a tenant signs up and selects a location (e.g., Canada), they get the SMPP IP for that server. Server switching is only available by super admin authorization on request.
+        <span className="mt-1 block text-xs text-slate-400">🩺 Health checks SSH into each server to read live CPU, RAM and storage usage (free/df/top). Refresh with “Health Check”.</span>
       </div>
 
       {confirmModal}

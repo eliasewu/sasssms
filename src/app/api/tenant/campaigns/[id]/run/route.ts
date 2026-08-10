@@ -2,11 +2,14 @@ import { NextResponse } from "next/server";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 import { deliverSmsWithFallback, registerDlrCallback, filterRoutesByTrunkMcc } from "@/lib/smpp-client";
-import type { RouteInfo, DlrPayload } from "@/lib/smpp-client";
+import type { RouteInfo } from "@/lib/smpp-client";
 import { getOnlineOttDevices, sendOttMessage } from "@/lib/ott-pairing-engine";
 import type { OttDeviceType } from "@/lib/ott-pairing-engine";
 import { lookupClientRate, lookupSupplierCost } from "@/lib/rates";
 import { applyTranslations, applyEntityTranslations } from "@/lib/translation-engine";
+import { deliverBusinessApiRoute } from "@/lib/business-api-send";
+import { isBusinessApiRoute } from "@/lib/connection-types";
+import { isValidDestinationNumber } from "@/lib/number-validation";
 
 export const dynamic = "force-dynamic";
 
@@ -45,8 +48,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const recipients: string[] = JSON.parse(campaign.recipients || "[]");
 
-  // Cached for both SMS DLR registration and INSERT (OTT Worker reads from message record)
-  const dlrCallbackUrl: string | null = client.dlr_callback_url || client.webhook_url || null;
+  // Campaign messages are internal — DLR is NOT forwarded to the external
+  // client webhook (per product decision). Real supplier DLRs still update
+  // dlr_status in the messages table so the SMS logs show DELIVERED/FAILED.
+  // Passing no callback URL keeps smpp-client and the OTT worker from pushing.
 
   // Get route plan for the client — resolve ALL routes for fallback
   let routePlanId = client.route_plan_id;
@@ -107,10 +112,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         console.error("[Campaign] Translation error:", err);
       }
 
-      // ── Detect OTT routes ──
+      // ── Detect OTT / Business API routes ──
       const filteredRoutes = allRoutes.length > 0 ? filterRoutesByTrunkMcc(allRoutes, translatedDest) : [];
       const firstRoute = filteredRoutes[0];
       const isOtt = firstRoute?.connectionType === "WhatsApp OTT" || firstRoute?.connectionType === "Telegram OTT";
+      const isBusinessApi = isBusinessApiRoute(firstRoute?.connectionType);
 
       // Look up the rate for this specific destination (use original dest like HTTP API)
       const ratePerSms = await lookupClientRate(dest, campaign.client_id, tenant.schemaName);
@@ -144,7 +150,57 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       let dlrStat: string;
       let deliveryResult: { success: boolean; routeUsed?: RouteInfo; fallbackUsed: boolean; failedRoutes: number } | null = null;
 
-      if (isOtt) {
+      let businessApiRejected = false;
+      if (isBusinessApi) {
+        // ── Business API delivery (Telegram/WhatsApp via business_api_connect) ──
+        try {
+          const suppResult = await tenantQuery(
+            tenant.schemaName,
+            "SELECT config FROM suppliers WHERE id = $1",
+            [firstRoute.supplierId]
+          );
+          const rawConfig = suppResult.rows[0]?.config;
+          const config = (typeof rawConfig === 'string' ? JSON.parse(rawConfig) : rawConfig || {}) as Record<string, unknown>;
+          const connectionId = config.business_api_connect_id as number;
+
+          if (connectionId) {
+            // Number-validity gate — validate the ORIGINAL E.164 destination
+            // (translation may have rewritten it). Invalid → REJECTED, never
+            // sent/charged, DLR fail/undelivered (billing matrix rule 5).
+            if (!isValidDestinationNumber(dest)) {
+              businessApiRejected = true;
+              isSuccess = false;
+              msgStatus = "REJECTED";
+              dlrStat = "FAILED";
+            } else {
+              const baResult = await deliverBusinessApiRoute({
+                schemaName: tenant.schemaName,
+                connectionId,
+                destination: translatedDest,
+                message: translatedContent,
+                sender: translatedSender,
+                messageId,
+                skipNumberGate: true, // original dest validated above
+              });
+              isSuccess = baResult.success;
+              // Provider HTTP 200 = delivery accepted and there is no real DLR
+              // path — store DELIVERED so the sweeper never flips a charged
+              // Business API message to FAILED (like the Voice OTP branch).
+              msgStatus = baResult.success ? "DELIVERED" : "FAILED";
+              dlrStat = baResult.success ? "DELIVERED" : "FAILED";
+            }
+          } else {
+            isSuccess = false;
+            msgStatus = "FAILED";
+            dlrStat = "FAILED";
+          }
+        } catch (err) {
+          console.error("[Campaign] Business API delivery error:", err);
+          isSuccess = false;
+          msgStatus = "FAILED";
+          dlrStat = "FAILED";
+        }
+      } else if (isOtt) {
         // ── OTT delivery ──
         const ottDeviceType: OttDeviceType = firstRoute.connectionType === "WhatsApp OTT" ? "whatsapp" : "telegram";
         const onlineDevices = await getOnlineOttDevices(tenant.schemaName, ottDeviceType);
@@ -182,7 +238,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           translatedContent,
           messageId,
           filteredRoutes,
-          dlrCallbackUrl || undefined
+          undefined // no external DLR forwarding for campaigns
         );
         isSuccess = deliveryResult?.success ?? false;
         msgStatus = isSuccess ? "SENT" : "FAILED";
@@ -200,8 +256,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         `INSERT INTO messages (client_id, sender, destination, content, status,
           route_plan_id, route_id, trunk_id, supplier_id, connection_type,
           cost, supplier_cost, profit, dlr_status, message_id, campaign_id, log_type, dlr_callback_url,
+          supplier_message_id, dlr_source,
           original_sender, original_destination, original_content, translation_notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NULL,$18,$19,$20,$21,$22,$23) RETURNING *`,
         [
           campaign.client_id,
           translatedSender,
@@ -213,14 +270,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           deliveryResult?.routeUsed?.trunkId || firstRoute?.trunkId || null,
           deliveryResult?.routeUsed?.supplierId || firstRoute?.supplierId || null,
           deliveryResult?.routeUsed?.connectionType || firstRoute?.connectionType || "SMPP",
-          isSuccess ? ratePerSms : 0,
-          isSuccess ? supplierCost : 0,
-          isSuccess ? profit : 0,
+          !businessApiRejected && isSuccess ? ratePerSms : 0,
+          !businessApiRejected && isSuccess ? supplierCost : 0,
+          !businessApiRejected && isSuccess ? profit : 0,
           dlrStat,
           messageId,
           id,
           "campaign",
-          dlrCallbackUrl,
+          (deliveryResult as { supplierMessageId?: string } | null)?.supplierMessageId || null,
+          businessApiRejected ? "REJECTED" : null,
           campaign.sender,
           dest,
           campaign.content,
@@ -229,25 +287,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       );
 
       // Track success/failure counts (balance tracking removed)
-
-      // Register DLR callback for SMS routes (OTT DLR is handled by the OTT Worker)
-      if (isSuccess && dlrCallbackUrl && !isOtt) {
-        registerDlrCallback(messageId, (dlr: DlrPayload) => {
-          fetch(dlrCallbackUrl!, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              message_id: dlr.messageId,
-              destination: dlr.dest,
-              source: dlr.src,
-              status: dlr.status,
-              dlr_status: dlr.status,
-              cost: ratePerSms,
-              timestamp: new Date().toISOString(),
-              campaign_id: parseInt(id),
-            }),
-          }).catch(() => {});
-        });
+      // Campaign DLRs are intentionally NOT forwarded to the external client
+      // webhook. Register a NO-OP callback so the smpp-server DLR handler
+      // still updates dlr_status in the logs for SERVER-mode (Android/GSM)
+      // suppliers — its DB update only runs when a callback is registered.
+      if (isSuccess && !isOtt) {
+        registerDlrCallback(messageId, () => {});
       }
 
       return { isSuccess, msgResult, messageId };

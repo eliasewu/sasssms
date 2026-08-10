@@ -64,8 +64,11 @@ export async function auditLog(
   tenantId?: number,
   ipAddress?: string
 ) {
-  const client = await pool.connect();
+  // Never throws — this is called fire-and-forget from several routes, so
+  // pool exhaustion / DB downtime must not surface as an unhandled rejection.
+  let client;
   try {
+    client = await pool.connect();
     await client.query(
       `INSERT INTO audit_log (entity_type, entity_id, action, changed_by, old_data, new_data, ip_address, tenant_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
@@ -77,8 +80,21 @@ export async function auditLog(
   } catch {
     // Table may not exist yet – fail silently
   } finally {
-    client.release();
+    client?.release();
   }
+}
+
+/**
+ * Safely parse an audit_log old_data/new_data value into a plain object.
+ * Handles both raw JSON strings (text columns) and pre-parsed objects
+ * (jsonb columns — the node-pg driver returns jsonb already parsed).
+ */
+export function parseAuditJson(v: unknown): Record<string, unknown> {
+  if (typeof v === "string") {
+    try { return JSON.parse(v) as Record<string, unknown>; } catch { return {}; }
+  }
+  if (v && typeof v === "object") return v as Record<string, unknown>;
+  return {};
 }
 
 // Login session tracking

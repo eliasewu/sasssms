@@ -7,29 +7,46 @@
  */
 
 import type { CallAttempt } from "@/lib/voice-otp-engine";
+import { pushDlrWebhook } from "@/lib/dlr-webhook-log";
 
 // ── HTTP DLR Push ──
 
 /**
  * Push a DLR payload to an external client's webhook URL via HTTP POST.
- * Fire-and-forget — returns true if the request was sent (not necessarily delivered).
+ * Fire-and-forget — returns true if the client responded 2xx.
  * Has a 10-second timeout to prevent hanging on slow endpoints.
+ *
+ * When `schemaName` is provided, the delivery attempt (message_id, status,
+ * pushed_to URL, HTTP status, response body) is recorded in the tenant's
+ * dlr_webhook_logs table for verification.
  */
-export async function pushDlrToClient(dlrUrl: string, payload: Record<string, unknown>): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-    await fetch(dlrUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    return true;
-  } catch {
-    return false;
+export async function pushDlrToClient(
+  dlrUrl: string,
+  payload: Record<string, unknown>,
+  schemaName?: string
+): Promise<boolean> {
+  const messageId = String(payload.message_id || payload.messageId || "");
+  const status = String(payload.status || payload.dlr_status || "UNKNOWN");
+
+  if (!schemaName) {
+    // No tenant schema context — plain fire-and-forget push without logging
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(dlrUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      return res.ok;
+    } catch {
+      return false;
+    }
   }
+
+  return pushDlrWebhook(dlrUrl, payload, schemaName, messageId, status);
 }
 
 // ── Types ──

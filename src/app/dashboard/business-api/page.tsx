@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 
 const TABS = ["Telegram Bot API", "WhatsApp Business API", "Webhook Logs"];
 
-interface BusinessApi { id: number; name: string; provider: string; api_url: string; is_active: boolean; credentials?: string; }
+interface BusinessApi { id: number; name: string; provider: string; api_url: string; is_active: boolean; credentials?: string; proxy_id?: number | null; }
+
+interface ProxyCfg { id: number; name: string; host: string; port: number; protocol: string; is_active: boolean; }
 
 interface WebhookLog { id: number; timestamp: string; platform: string; event: string; status: string; payload: string; }
 
@@ -12,10 +14,18 @@ export default function BusinessApiConnectPage() {
   const [tab, setTab] = useState("Telegram Bot API");
   const [apis, setApis] = useState<BusinessApi[]>([]);
   const [logs, setLogs] = useState<WebhookLog[]>([]);
-  const [telegramForm, setTelegramForm] = useState({ botToken: "", name: "", proxyEnabled: false, proxyUrl: "" });
-  const [whatsappForm, setWhatsappForm] = useState({ phoneNumberId: "", accessToken: "", name: "", webhookVerifyToken: "", proxyEnabled: false });
+  const [telegramForm, setTelegramForm] = useState({ botToken: "", name: "", proxyEnabled: false, proxyUrl: "", proxyId: "" });
+  const [whatsappForm, setWhatsappForm] = useState({ phoneNumberId: "", accessToken: "", name: "", webhookVerifyToken: "", proxyEnabled: false, proxyId: "" });
+  const [proxies, setProxies] = useState<ProxyCfg[]>([]);
   const [connStatus, setConnStatus] = useState<{apiStatus: string; webhookStatus: string} | null>(null);
   const [testing, setTesting] = useState(false);
+  // Test-send widget state (uses the new /api/tenant/business-api/send path)
+  const [clients, setClients] = useState<{ id: number; name: string }[]>([]);
+  const [testClient, setTestClient] = useState("");
+  const [testDest, setTestDest] = useState("");
+  const [testMsg, setTestMsg] = useState("Test message from Net2APP Business API");
+  const [sendState, setSendState] = useState<{ id: number; status: string; text: string } | null>(null);
+  const [proxyErr, setProxyErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const r = await fetch("/api/tenant/business-api").then(r => r.json());
@@ -23,6 +33,48 @@ export default function BusinessApiConnectPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    fetch("/api/tenant/proxy-config")
+      .then(r => r.json())
+      .then(d => setProxies((d.configs || []).filter((p: ProxyCfg) => p.is_active)))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/tenant/clients")
+      .then(r => r.json())
+      .then(d => setClients((d.clients || []).map((c: { id: number; name: string }) => ({ id: c.id, name: c.name }))))
+      .catch(() => {});
+  }, []);
+
+  // Send a test message through the selected connection — exercises the
+  // number-validity gate (invalid destinations → REJECTED, not charged).
+  const sendTest = async (conn: BusinessApi) => {
+    if (!testClient || !testDest) return;
+    setSendState({ id: conn.id, status: "sending", text: "Sending..." });
+    try {
+      const r = await fetch("/api/tenant/business-api/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: parseInt(testClient, 10),
+          connectionId: conn.id,
+          destination: testDest,
+          message: testMsg,
+        }),
+      });
+      const d = await r.json();
+      const text = d.rejected
+        ? `🚫 REJECTED — invalid number (${d.error || "not a valid MSISDN"}), not charged`
+        : d.success
+          ? `✅ ${d.status} · Msg ${d.messageId}`
+          : `❌ ${d.error || d.status}${d.response ? ` · ${String(d.response).slice(0, 120)}` : ""}`;
+      setSendState({ id: conn.id, status: d.rejected ? "rejected" : d.success ? "ok" : "fail", text });
+    } catch (e) {
+      setSendState({ id: conn.id, status: "fail", text: `Network error: ${(e as Error).message}` });
+    }
+  };
 
   const connectTelegram = async () => {
     setTesting(true);
@@ -37,6 +89,7 @@ export default function BusinessApiConnectPage() {
         provider: "Telegram",
         apiUrl: `https://api.telegram.org/bot${telegramForm.botToken}`,
         credentials: JSON.stringify({ botToken: telegramForm.botToken, proxy: telegramForm.proxyEnabled ? telegramForm.proxyUrl : null }),
+        proxyId: telegramForm.proxyId ? parseInt(telegramForm.proxyId, 10) : null,
       }),
     });
     setTesting(false);
@@ -55,6 +108,7 @@ export default function BusinessApiConnectPage() {
         provider: "WhatsApp",
         apiUrl: `https://graph.facebook.com/v18.0/${whatsappForm.phoneNumberId}/messages`,
         credentials: JSON.stringify({ accessToken: whatsappForm.accessToken, phoneNumberId: whatsappForm.phoneNumberId, verifyToken: whatsappForm.webhookVerifyToken }),
+        proxyId: whatsappForm.proxyId ? parseInt(whatsappForm.proxyId, 10) : null,
       }),
     });
     setTesting(false);
@@ -66,6 +120,21 @@ export default function BusinessApiConnectPage() {
     await new Promise(r => setTimeout(r, 1000));
     setConnStatus({ apiStatus: "Connected", webhookStatus: "Ready" });
     setTesting(false);
+  };
+
+  // Assign a proxy_config to an existing connection (SOCKS5/HTTP routed at send time)
+  const updateProxy = async (conn: BusinessApi, proxyId: string) => {
+    setProxyErr(null);
+    try {
+      const r = await fetch(`/api/tenant/business-api/${conn.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proxyId: proxyId ? parseInt(proxyId, 10) : null }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setProxyErr(d.error || `HTTP ${r.status}`); return; }
+      load();
+    } catch (e) { setProxyErr((e as Error).message); }
   };
 
   return (
@@ -97,6 +166,10 @@ export default function BusinessApiConnectPage() {
           <button key={t} onClick={() => setTab(t)} className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition ${tab === t ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"}`}>{t}</button>
         ))}
       </div>
+
+      {proxyErr && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">⚠ Proxy update failed: {proxyErr}</p>
+      )}
 
       {/* Telegram Bot API Tab */}
       {tab === "Telegram Bot API" && (
@@ -135,11 +208,19 @@ export default function BusinessApiConnectPage() {
 
               <label className="flex items-center gap-2 pt-2">
                 <input type="checkbox" checked={telegramForm.proxyEnabled} onChange={e => setTelegramForm({...telegramForm, proxyEnabled: e.target.checked})} className="accent-blue-600" />
-                <span className="text-sm">Route through proxy</span>
+                <span className="text-sm">Route through raw proxy URL</span>
               </label>
               {telegramForm.proxyEnabled && (
-                <input value={telegramForm.proxyUrl} onChange={e => setTelegramForm({...telegramForm, proxyUrl: e.target.value})} placeholder="http://proxy:8080" className="w-full border rounded-lg px-3 py-2 text-sm" />
+                <input value={telegramForm.proxyUrl} onChange={e => setTelegramForm({...telegramForm, proxyUrl: e.target.value})} placeholder="socks5://user:pass@host:1080" className="w-full border rounded-lg px-3 py-2 text-sm" />
               )}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Proxy (saved proxy_config)</label>
+                <select value={telegramForm.proxyId} onChange={e => setTelegramForm({...telegramForm, proxyId: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
+                  <option value="">None — direct connection</option>
+                  {proxies.map(p => <option key={p.id} value={p.id}>{p.name} · {p.protocol}://{p.host}:{p.port}</option>)}
+                </select>
+                {proxies.length === 0 && <p className="text-[11px] text-slate-400 mt-1">No saved proxies — add one in Proxy Config first.</p>}
+              </div>
 
               <button onClick={connectTelegram} disabled={!telegramForm.botToken || testing} className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium disabled:opacity-50 hover:bg-blue-700 transition">
                 {testing ? "Connecting..." : "Connect Telegram Bot"}
@@ -171,6 +252,16 @@ export default function BusinessApiConnectPage() {
                   </div>
                   <p className="text-xs text-slate-500 font-mono truncate">{a.api_url}</p>
                   <button onClick={() => testConnection(a.id)} disabled={testing} className="mt-2 text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded hover:bg-blue-100">Test Connection</button>
+                  <select
+                    value={a.proxy_id ? String(a.proxy_id) : ""}
+                    onChange={e => updateProxy(a, e.target.value)}
+                    className="mt-2 text-xs border rounded px-2 py-1 w-full"
+                    title="Proxy routed at send time (SOCKS via proxy_config)"
+                  >
+                    <option value="">🛜 Proxy: None (direct)</option>
+                    {proxies.map(p => <option key={p.id} value={p.id}>🛜 Proxy: {p.name}</option>)}
+                  </select>
+                  <TestSendBox conn={a} clients={clients} sendState={sendState} clientId={testClient} dest={testDest} msg={testMsg} onClient={setTestClient} onDest={setTestDest} onMsg={setTestMsg} onSend={() => sendTest(a)} />
                 </div>
               ))}
               {apis.filter(a => a.provider === "Telegram").length === 0 && <p className="text-slate-400 text-sm">No Telegram bots connected.</p>}
@@ -217,8 +308,16 @@ export default function BusinessApiConnectPage() {
 
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={whatsappForm.proxyEnabled} onChange={e => setWhatsappForm({...whatsappForm, proxyEnabled: e.target.checked})} className="accent-blue-600" />
-                <span className="text-sm">Route through proxy</span>
+                <span className="text-sm">Route through raw proxy URL</span>
               </label>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Proxy (saved proxy_config)</label>
+                <select value={whatsappForm.proxyId} onChange={e => setWhatsappForm({...whatsappForm, proxyId: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
+                  <option value="">None — direct connection</option>
+                  {proxies.map(p => <option key={p.id} value={p.id}>{p.name} · {p.protocol}://{p.host}:{p.port}</option>)}
+                </select>
+                {proxies.length === 0 && <p className="text-[11px] text-slate-400 mt-1">No saved proxies — add one in Proxy Config first.</p>}
+              </div>
 
               <button onClick={connectWhatsapp} disabled={!whatsappForm.phoneNumberId || testing} className="w-full bg-green-600 text-white py-2.5 rounded-lg font-medium disabled:opacity-50 hover:bg-green-700 transition">
                 {testing ? "Connecting..." : "Connect WhatsApp Business API"}
@@ -236,6 +335,16 @@ export default function BusinessApiConnectPage() {
                 </div>
                 <p className="text-xs text-slate-500 font-mono truncate">{a.api_url}</p>
                 <button onClick={() => testConnection(a.id)} disabled={testing} className="mt-2 text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded hover:bg-blue-100">Test Connection</button>
+                <select
+                  value={a.proxy_id ? String(a.proxy_id) : ""}
+                  onChange={e => updateProxy(a, e.target.value)}
+                  className="mt-2 text-xs border rounded px-2 py-1 w-full"
+                  title="Proxy routed at send time (SOCKS via proxy_config)"
+                >
+                  <option value="">🛜 Proxy: None (direct)</option>
+                  {proxies.map(p => <option key={p.id} value={p.id}>🛜 Proxy: {p.name}</option>)}
+                </select>
+                <TestSendBox conn={a} clients={clients} sendState={sendState} clientId={testClient} dest={testDest} msg={testMsg} onClient={setTestClient} onDest={setTestDest} onMsg={setTestMsg} onSend={() => sendTest(a)} />
               </div>
             ))}
             {apis.filter(a => a.provider === "WhatsApp").length === 0 && <p className="text-slate-400 text-sm">No WhatsApp numbers connected.</p>}
@@ -273,6 +382,64 @@ export default function BusinessApiConnectPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Compact test-send form for one connected Business API (uses /api/tenant/business-api/send). */
+function TestSendBox({ conn, clients, sendState, clientId, dest, msg, onClient, onDest, onMsg, onSend }: {
+  conn: BusinessApi;
+  clients: { id: number; name: string }[];
+  sendState: { id: number; status: string; text: string } | null;
+  clientId: string;
+  dest: string;
+  msg: string;
+  onClient: (v: string) => void;
+  onDest: (v: string) => void;
+  onMsg: (v: string) => void;
+  onSend: () => void;
+}) {
+  const st = sendState && sendState.id === conn.id ? sendState : null;
+  const busy = st?.status === "sending";
+  const badge =
+    st?.status === "ok" ? "bg-green-100 text-green-700"
+    : st?.status === "rejected" ? "bg-red-100 text-red-700"
+    : st?.status === "fail" ? "bg-red-100 text-red-700"
+    : "bg-slate-100 text-slate-600";
+  return (
+    <div className="mt-3 pt-3 border-t border-dashed">
+      <p className="text-[11px] font-medium text-slate-500 mb-2">📨 Send Test Message</p>
+      <div className="grid grid-cols-2 gap-2">
+        <select
+          value={clientId}
+          onChange={e => onClient(e.target.value)}
+          className="col-span-2 border rounded px-2 py-1.5 text-xs"
+        >
+          <option value="">Client (billed party)...</option>
+          {clients.map(c => <option key={c.id} value={c.id}>{c.name || `#${c.id}`}</option>)}
+        </select>
+        <input
+          value={dest}
+          onChange={e => onDest(e.target.value)}
+          placeholder="Destination E.164, e.g. +8801XXXXXXXXX"
+          className="col-span-2 border rounded px-2 py-1.5 text-xs font-mono"
+        />
+        <input
+          value={msg}
+          onChange={e => onMsg(e.target.value)}
+          className="col-span-2 border rounded px-2 py-1.5 text-xs"
+        />
+        <button
+          onClick={onSend}
+          disabled={busy || !clientId || !dest}
+          className="col-span-2 bg-blue-600 text-white text-xs py-1.5 rounded font-medium disabled:opacity-50 hover:bg-blue-700 transition"
+        >
+          {busy ? "Sending..." : "Send"}
+        </button>
+        {st && (
+          <p className={`col-span-2 text-[11px] font-mono px-2 py-1 rounded ${badge}`}>{st.text}</p>
+        )}
+      </div>
     </div>
   );
 }

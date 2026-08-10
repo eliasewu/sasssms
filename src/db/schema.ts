@@ -1,6 +1,8 @@
 import {
-  pgTable, serial, varchar, text, timestamp, boolean, integer, decimal,
+  pgTable, serial, varchar, text, timestamp, boolean, integer, decimal, date, bigint,
+  index, uniqueIndex, jsonb,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // ── Platform Super Admin ──
 export const superAdmins = pgTable("super_admins", {
@@ -26,6 +28,7 @@ export const tenants = pgTable("tenants", {
   maxTps: integer("max_tps").default(0),
   maxConcurrentCalls: integer("max_concurrent_calls").default(10),
   smppEnabled: boolean("smpp_enabled").default(true).notNull(),
+  mmsForwardEnabled: boolean("mms_forward_enabled").default(true).notNull(),
   httpEnabled: boolean("http_enabled").default(true).notNull(),
   rcsEnabled: boolean("rcs_enabled").default(true).notNull(),
   flashSmsEnabled: boolean("flash_sms_enabled").default(true).notNull(),
@@ -52,6 +55,7 @@ export const tenants = pgTable("tenants", {
   emailVerified: boolean("email_verified").default(false),
   phoneVerified: boolean("phone_verified").default(false),
   autoRenewEnabled: boolean("auto_renew_enabled").default(true).notNull(),
+  autoConnectEnabled: boolean("auto_connect_enabled").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -135,6 +139,28 @@ export const platformSettings = pgTable("platform_settings", {
   value: text("value").notNull(),
 });
 
+// ── SMPP Server Configs (public) — must be in the schema so `drizzle-kit
+// push` doesn't drop it; /api/tenant/smpp-servers reads it. ──
+export const smppServerConfig = pgTable("smpp_server_config", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id"),
+  name: varchar("name", { length: 255 }).default("Default SMSC"),
+  host: varchar("host", { length: 100 }).default("0.0.0.0"),
+  port: integer("port").default(2775),
+  maxConnections: integer("max_connections").default(100),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ── Subscription Reminders (public) — dedup table for expiry emails; must be
+// in the schema so `drizzle-kit push` doesn't drop it. ──
+export const subscriptionReminders = pgTable("subscription_reminders", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id"),
+  daysBefore: integer("days_before"),
+  sentAt: timestamp("sent_at").defaultNow(),
+});
+
 // ── Infrastructure Tables ──
 
 // Login sessions — tracks every login/logout for audits
@@ -157,8 +183,10 @@ export const auditLog = pgTable("audit_log", {
   entityId: integer("entity_id"),
   action: varchar("action", { length: 20 }).notNull(),
   changedBy: varchar("changed_by", { length: 255 }),
-  oldData: text("old_data"),
-  newData: text("new_data"),
+  // jsonb (NOT text) — matches the live schema; drizzle-kit push would otherwise
+  // try to ALTER these columns back to text on the next deploy.
+  oldData: jsonb("old_data"),
+  newData: jsonb("new_data"),
   ipAddress: varchar("ip_address", { length: 50 }),
   tenantId: integer("tenant_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -176,6 +204,32 @@ export const cdrDeletedItems = pgTable("cdr_deleted_items", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// ── Per-tenant API load tracking (public schema) ──
+// All tenants share one process/DB, so per-tenant CPU/RAM is approximated by
+// real API request load recorded by the Next.js proxy (see src/proxy.ts).
+// One row per (tenant, endpoint, method, day); recorder upserts counts/latency.
+export const tenantApiUsage = pgTable(
+  "tenant_api_usage",
+  {
+    id: serial("id").primaryKey(),
+    tenantId: integer("tenant_id").notNull(),
+    schemaName: varchar("schema_name", { length: 100 }),
+    path: text("path").notNull(),
+    method: varchar("method", { length: 10 }).notNull(),
+    day: date("day", { mode: "string" }).default(sql`CURRENT_DATE`).notNull(),
+    requestCount: integer("request_count").default(0).notNull(),
+    totalMs: bigint("total_ms", { mode: "number" }).default(0).notNull(),
+    maxMs: integer("max_ms").default(0).notNull(),
+    lastSeen: timestamp("last_seen").defaultNow().notNull(),
+  },
+  (t) => [
+    // Upsert target for the recorder: one row per (tenant, path, method, day)
+    uniqueIndex("tenant_api_usage_day_key").on(t.tenantId, t.path, t.method, t.day),
+    // Plain (non-unique) index for the super-admin aggregation query
+    index("tenant_api_usage_tenant_day_idx").on(t.tenantId, t.day),
+  ]
+);
+
 // MCC traffic statistics — per-tenant traffic aggregation
 export const mccTrafficStats = pgTable("mcc_traffic_stats", {
   id: serial("id").primaryKey(),
@@ -192,6 +246,11 @@ export const mccTrafficStats = pgTable("mcc_traffic_stats", {
 });
 
 // ── MCC/MNC Database ──
+// NOTE: `language` must stay here — deploy uses `drizzle-kit push`, which
+// drops any DB column/table not declared in this schema. The tenant MCC/MNC
+// list and CSV download SELECT language, so omitting it breaks those pages
+// in production ("column language does not exist" → "Failed to load MCC/MNC
+// database").
 export const mccMncDatabase = pgTable("mcc_mnc_database", {
   id: serial("id").primaryKey(),
   mcc: varchar("mcc", { length: 10 }).notNull(),
@@ -201,6 +260,15 @@ export const mccMncDatabase = pgTable("mcc_mnc_database", {
   countryName: varchar("country_name", { length: 100 }).notNull(),
   networkName: varchar("network_name", { length: 100 }),
   networkType: varchar("network_type", { length: 50 }),
+  language: varchar("language", { length: 50 }).default("English"),
+});
+
+// ── MCC/MNC dedup cleanup stats (migration 0032) — must be in the schema so
+// `drizzle-kit push` doesn't drop it; the MCC/MNC routes SELECT from it. ──
+export const mccMncCleanupStats = pgTable("mcc_mnc_cleanup_stats", {
+  id: serial("id").primaryKey(),
+  removedCount: integer("removed_count").notNull(),
+  removedAt: timestamp("removed_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 // ── MCC/MNC Prefix Map — maps phone number prefixes → MNC per country ──
@@ -256,7 +324,7 @@ export const clients = pgTable("clients", {
   httpApiKey: varchar("http_api_key", { length: 255 }),
   forceDlr: boolean("force_dlr").default(false),
   dlrTimeoutMode: varchar("dlr_timeout_mode", { length: 50 }),
-  dlrTimeout: integer("dlr_timeout"),
+  dlrTimeout: integer("dlr_timeout").default(300),
   chargingMode: varchar("charging_mode", { length: 50 }).default("on_submit"),
   dlrCallbackUrl: text("dlr_callback_url"),
   webhookUrl: text("webhook_url"),
@@ -290,7 +358,7 @@ export const suppliers = pgTable("suppliers", {
   currency: varchar("currency", { length: 10 }).default("USD"),
   forceDlr: boolean("force_dlr").default(false),
   chargingMode: varchar("charging_mode", { length: 50 }).default("on_submit"),
-  dlrTimeout: integer("dlr_timeout"),
+  dlrTimeout: integer("dlr_timeout").default(300),
   isActive: boolean("is_active").default(true).notNull(),
   config: text("config"),
   bindStatus: varchar("bind_status", { length: 20 }).default("UNBOUND"),
@@ -368,6 +436,14 @@ export const ottDevices = pgTable("ott_devices", {
   status: varchar("status", { length: 20 }).default("OFFLINE"),
   lastSeen: timestamp("last_seen"),
   isActive: boolean("is_active").default(true).notNull(),
+  // Per-device send quotas (daily 250 / monthly 1000 defaults) — enforced
+  // atomically in sendOttMessage (src/lib/ott-pairing-engine.ts).
+  dailyLimit: integer("daily_limit").default(250).notNull(),
+  monthlyLimit: integer("monthly_limit").default(1000).notNull(),
+  dailySent: integer("daily_sent").default(0).notNull(),
+  monthlySent: integer("monthly_sent").default(0).notNull(),
+  dailyResetDate: date("daily_reset_date", { mode: "string" }),
+  monthlyResetMonth: varchar("monthly_reset_month", { length: 7 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -401,6 +477,7 @@ export const messages = pgTable("messages", {
   translationNotes: text("translation_notes"),
   dlrCallbackUrl: text("dlr_callback_url"),
   lastDlrPollAt: timestamp("last_dlr_poll_at"),
+  dlrSource: varchar("dlr_source", { length: 20 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -516,7 +593,7 @@ export const customApiConnectors = pgTable("custom_api_connectors", {
   dlrStatusPath: text("dlr_status_path"),
   dlrDeliveredValue: varchar("dlr_delivered_value", { length: 100 }).default("Delivered"),
   dlrPollSeconds: integer("dlr_poll_seconds").default(30),
-  dlrTimeoutSeconds: integer("dlr_timeout_seconds").default(3600),
+  dlrTimeoutSeconds: integer("dlr_timeout_seconds").default(300),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -609,5 +686,23 @@ export const liveChatNotes = pgTable("live_chat_notes", {
   adminId: integer("admin_id").notNull(),
   adminName: varchar("admin_name", { length: 255 }).notNull(),
   note: text("note").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ── Android Gateway Crash Reports (public schema, from the APK) ──
+export const androidCrashReports = pgTable("android_crash_reports", {
+  id: serial("id").primaryKey(),
+  deviceId: varchar("device_id", { length: 100 }),
+  username: varchar("username", { length: 255 }),
+  deviceModel: varchar("device_model", { length: 255 }),
+  androidVersion: varchar("android_version", { length: 50 }),
+  appVersion: varchar("app_version", { length: 50 }),
+  process: varchar("process", { length: 50 }),
+  crashType: varchar("crash_type", { length: 50 }),
+  message: text("message"),
+  stackTrace: text("stack_trace"),
+  logcat: text("logcat"),
+  jsLog: text("js_log"),
+  appState: text("app_state"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

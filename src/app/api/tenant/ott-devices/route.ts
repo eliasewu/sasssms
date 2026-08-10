@@ -19,10 +19,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Residential proxy is mandatory for OTT devices" }, { status: 400 });
   }
 
+  // Optional per-device send quotas (defaults: daily 250 / monthly 1000)
+  const parsePositiveInt = (v: unknown, fallback: number) => {
+    if (v === undefined || v === null || v === "") return fallback;
+    const n = parseInt(String(v));
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  };
+  const dailyLimit = parsePositiveInt(body.dailyLimit, 250);
+  const monthlyLimit = parsePositiveInt(body.monthlyLimit, 1000);
+
   const result = await tenantQuery(
     tenant.schemaName,
-    `INSERT INTO ott_devices (name, device_type, phone_number, api_config, proxy_id) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-    [body.name, body.deviceType, body.phoneNumber || null, body.apiConfig ? JSON.stringify(body.apiConfig) : null, parseInt(body.proxyId)]
+    `INSERT INTO ott_devices (name, device_type, phone_number, api_config, proxy_id, daily_limit, monthly_limit)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [
+      body.name,
+      body.deviceType,
+      body.phoneNumber || null,
+      body.apiConfig ? JSON.stringify(body.apiConfig) : null,
+      parseInt(body.proxyId),
+      dailyLimit,
+      monthlyLimit,
+    ]
   );
   return NextResponse.json({ device: result.rows[0] }, { status: 201 });
 }

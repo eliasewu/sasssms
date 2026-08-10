@@ -79,7 +79,7 @@ export default function BindStatusPage() {
 
     setSuppliers((sr.suppliers || []).map((s: Record<string,unknown>) => {
       const connType = (s.connection_type as string) || "SMPP";
-      const isNonSmpp = connType !== "SMPP";
+      const isNonSmpp = connType !== "SMPP" && connType !== "ANDROID_SMS";
       const dbBindStatus = (s.bind_status as string) || "UNBOUND";
       const apiRealStatus = supplierRealMap.get(s.id as number);
       // Non-SMPP suppliers (API, HTTP, CUSTOM_API) are always ACTIVE
@@ -208,7 +208,7 @@ export default function BindStatusPage() {
     ACTIVE: "bg-emerald-500",
   };
 
-  const isSmppSupplier = (s: BindEntity) => s.connectionType === "SMPP";
+  const isSmppSupplier = (s: BindEntity) => s.connectionType === "SMPP" || s.connectionType === "ANDROID_SMS";
 
   return (
     <div className="space-y-6">

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useConfirmModal } from "@/components/confirm-modal";
+import TailscaleMeshPanel from "@/components/tailscale-mesh-panel";
 
 interface ProxyConfig {
   id: number; name: string; proxy_type: string;
@@ -16,6 +17,10 @@ export default function ProxyConfigPage() {
   const [showGuide, setShowGuide] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [testingId, setTestingId] = useState<number | null>(null);
+  const [testResults, setTestResults] = useState<
+    Record<number, { ok: boolean; egressIp: string | null; latencyMs: number | null; error: string | null }>
+  >({});
   const [form, setForm] = useState({
     name: "", host: "", port: "1080", protocol: "socks5",
     proxyType: "residential", username: "", password: "",
@@ -111,6 +116,37 @@ export default function ProxyConfigPage() {
     load();
   };
 
+  // Live connectivity test — the server connects THROUGH the proxy and
+  // reports the egress IP, proving the 3proxy + Tailscale chain works.
+  const testProxy = async (id: number) => {
+    setTestingId(id);
+    setTestResults((prev) => ({ ...prev, [id]: { ok: false, egressIp: null, latencyMs: null, error: "Testing…" } }));
+    try {
+      const res = await fetch("/api/tenant/proxy-config/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const d = await res.json();
+      setTestResults((prev) => ({
+        ...prev,
+        [id]: {
+          ok: d.ok,
+          egressIp: d.egressIp || null,
+          latencyMs: d.latencyMs != null ? Number(d.latencyMs) : null,
+          error: d.error || (res.ok ? null : `HTTP ${res.status}`),
+        },
+      }));
+    } catch (e) {
+      setTestResults((prev) => ({
+        ...prev,
+        [id]: { ok: false, egressIp: null, latencyMs: null, error: (e as Error).message },
+      }));
+    } finally {
+      setTestingId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -120,7 +156,24 @@ export default function ProxyConfigPage() {
             Configure residential proxies (3proxy + Tailscale) for OTT WhatsApp/Telegram routing
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {/* File downloads served by an API route — <Link> is for page navigation */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+          <a
+            href="/api/tenant/proxy-config/download?os=linux"
+            className="inline-flex items-center gap-2 border border-emerald-300 text-emerald-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-50 transition"
+            title="One-command installer for a Linux residential machine — pre-filled with your server IP and fresh credentials, auto-registers on completion"
+          >
+            ⬇ Linux Setup (.sh)
+          </a>
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+          <a
+            href="/api/tenant/proxy-config/download?os=windows"
+            className="inline-flex items-center gap-2 border border-blue-300 text-blue-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-50 transition"
+            title="One-click installer for a Windows home PC — installs Tailscale + 3proxy, runs as a service, auto-registers on completion"
+          >
+            ⬇ Windows Setup (.bat)
+          </a>
           <button
             onClick={() => setShowGuide(!showGuide)}
             className="border border-cyan-200 text-cyan-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-cyan-50 transition flex items-center gap-2"
@@ -135,6 +188,24 @@ export default function ProxyConfigPage() {
           </button>
         </div>
       </div>
+
+      {/* ── Per-tenant installer callout ── */}
+      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
+        <span className="text-2xl">🚀</span>
+        <div className="text-sm text-emerald-900">
+          <p className="font-semibold mb-1">Your installer is personalized for this account</p>
+          <p className="text-emerald-800">
+            Download the script, run it once on the <strong>home PC</strong> (it installs Tailscale + 3proxy, starts the
+            SOCKS5 proxy and opens a browser login for Tailscale), and it <strong>auto-registers</strong> a new row below —
+            no manual entry needed. Every download mints fresh credentials and a one-time token that expires in 30 minutes.
+            For a non-interactive Tailscale login, set <code className="bg-emerald-100 px-1 rounded">TAILSCALE_AUTHKEY</code>
+            before running.
+          </p>
+        </div>
+      </div>
+
+      {/* ── Tailscale mesh connection panel ── */}
+      <TailscaleMeshPanel />
 
       {/* ── 3proxy + Tailscale Setup Guide ── */}
       {showGuide && (
@@ -223,7 +294,7 @@ export default function ProxyConfigPage() {
               <div className="flex-1">
                 <h4 className="font-semibold text-slate-800 mb-2">Connect the SaaS Server to Tailscale</h4>
                 <p className="text-sm text-slate-600 mb-3">
-                  Install Tailscale on this SaaS server so it can reach the residential machine's 3proxy
+                  Install Tailscale on this SaaS server so it can reach the residential machine&apos;s 3proxy
                   through the Tailscale mesh network (WireGuard).
                 </p>
                 <div className="bg-slate-900 text-green-300 rounded-lg p-4 font-mono text-xs leading-relaxed overflow-x-auto">
@@ -246,8 +317,11 @@ export default function ProxyConfigPage() {
               <div className="flex-1">
                 <h4 className="font-semibold text-slate-800 mb-2">Add Proxy to This Dashboard</h4>
                 <p className="text-sm text-slate-600 mb-3">
-                  Use the form above to register the proxy. Use the Tailscale IP of the residential machine
-                  and the 3proxy credentials from step 2.
+                  <strong>Easiest:</strong> use the <span className="text-emerald-700 font-medium">⬇ Linux / Windows Setup</span> button
+                  above — the downloaded installer runs on the home PC and registers the proxy automatically.
+                  <br /><br />
+                  Manual option — use the form above to register the proxy. Use the Tailscale IP of the residential machine
+                  and the 3proxy credentials printed at the end of the installer (or from step 2).
                 </p>
                 <div className="bg-white border rounded-lg p-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
                   <div><strong>Name:</strong> <span className="text-slate-600">Home Residential Proxy</span></div>
@@ -434,7 +508,33 @@ export default function ProxyConfigPage() {
                       </button>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-3">
+                        {testResults[c.id] && (
+                          <span
+                            className={`text-xs font-mono px-2 py-1 rounded ${
+                              testResults[c.id].ok
+                                ? "bg-green-50 text-green-700"
+                                : testResults[c.id].error === "Testing…"
+                                  ? "bg-slate-100 text-slate-500"
+                                  : "bg-red-50 text-red-600"
+                            }`}
+                            title={testResults[c.id].error || undefined}
+                          >
+                            {testResults[c.id].ok
+                              ? `✅ ${testResults[c.id].egressIp} · ${testResults[c.id].latencyMs}ms`
+                              : testResults[c.id].error === "Testing…"
+                                ? "⏳ Testing…"
+                                : "❌ Failed"}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => testProxy(c.id)}
+                          disabled={testingId !== null}
+                          className="text-cyan-600 hover:text-cyan-800 text-xs font-medium hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Live connectivity test — verifies this proxy actually routes traffic"
+                        >
+                          {testingId === c.id ? "Testing…" : "🧪 Test"}
+                        </button>
                         <button
                           onClick={() => startEdit(c)}
                           className="text-blue-500 hover:text-blue-700 text-xs font-medium hover:underline"

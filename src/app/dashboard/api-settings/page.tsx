@@ -15,7 +15,7 @@ interface Client {
   max_tps: number;
 }
 
-const TABS = ["HTTP API", "DLR Documentation", "SMPP Settings", "Code Examples", "Platform Guide"];
+const TABS = ["HTTP API", "DLR Documentation", "SMPP Settings", "Code Examples", "Platform Guide", "Proxy Setup"];
 
 export default function ApiSettingsPage() {
   const [tab, setTab] = useState("HTTP API");
@@ -23,6 +23,15 @@ export default function ApiSettingsPage() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  // Script is served from this host's /scripts/ path (public folder). Resolve
+  // the origin AFTER mount (useEffect) — computing it at render time from
+  // `window` would mismatch the server-rendered HTML and cause a hydration
+  // error. Until mounted we render the relative path, which is safe for the
+  // curl example to show as-is.
+  const [scriptUrl, setScriptUrl] = useState("/scripts/setup-residential-proxy.sh");
+  useEffect(() => {
+    setScriptUrl(`${window.location.origin}/scripts/setup-residential-proxy.sh`);
+  }, []);
 
   const load = useCallback(async () => {
     const r = await fetch("/api/tenant/clients").then((r) => r.json());
@@ -891,7 +900,209 @@ public class SmppClient {
         </div>
       )}
 
-      {!selectedClient && tab !== "Platform Guide" && (
+      {/* Proxy Setup Tab — residential proxy (3proxy + Tailscale) tutorial */}
+      {tab === "Proxy Setup" && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl border p-6 shadow-sm">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="text-4xl">🏠</div>
+              <div>
+                <h3 className="font-semibold text-lg">Residential Proxy Setup — 3proxy + Tailscale</h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  Connect a residential proxy so WhatsApp OTT, Telegram OTT, and Business API traffic egresses
+                  from a home/residential IP instead of your datacenter server. Residential IPs are far less likely
+                  to be flagged or blocked by Meta/Telegram.
+                </p>
+              </div>
+            </div>
+
+            {/* What you need */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5 mb-6">
+              <h4 className="font-semibold text-blue-800 mb-2">📋 What you need</h4>
+              <ul className="list-disc pl-5 space-y-1 text-sm text-blue-700">
+                <li>A machine on a <strong>residential internet connection</strong> (home PC, Raspberry Pi, old laptop) — this will run 3proxy and Tailscale.</li>
+                <li>A <strong>Tailscale</strong> account (free tier is fine) — creates an encrypted WireGuard mesh between the residential machine and this server.</li>
+                <li>Root/SSH access to both this server and the residential machine.</li>
+              </ul>
+            </div>
+
+            {/* One-command option */}
+            <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-5 mb-6">
+              <h4 className="font-semibold text-emerald-800 mb-2">⚡ One-command setup (recommended)</h4>
+              <p className="text-sm text-emerald-700 mb-3">
+                The platform ships an automated installer that does steps 1–3 below for you
+                (installs Tailscale + 3proxy, writes the config, starts the service, prints the credentials).
+                It is hosted on this server and ready to download:
+              </p>
+              <div className="flex flex-wrap items-center gap-3 mb-4">
+                <a
+                  href="/scripts/setup-residential-proxy.sh"
+                  download="setup-residential-proxy.sh"
+                  className="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition shadow-sm"
+                >
+                  ⬇ Download setup script
+                </a>
+                <a
+                  href="/scripts/setup-residential-proxy.sh"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 border border-emerald-300 text-emerald-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-50 transition"
+                >
+                  👀 View script
+                </a>
+                <span className="text-xs text-emerald-600 font-mono">{scriptUrl}</span>
+              </div>
+              <p className="text-sm text-emerald-700 mb-2">Or copy it to the residential machine and run as root:</p>
+              <pre className="bg-slate-900 text-green-300 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto"><code>{`# Download from THIS host (no placeholder needed)
+curl -fsSL -o setup-residential-proxy.sh ${scriptUrl}
+sudo bash setup-residential-proxy.sh
+
+# Optional: preset the proxy user/password
+PROXY_USER=myproxyuser PROXY_PASS=STRONG_PASSWORD sudo bash setup-residential-proxy.sh`}</code></pre>
+              <p className="text-xs text-emerald-600 mt-2">
+                The installer runs <code className="bg-emerald-100 px-1 rounded">tailscale up</code> (interactive browser login),
+                then generates a config with a random password unless you preset one.
+              </p>
+            </div>
+
+            {/* Step 1 */}
+            <div className="border rounded-xl p-6 mb-6">
+              <h4 className="font-semibold text-slate-800 mb-2">
+                <span className="bg-blue-600 text-white w-7 h-7 rounded-full inline-flex items-center justify-center text-xs font-bold mr-2">1</span>
+                Install Tailscale on the Residential Machine
+              </h4>
+              <p className="text-sm text-slate-600 mb-3">
+                Tailscale gives the residential machine a stable private IP (100.x.y.z) reachable only from your
+                own machines. Run this on the home machine:
+              </p>
+              <pre className="bg-slate-900 text-green-300 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto"><code>{`# Install Tailscale (Linux)
+curl -fsSL https://tailscale.com/install.sh | sh
+
+# Log in (opens a browser URL to authenticate)
+sudo tailscale up
+
+# Verify the Tailscale IP — write this down, you'll need it below
+tailscale ip -4   # e.g. 100.87.64.32`}</code></pre>
+            </div>
+
+            {/* Step 2 */}
+            <div className="border rounded-xl p-6 mb-6">
+              <h4 className="font-semibold text-slate-800 mb-2">
+                <span className="bg-blue-600 text-white w-7 h-7 rounded-full inline-flex items-center justify-center text-xs font-bold mr-2">2</span>
+                Install &amp; Configure 3proxy (SOCKS5)
+              </h4>
+              <p className="text-sm text-slate-600 mb-3">
+                3proxy is the SOCKS5 server that will expose the residential connection. It is bound to the
+                Tailscale IP only, so it is never exposed to the public internet.
+              </p>
+              <pre className="bg-slate-900 text-green-300 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto mb-4"><code>{`# Install 3proxy
+sudo apt update && sudo apt install -y 3proxy
+
+# /etc/3proxy/3proxy.cfg — replace USER/PASS and YOUR_TS_IP with real values
+nserver 8.8.8.8
+nserver 1.1.1.1
+nscache 65536
+timeouts 1 5 30 60 180 1800 15 60
+
+users myproxyuser:CL:STRONG_PASSWORD_HERE
+
+auth strong
+allow myproxyuser
+socks -p1080 -eYOUR_TS_IP   # bind to the Tailscale IP from step 1
+flush`}</code></pre>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700 mb-4">
+                <strong>🔒 Security:</strong> the <code className="bg-amber-100 px-1 rounded">-eYOUR_TS_IP</code> flag binds 3proxy to the
+                Tailscale interface, so the proxy is only reachable inside your private mesh — never from the open
+                internet. <code className="bg-amber-100 px-1 rounded">auth strong</code> enforces the username/password on every connection.
+              </div>
+              <pre className="bg-slate-900 text-green-300 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto"><code>{`# Start 3proxy (systemd)
+sudo systemctl restart 3proxy
+sudo systemctl enable 3proxy
+sudo systemctl status 3proxy   # should show active (running)`}</code></pre>
+            </div>
+
+            {/* Step 3 */}
+            <div className="border rounded-xl p-6 mb-6">
+              <h4 className="font-semibold text-slate-800 mb-2">
+                <span className="bg-blue-600 text-white w-7 h-7 rounded-full inline-flex items-center justify-center text-xs font-bold mr-2">3</span>
+                Join This Server to the Same Tailscale Network
+              </h4>
+              <p className="text-sm text-slate-600 mb-3">
+                This server must also be on the Tailscale mesh so it can reach the residential machine&apos;s 3proxy.
+              </p>
+              <pre className="bg-slate-900 text-green-300 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto mb-4"><code>{`# On this server
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+
+# Confirm both machines are visible
+tailscale status
+
+# Verify the SOCKS5 proxy works end-to-end:
+# (replace with your Tailscale IP + credentials)
+curl --socks5 myproxyuser:STRONG_PASSWORD_HERE@100.87.64.32:1080 https://ifconfig.me`}</code></pre>
+              <p className="text-sm text-slate-600">
+                ✅ The curl output should be the <strong>residential IP</strong> — proof the proxy is working.
+              </p>
+            </div>
+
+            {/* Step 4 */}
+            <div className="border rounded-xl p-6 mb-6">
+              <h4 className="font-semibold text-slate-800 mb-2">
+                <span className="bg-blue-600 text-white w-7 h-7 rounded-full inline-flex items-center justify-center text-xs font-bold mr-2">4</span>
+                Register the Proxy in the Dashboard
+              </h4>
+              <p className="text-sm text-slate-600 mb-3">
+                Go to <Link href="/dashboard/proxy-config" className="text-blue-600 hover:underline font-medium">Suppliers → Proxy Config</Link> and add the proxy using the values from the steps above.
+                Then press <strong className="text-cyan-700">🧪 Test</strong> on the row — the server connects <em>through</em> the proxy
+                and shows the egress IP + latency, proving the full 3proxy + Tailscale chain works before you assign it.
+                Finally, assign the proxy to your WhatsApp/Telegram OTT devices (OTT Devices page) or to a Business API
+                connection (Business API page → proxy dropdown).
+              </p>
+              <div className="bg-white border rounded-lg p-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                <div><strong>Name:</strong> <span className="text-slate-600">Home Residential Proxy</span></div>
+                <div><strong>Proxy Type:</strong> <span className="text-slate-600">Residential</span></div>
+                <div><strong>Host:</strong> <span className="text-slate-600 font-mono">100.87.64.32</span> <span className="text-xs text-slate-400">(Tailscale IP)</span></div>
+                <div><strong>Port:</strong> <span className="text-slate-600">1080</span></div>
+                <div><strong>Protocol:</strong> <span className="text-slate-600">SOCKS5</span></div>
+                <div><strong>Username:</strong> <span className="text-slate-600">myproxyuser</span></div>
+              </div>
+            </div>
+
+            {/* Architecture */}
+            <div className="border rounded-xl p-6">
+              <h4 className="font-semibold text-slate-800 mb-3">How traffic flows</h4>
+              <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-xs sm:text-sm font-mono text-slate-700">
+                <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-center">
+                  <div className="text-green-600 font-bold mb-1">📨 WhatsApp/Telegram</div>
+                  <div className="text-slate-500">on this server</div>
+                </div>
+                <span className="text-lg">→</span>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-center">
+                  <div className="text-blue-600 font-bold mb-1">🔒 3proxy SOCKS5</div>
+                  <div className="text-slate-500">residential machine :1080</div>
+                </div>
+                <span className="text-lg">→</span>
+                <div className="bg-purple-50 border border-purple-200 rounded-lg px-4 py-3 text-center">
+                  <div className="text-purple-600 font-bold mb-1">🔄 Tailscale</div>
+                  <div className="text-slate-500">encrypted mesh</div>
+                </div>
+                <span className="text-lg">→</span>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-center">
+                  <div className="text-amber-600 font-bold mb-1">🏠 Home IP</div>
+                  <div className="text-slate-500">residential</div>
+                </div>
+                <span className="text-lg">→</span>
+                <div className="bg-slate-100 border border-slate-300 rounded-lg px-4 py-3 text-center">
+                  <div className="text-slate-600 font-bold mb-1">🌐 Meta/Telegram</div>
+                  <div className="text-slate-500">internet</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!selectedClient && tab !== "Platform Guide" && tab !== "Proxy Setup" && (
         <div className="text-center py-12 text-slate-400">
           <p className="text-lg">No clients configured</p>
           <p className="text-sm mt-1">Create a client first to view API settings</p>

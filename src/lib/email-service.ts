@@ -356,6 +356,58 @@ export async function notifyTenantAutoRenewFailed(payload: {
 }
 
 /**
+ * Notify the super admin when a NEW tenant registers — new tenants default to
+ * auto_connect_enabled = true, so the admin can review whether to keep the
+ * Auto-Connect Installer approval (embedded Tailscale auth key) enabled for
+ * this tenant before they start downloading installers.
+ */
+export async function notifyAdminNewTenant(payload: {
+  tenantName: string;
+  tenantEmail: string;
+  phone?: string;
+  serverIp: string;
+  signupBonusSms?: number;
+  platformRate?: string;
+  viaGoogle?: boolean;
+}): Promise<boolean> {
+  try {
+    await transporter.sendMail({
+      from: `"Net2APP Notifications" <${SMTP_USER}>`,
+      to: await getAdminEmail(),
+      subject: `🆕 New Tenant: ${payload.tenantName} — review Auto-Connect`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1a73e8;">New Tenant Registration</h2>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Company:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee;">${payload.tenantName}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Email:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee;">${payload.tenantEmail}</td></tr>
+            ${payload.phone ? `<tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Phone:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee;">${payload.phone}</td></tr>` : ""}
+            <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Signup:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee;">${payload.viaGoogle ? "Google OAuth" : "Email + password"}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Plan:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee;">Starter${payload.platformRate ? ` ($${payload.platformRate}/SMS)` : ""}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Server IP:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee; font-family: monospace;">${payload.serverIp}</td></tr>
+            ${payload.signupBonusSms ? `<tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Signup Bonus SMS:</strong></td><td style="padding: 8px;">${payload.signupBonusSms.toLocaleString()}</td></tr>` : ""}
+          </table>
+          <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px 16px; margin: 15px 0; border-radius: 4px;">
+            <p style="margin: 0; color: #856404;"><strong>⚡ Auto-Connect Installer is ON for this tenant.</strong></p>
+            <p style="margin: 8px 0 0 0; color: #856404; font-size: 13px;">
+              Their 3proxy installers will embed the Tailscale auth key, giving the tenant's home machines access to your
+              tailnet. Review in <strong>Tenant Management → Edit → ⚡ Auto-Connect Installer</strong> and disable it if this
+              tenant is not fully trusted.
+            </p>
+          </div>
+          <a href="https://net2app.com/super/dashboard/tenants" style="display: inline-block; background: #1a73e8; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">Review Tenant</a>
+          <p style="color: #999; font-size: 12px; margin-top: 20px;">📱 WhatsApp: +971505380825 | Net2APP Platform — new tenant alert</p>
+        </div>
+      `,
+    });
+    return true;
+  } catch (e) {
+    console.error("Failed to send new-tenant admin notification:", e);
+    return false;
+  }
+}
+
+/**
  * Send welcome email to newly registered tenant with credentials, server details,
  * and a comprehensive getting-started tutorial.
  */

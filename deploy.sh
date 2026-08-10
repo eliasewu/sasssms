@@ -166,6 +166,14 @@ if [ -f "package.json" ] && [ "$(pwd)" != "$APP_DIR" ]; then
   [ -d /tmp/net2app_up ] && cp -rn /tmp/net2app_up/* "$APP_DIR/public/uploads/" || true
 fi
 
+# Residential proxy setup script is served to admins at /scripts/setup-residential-proxy.sh
+# (for 3proxy + Tailscale home-box installs). The canonical copy lives in scripts/;
+# regenerate the served public/ copy so they can never drift apart.
+mkdir -p "$APP_DIR/public/scripts"
+cp -f "$APP_DIR/scripts/setup-residential-proxy.sh" "$APP_DIR/public/scripts/setup-residential-proxy.sh"
+chmod +x "$APP_DIR/public/scripts/setup-residential-proxy.sh"
+ok "Residential proxy setup script deployed (public/scripts/setup-residential-proxy.sh)"
+
 # ===== 6. .env =====
 echo "[6/9] Environment config..."
 cat > "$APP_DIR/.env" << EOF
@@ -236,6 +244,26 @@ INSERT INTO public.platform_settings (key, value) VALUES ('ott_proxy_required', 
 
 CREATE TABLE IF NOT EXISTS public.voice_otp_default_audio (id SERIAL PRIMARY KEY, language VARCHAR(50) NOT NULL, digit VARCHAR(5) NOT NULL, file_name VARCHAR(255), file_url TEXT, audio_type VARCHAR(10) DEFAULT 'wav', created_at TIMESTAMP DEFAULT NOW());
 SQL
+
+# ── Tenant audit triggers (drizzle/0038 auto-connect + 0039 feature toggles) —
+#    idempotent, each applied only when its function is missing. Guarantee every
+#    change to a tenant's approval/toggle columns is audited no matter which path
+#    made it (UI, future APIs, scripts, raw SQL). drizzle-kit push does NOT manage
+#    triggers, so this step installs them on every deploy.
+for MIG in \
+  "0038_add_auto_connect_audit_trigger.sql:log_auto_connect_change:Auto-Connect audit" \
+  "0039_add_tenant_toggle_audit_trigger.sql:log_tenant_toggle_change:Feature-toggle audit"
+ do
+  FILE="${MIG%%:*}"; FN="$(echo "$MIG" | cut -d: -f2)"; LABEL="$(echo "$MIG" | cut -d: -f3)"
+  if [ -f "$APP_DIR/drizzle/$FILE" ]; then
+    if psql "$DB_URL" -tAc "SELECT 1 FROM pg_proc WHERE proname = '$FN'" 2>/dev/null | grep -q 1; then
+      echo "  - $LABEL trigger already present (skipped)"
+    else
+      psql "$DB_URL" -f "$APP_DIR/drizzle/$FILE" 2>&1 | tail -3
+      ok "$LABEL trigger installed"
+    fi
+  fi
+done
 
 # Seed Voice OTP language groups into all existing tenant schemas
 if [ -f "$APP_DIR/seed-voice-otp-languages.sql" ]; then
@@ -390,6 +418,87 @@ cp "$APP_DIR/scripts/net2app-watchdog.sh" /usr/local/bin/net2app-watchdog
 chmod +x /usr/local/bin/net2app-watchdog
 (crontab -l 2>/dev/null | grep -v net2app-watchdog; echo "*/2 * * * * /usr/local/bin/net2app-watchdog") | crontab - 2>/dev/null || true
 ok "PM2 watchdog installed (every 2 min health check on port $APP_PORT)"
+
+# ── SMS counter recount (nightly 02:00) — reconciles every tenant's
+#    sms_counter against the ACTUAL row count in their messages table, so
+#    out-of-band message cleanup can never leave the SMS Credit Audit page
+#    showing permanent mismatches. Referenced by /super/dashboard/sms-counter-audit.
+cat > "$APP_DIR/recount-sms-counter.sh" << 'RECOUNTSCRIPT'
+#!/usr/bin/env bash
+# =============================================================================
+# recount-sms-counter.sh
+# -----------------------------------------------------------------------------
+# Reconciles every tenant's sms_counter with the ACTUAL number of rows in their
+# tenant-schema `messages` table. This is the script the SMS Credit Audit page
+# (/super/dashboard/sms-counter-audit) tells admins to run and the one invoked
+# nightly by /etc/cron.d/recount-sms-counter (02:00).
+#
+# Why: sms_counter is incremented at send-time, but message rows can be removed
+# out-of-band (manual cleanup, test-data wipes, re-imports) — leaving the
+# counter higher than the real message count. This script realigns them.
+#
+# Usage:  bash /opt/net2app/recount-sms-counter.sh
+# Logs:   /var/log/net2app-recount.log  (append, one summary line per run)
+# Safe:   only writes tenants.sms_counter; never touches message rows.
+# =============================================================================
+set -uo pipefail
+
+LOG="/var/log/net2app-recount.log"
+
+# Prefer the app's DATABASE_URL; fall back to the dev default.
+if [ -f /opt/net2app/.env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source /opt/net2app/.env
+  set +a
+fi
+DB="${DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:5432/app_db}"
+
+TS="$(date '+%Y-%m-%d %H:%M:%S')"
+CHANGED=0
+TOTAL=0
+
+while IFS='|' read -r id schema counter; do
+  id="$(echo "$id" | xargs)"
+  schema="$(echo "$schema" | xargs)"
+  counter="$(echo "$counter" | xargs)"
+  [ -z "$id" ] && continue
+
+  TOTAL=$((TOTAL + 1))
+
+  # Skip tenants whose schema or messages table is missing
+  exists="$(psql "$DB" -tAc "SELECT 1 FROM information_schema.tables WHERE table_schema = '$schema' AND table_name = 'messages'" 2>/dev/null)"
+  [ "$exists" != "1" ] && continue
+
+  actual="$(psql "$DB" -tAc "SELECT COUNT(*) FROM \"$schema\".messages" 2>/dev/null)"
+  actual="${actual:-0}"
+
+  if [ "$actual" != "$counter" ]; then
+    if psql "$DB" -qc "UPDATE tenants SET sms_counter = $actual, updated_at = NOW() WHERE id = $id" >/dev/null 2>&1; then
+      echo "$TS | FIX  tenant=$id schema=$schema counter=$counter -> $actual" >> "$LOG"
+      CHANGED=$((CHANGED + 1))
+    else
+      echo "$TS | FAIL tenant=$id schema=$schema counter=$counter (UPDATE failed, no change made)" >> "$LOG"
+    fi
+  fi
+done < <(psql "$DB" -tA -F'|' -c "SELECT id, schema_name, COALESCE(sms_counter,0) FROM tenants WHERE is_active = true ORDER BY id" 2>/dev/null)
+
+echo "$TS | recount complete: $TOTAL tenants scanned, $CHANGED corrected" >> "$LOG"
+echo "[$TS] recount complete: $TOTAL tenants scanned, $CHANGED corrected"
+RECOUNTSCRIPT
+
+chmod +x "$APP_DIR/recount-sms-counter.sh"
+
+# Install the nightly cron (idempotent — recreates the exact same file on every deploy)
+cat > /etc/cron.d/recount-sms-counter << 'RECOUNTCRON'
+# SMS Counter recount - runs nightly at 2:00 AM
+0 2 * * * root /opt/net2app/recount-sms-counter.sh >/dev/null 2>&1
+RECOUNTCRON
+chmod 644 /etc/cron.d/recount-sms-counter
+
+# Run once right after deploy so the audit page is in sync immediately
+"$APP_DIR/recount-sms-counter.sh" >/dev/null 2>&1 || true
+ok "SMS counter recount installed (nightly 02:00 + post-deploy run)"
 
 # ── Nginx config (HTTP + HTTPS with Cloudflare-compatible origin cert) ──
 # Use Cloudflare origin cert (self-signed, works with Cloudflare "Full" SSL mode)
