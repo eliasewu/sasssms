@@ -474,6 +474,7 @@ set +e
 (crontab -l 2>/dev/null | grep -v health-check.sh; echo "* * * * * /opt/net2app/health-check.sh") | crontab - 2>/dev/null || true
 (crontab -l 2>/dev/null | grep -v 'pm2 resurrect'; echo "@reboot sleep 10 && /usr/bin/pm2 resurrect") | crontab - 2>/dev/null || true
 (crontab -l 2>/dev/null | grep -v sync-mccmnc.sh; echo "@weekly /opt/net2app/sync-mccmnc.sh >/dev/null 2>&1") | crontab - 2>/dev/null || true
+(crontab -l 2>/dev/null | grep -v heal-schemas-cron.sh; echo "0 3 * * * /opt/net2app/scripts/heal-schemas-cron.sh") | crontab - 2>/dev/null || true
 set -e
 
 ok "Monitoring cron installed (every 1 min + @reboot + weekly MCC sync)"

@@ -312,6 +312,7 @@ chmod +x "$APP_DIR/health-check.sh"
 set +e
 (crontab -l 2>/dev/null | grep -v health-check.sh; echo "* * * * * /opt/net2app/health-check.sh") | crontab - 2>/dev/null || true
 (crontab -l 2>/dev/null | grep -v 'pm2 resurrect'; echo "@reboot sleep 10 && /usr/bin/pm2 resurrect") | crontab - 2>/dev/null || true
+(crontab -l 2>/dev/null | grep -v heal-schemas-cron.sh; echo "0 3 * * * /opt/net2app/scripts/heal-schemas-cron.sh") | crontab - 2>/dev/null || true
 set -e
 
 ok "Systemd + monitoring cron installed"
