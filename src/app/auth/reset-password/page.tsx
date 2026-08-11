@@ -42,7 +42,7 @@ function ResetPasswordForm() {
 
       if (data.success) {
         setSuccess(true);
-        setTimeout(() => router.push("/auth/login"), 3000);
+        setTimeout(() => router.push("/auth/login?message=password_reset"), 3000);
       } else {
         setError(data.error || "Reset failed. Please try again.");
       }
@@ -83,7 +83,7 @@ function ResetPasswordForm() {
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Password Reset!</h1>
           <p className="text-gray-600 mb-6">Your password has been successfully reset. Redirecting you to sign in...</p>
-          <Link href="/auth/login" className="text-blue-600 hover:text-blue-700 font-medium text-sm">
+          <Link href="/auth/login?message=password_reset" className="text-blue-600 hover:text-blue-700 font-medium text-sm">
             Sign In Now
           </Link>
         </div>

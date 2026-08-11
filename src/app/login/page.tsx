@@ -15,8 +15,6 @@ function GoogleIcon() {
   );
 }
 
-export const dynamic = "force-dynamic";
-
 export default function LoginPage() {
   const router = useRouter();
   const [error, setError] = useState("");
@@ -52,9 +50,14 @@ export default function LoginPage() {
     else if (authError === "access_denied") setError("Google sign-in was cancelled. You can try again.");
     const msg = params.get("message");
     if (msg === "password_reset") setInfo("Your password has been reset. Please sign in with your new password.");
-    else if (msg === "registered") setInfo("Account created successfully. Please sign in.");
-    // clean up query params so refresh doesn't re-show stale errors
-    if (authError || msg) window.history.replaceState({}, "", "/login");
+    // clean up query params so refresh doesn't re-show stale errors,
+    // while preserving other params (e.g. redirect) for the post-login flow
+    if (authError || msg) {
+      const clean = new URL(window.location.href);
+      clean.searchParams.delete("auth_error");
+      clean.searchParams.delete("message");
+      window.history.replaceState({}, "", clean.pathname + clean.search + clean.hash);
+    }
   }, []);
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
