@@ -12,19 +12,24 @@
 
 import { ALL_SERVER_IPS, serverLabel } from "@/lib/server-ips";
 import nodemailer from "nodemailer";
-import { getAdminEmailSync } from "@/lib/email-service";
+import { getAdminEmail } from "@/lib/email-service";
 const CHECK_INTERVAL_MS = 60_000; // every 60 seconds
 const ALERT_COOLDOWN_MS = 5 * 60_000; // don't re-alert same server for 5 min
 
 // ── Shared transporter (created once, reused for all alerts) ──
+// Only include auth when SMTP_PASS is set — otherwise fall back to the local
+// Postfix relay (127.0.0.1:25) without authentication, which works out of the box.
+// (Same pattern as email-service.ts — nodemailer throws "Missing credentials for
+// PLAIN" if auth is present with an empty password.)
+const SMTP_HOST = process.env.SMTP_HOST || "127.0.0.1";
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || "25");
+const SMTP_USER = process.env.SMTP_USER || "welcome@net2app.com";
+const SMTP_PASS = process.env.SMTP_PASS || "";
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || "mail.net2app.com",
-  port: parseInt(process.env.SMTP_PORT || "587"),
-  secure: parseInt(process.env.SMTP_PORT || "587") === 465,
-  auth: {
-    user: process.env.SMTP_USER || "welcome@net2app.com",
-    pass: process.env.SMTP_PASS || "",
-  },
+  host: SMTP_HOST,
+  port: SMTP_PORT,
+  secure: SMTP_PORT === 465,
+  ...(SMTP_PASS ? { auth: { user: SMTP_USER, pass: SMTP_PASS } } : {}),
   tls: { rejectUnauthorized: false }, // allow self-signed certs on localhost
 });
 
@@ -123,15 +128,21 @@ sudo pm2 restart net2app</pre>` : ""}
     </div>
   `;
 
+  // Recipient is configurable via platform_settings.admin_notification_email
+  // (falls back to SUPER_ADMIN_EMAIL env, then the hardcoded default).
+  const adminEmail = await getAdminEmail();
+
   await transporter.sendMail({
     from: `"Net2APP Monitor" <${process.env.SMTP_USER || "welcome@net2app.com"}>`,
-    to: getAdminEmailSync(),
+    to: adminEmail,
     subject,
     html,
   });
 
-  console.log(`[PM2-Monitor] ${isRecovery ? "Recovery" : "Alert"} sent: ${result.label} PM2 is ${isDown ? "DOWN" : "BACK ONLINE"}`);
+  console.log(`[PM2-Monitor] ${isRecovery ? "Recovery" : "Alert"} sent to ${adminEmail}: ${result.label} PM2 is ${isDown ? "DOWN" : "BACK ONLINE"}`);
+
 }
+
 
 export async function checkAllServersPm2(): Promise<Pm2HealthResult[]> {
   // Pre-cache self IP before parallel checks

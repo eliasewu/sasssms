@@ -66,6 +66,8 @@ export default function SuperSettingsPage() {
   // Peak hours for supplier unbind alerts
   const [peakHoursStart, setPeakHoursStart] = useState("08:00");
   const [peakHoursEnd, setPeakHoursEnd] = useState("22:00");
+  // PM2-Monitor / admin alert notification email (platform_settings.admin_notification_email)
+  const [adminNotificationEmail, setAdminNotificationEmail] = useState("");
   // Tailscale auth key + advertise tags for automatic installer connection
   const [tailscaleAuthKey, setTailscaleAuthKey] = useState("");
   const [showAuthKey, setShowAuthKey] = useState(false);
@@ -122,6 +124,8 @@ export default function SuperSettingsPage() {
     // Peak hours
     if (r.settings?.peak_hours_start) setPeakHoursStart(r.settings.peak_hours_start);
     if (r.settings?.peak_hours_end) setPeakHoursEnd(r.settings.peak_hours_end);
+    // Admin alert notification email (PM2-Monitor recipient)
+    if (r.settings?.admin_notification_email) setAdminNotificationEmail(r.settings.admin_notification_email);
     // Tailscale auth key + advertise tags
     if (r.settings?.tailscaleAuthKey) setTailscaleAuthKey(r.settings.tailscaleAuthKey);
     if (r.settings?.tailscaleAdvertiseTags) setTailscaleAdvertiseTags(r.settings.tailscaleAdvertiseTags);
@@ -175,6 +179,7 @@ export default function SuperSettingsPage() {
         limitedPromoBadge: promoBadge,
         peakHoursStart: peakHoursStart,
         peakHoursEnd: peakHoursEnd,
+        adminNotificationEmail: adminNotificationEmail,
         tailscaleAuthKey: tailscaleAuthKey,
         tailscaleAdvertiseTags: tailscaleAdvertiseTags,
         serverLocations: serverLocations,
@@ -727,6 +732,32 @@ export default function SuperSettingsPage() {
         </div>
         <div className="mt-4 bg-amber-50 rounded-lg p-3 text-xs text-amber-800">
           <strong>💡 Tip:</strong> Disabling the promo hides ALL promo elements (banner, hero badge, promo card) from the landing page instantly. Numbers update in real-time.
+        </div>
+      </div>
+
+      {/* Admin Alert Notification Email */}
+      <div className="bg-white rounded-xl border p-6 shadow-sm">
+        <div className="flex items-center gap-3 mb-4">
+          <h3 className="font-semibold text-lg">📧 Admin Alert Email</h3>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${adminNotificationEmail ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
+            {adminNotificationEmail ? "Configured" : "Using fallback"}
+          </span>
+        </div>
+        <p className="text-sm text-slate-500 mb-4">
+          Recipient for <strong>PM2-Monitor</strong> server-down/recovery emails and admin notifications
+          (new tenants, payments). Stored in <code className="bg-slate-100 px-1 rounded text-xs">platform_settings.admin_notification_email</code>.
+          Leave empty to fall back to the <code className="bg-slate-100 px-1 rounded text-xs">SUPER_ADMIN_EMAIL</code> env var / default.
+        </p>
+        <div className="max-w-lg">
+          <label className="block text-sm font-medium mb-1">Notification Email</label>
+          <input
+            type="email"
+            value={adminNotificationEmail}
+            onChange={e => setAdminNotificationEmail(e.target.value)}
+            placeholder="ops@net2app.com"
+            className="w-full border rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <p className="text-xs text-slate-400 mt-1">Saved with “Save &amp; Sync All Settings”. Multiple recipients? Use a comma-separated list.</p>
         </div>
       </div>
 

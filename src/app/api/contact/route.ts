@@ -2,19 +2,18 @@ import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { getAdminEmail } from "@/lib/email-service";
 
-const SMTP_HOST = process.env.SMTP_HOST || "mail.net2app.com";
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587");
+const SMTP_HOST = process.env.SMTP_HOST || "127.0.0.1";
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || "25");
 const SMTP_USER = process.env.SMTP_USER || "welcome@net2app.com";
 const SMTP_PASS = process.env.SMTP_PASS || "";
 
+// Only include auth when SMTP_PASS is set — local Postfix relay needs none.
+// (nodemailer throws "Missing credentials for PLAIN" if auth has an empty pass.)
 const transporter = nodemailer.createTransport({
   host: SMTP_HOST,
   port: SMTP_PORT,
   secure: SMTP_PORT === 465,
-  auth: {
-    user: SMTP_USER,
-    pass: SMTP_PASS,
-  },
+  ...(SMTP_PASS ? { auth: { user: SMTP_USER, pass: SMTP_PASS } } : {}),
   tls: { rejectUnauthorized: false }, // allow self-signed certs on localhost
 });
 

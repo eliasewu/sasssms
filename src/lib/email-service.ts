@@ -23,11 +23,6 @@ export async function getAdminEmail(): Promise<string> {
   return SUPER_ADMIN_EMAIL_DEFAULT;
 }
 
-/** Sync version for places that can't use async (module-level constants, etc.) */
-export function getAdminEmailSync(): string {
-  return SUPER_ADMIN_EMAIL_DEFAULT;
-}
-
 const SMTP_HOST = process.env.SMTP_HOST || "127.0.0.1";
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || "25");
 const SMTP_USER = process.env.SMTP_USER || "welcome@net2app.com";

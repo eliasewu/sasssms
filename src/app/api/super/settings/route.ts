@@ -72,6 +72,21 @@ export async function PUT(request: Request) {
   if (body.peakHoursStart !== undefined) await upsert("peak_hours_start", body.peakHoursStart);
   if (body.peakHoursEnd !== undefined) await upsert("peak_hours_end", body.peakHoursEnd);
 
+  // PM2-Monitor / admin alert notification email — validated to be a sane
+  // address (or comma-separated list of addresses, e.g. "a@x.com,b@y.com")
+  // so a bad paste never silently kills server-down alerts.
+  if (body.adminNotificationEmail !== undefined) {
+    const email = String(body.adminNotificationEmail).trim();
+    if (email !== "") {
+      const parts = email.split(",").map(s => s.trim()).filter(Boolean);
+      const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (parts.length === 0 || !parts.every(p => emailRe.test(p))) {
+        return NextResponse.json({ error: "Invalid admin notification email" }, { status: 400 });
+      }
+    }
+    await upsert("admin_notification_email", email);
+  }
+
   // Tailscale auth key — embedded into the per-tenant 3proxy installers so new
   // residential machines join the tailnet automatically (no browser login).
   // Reject malformed keys so a bad paste never ships inside installers.

@@ -249,12 +249,11 @@ export async function GET(request: Request) {
         try {
           const transporter = nodemailer.createTransport({
             host: process.env.SMTP_HOST || "127.0.0.1",
-            port: parseInt(process.env.SMTP_PORT || "587"),
-            secure: parseInt(process.env.SMTP_PORT || "587") === 465,
-            auth: {
-              user: process.env.SMTP_USER || "welcome@net2app.com",
-              pass: process.env.SMTP_PASS || "",
-            },
+            port: parseInt(process.env.SMTP_PORT || "25"),
+            secure: parseInt(process.env.SMTP_PORT || "25") === 465,
+            // Only include auth when SMTP_PASS is set — local Postfix relay needs none.
+            // (nodemailer throws "Missing credentials for PLAIN" if auth has an empty pass.)
+            ...(process.env.SMTP_PASS ? { auth: { user: process.env.SMTP_USER || "welcome@net2app.com", pass: process.env.SMTP_PASS } } : {}),
             tls: { rejectUnauthorized: false },
           });
 
