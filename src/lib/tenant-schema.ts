@@ -60,7 +60,8 @@ export const TENANT_TABLE_DEFS: { table: string; sql: string }[] = [
       currency VARCHAR(10) DEFAULT 'USD',
       force_dlr BOOLEAN DEFAULT false, charging_mode VARCHAR(50) DEFAULT 'on_submit',
       dlr_timeout INTEGER DEFAULT 300, is_active BOOLEAN DEFAULT true, config TEXT,
-      bind_status VARCHAR(20) DEFAULT 'UNBOUND', last_bind_time TIMESTAMP,
+      bind_status VARCHAR(20) DEFAULT 'UNBOUND', bind_error VARCHAR(255),
+      last_bind_time TIMESTAMP,
       updated_at TIMESTAMP DEFAULT NOW(), deleted_at TIMESTAMP, deleted_by VARCHAR(255),
       gsm_device_id INTEGER, connector_id INTEGER, created_at TIMESTAMP DEFAULT NOW())` },
   { table: "supplier_rates", sql: `CREATE TABLE IF NOT EXISTS supplier_rates (
@@ -336,6 +337,12 @@ export function extractColumnDefs(tableDefs: { table: string; sql: string }[]): 
       }
     }
     parts.push(cur);
+    // The table's own closing paren is the final character of the body — it
+    // rides along on the last column part (e.g. "... to_char(CURRENT_DATE,
+    // 'YYYY-MM'))"). Strip exactly one trailing ')' so the captured column
+    // definition stays valid SQL for ALTER ADD COLUMN.
+    const lastIdx = parts.length - 1;
+    parts[lastIdx] = parts[lastIdx].replace(/\)\s*$/, "");
     for (let part of parts) {
       part = part.replace(/\n/g, " ").replace(/\s+/g, " ").trim();
       // part looks like: "id SERIAL PRIMARY KEY" or "created_at TIMESTAMP DEFAULT NOW()"
