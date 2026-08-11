@@ -430,7 +430,7 @@ export default function LandingPage() {
             <div className="flex items-center gap-3">
               <Link href="/webmail" className="hidden sm:inline-flex text-sm font-medium text-gray-600 hover:text-gray-900 transition">Webmail</Link>
               <button onClick={() => handleGoogleAuth("login")} disabled={googleLoading} className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition border border-gray-200"><GoogleIcon />{googleLoading ? "..." : "Google"}</button>
-              <button onClick={() => setMode("login")} className="hidden sm:inline-flex px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition">Sign In</button>
+              <Link href="/login" className="hidden sm:inline-flex px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition">Sign In</Link>
               <button onClick={() => setMode("register")} className="px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition shadow-sm">Get Started Free</button>
               <button onClick={() => setShowMobile(!showMobile)} className="lg:hidden p-2 text-gray-600 hover:text-gray-900">
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={showMobile ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} /></svg>
