@@ -245,10 +245,10 @@ async function handleSupplierUnbound(event: BindEvent): Promise<void> {
             try {
               const nodemailer = await import("nodemailer");
               const transporter = nodemailer.default.createTransport({
-                host: process.env.SMTP_HOST || "mail.net2app.com",
-                port: parseInt(process.env.SMTP_PORT || "587"),
-                secure: parseInt(process.env.SMTP_PORT || "587") === 465,
-                auth: { user: process.env.SMTP_USER || "welcome@net2app.com", pass: process.env.SMTP_PASS || "" },
+                host: process.env.SMTP_HOST || "127.0.0.1",
+                port: parseInt(process.env.SMTP_PORT || "25"),
+                secure: parseInt(process.env.SMTP_PORT || "25") === 465,
+                ...(process.env.SMTP_PASS ? { auth: { user: process.env.SMTP_USER || "welcome@net2app.com", pass: process.env.SMTP_PASS } } : {}),
                 tls: { rejectUnauthorized: false }, // allow self-signed certs on localhost
               });
               await transporter.sendMail({
@@ -302,10 +302,10 @@ async function handleSupplierUnbound(event: BindEvent): Promise<void> {
       try {
         const nodemailer = await import("nodemailer");
         const transporter = nodemailer.default.createTransport({
-          host: process.env.SMTP_HOST || "mail.net2app.com",
-          port: parseInt(process.env.SMTP_PORT || "587"),
-          secure: parseInt(process.env.SMTP_PORT || "587") === 465,
-          auth: { user: process.env.SMTP_USER || "welcome@net2app.com", pass: process.env.SMTP_PASS || "" },
+          host: process.env.SMTP_HOST || "127.0.0.1",
+          port: parseInt(process.env.SMTP_PORT || "25"),
+          secure: parseInt(process.env.SMTP_PORT || "25") === 465,
+          ...(process.env.SMTP_PASS ? { auth: { user: process.env.SMTP_USER || "welcome@net2app.com", pass: process.env.SMTP_PASS } } : {}),
           tls: { rejectUnauthorized: false }, // allow self-signed certs on localhost
         });
         await transporter.sendMail({

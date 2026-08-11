@@ -569,6 +569,17 @@ async function doVersionFallback(
 
   const failedStatuses: { label: string; status: number }[] = [];
 
+  // Deterministic bind rejections: the SMSC's answer will NOT change with a
+  // different PDU header version or another retry cycle. Trying the remaining
+  // versions just multiplies connection churn (observed: bad-cred suppliers
+  // opening 3-4 sockets per cycle against a rejecting SMSC).
+  const PERMANENT_FAILURES = new Set([0x04, 0x05, 0x0A, 0x0C, 0x0D, 0x0E]);
+  // Among those, only true config errors skip auto-retry: RINVDSTADR (0x0A,
+  // SMSC rejects this bind), RINVPASWD (0x0D), RINVSYSID (0x0E). RBINDFAIL
+  // (0x0C) is a generic/transient bind failure and still retries; already-bound
+  // 0x04/0x05 retry too since they clear when the other bind drops.
+  const NO_AUTO_RETRY = new Set([0x0A, 0x0D, 0x0E]);
+
   for (const { hex, label } of candidateVersions) {
     console.log(`[SMPP-CLIENT] Attempting SMPP ${label} (0x${hex.toString(16)}) for supplier ${supplierId}`);
     try {
@@ -578,6 +589,11 @@ async function doVersionFallback(
       }
       failedStatuses.push({ label, status });
       console.warn(`[SMPP-CLIENT] SMPP ${label} bind failed for supplier ${supplierId} with status=${status}`);
+      if (PERMANENT_FAILURES.has(status)) {
+        // Deterministic rejection — skip the remaining PDU versions.
+        console.warn(`[SMPP-CLIENT] ${statusDescription(status)} is deterministic — skipping remaining version attempts for supplier ${supplierId}`);
+        break;
+      }
     } catch (err) {
       console.warn(`[SMPP-CLIENT] SMPP ${label} bind error for supplier ${supplierId}: ${(err as Error).message}`);
       failedStatuses.push({ label, status: -1 });
@@ -589,12 +605,13 @@ async function doVersionFallback(
     : "unknown error";
   console.error(`[SMPP-CLIENT] All SMPP versions failed for supplier ${supplierId} @ ${host}:${port} (${statusList})`);
   updateSupplierBindStatus(schemaName, supplierId, "BIND_FAILED", `Rejected by SMSC [${statusList}]`);
-  // Schedule persistent reconnect unless it's a permanent auth failure (wrong password or system_id)
-  const isAuthFailure = failedStatuses.some(f => f.status === 0x0D || f.status === 0x0E);
-  if (!isAuthFailure) {
+  // No auto-retry for config-level rejections (bad password, unknown system_id,
+  // invalid bind type). Keeps the app from hammering the SMSC forever.
+  const isPermanentFailure = failedStatuses.some(f => NO_AUTO_RETRY.has(f.status));
+  if (!isPermanentFailure) {
     scheduleReconnect(tenantId, schemaName, supplierId);
   } else {
-    console.error(`[SMPP-CLIENT] Auth failure for supplier ${supplierId} — will NOT auto-retry (check credentials)`);
+    console.error(`[SMPP-CLIENT] Permanent bind rejection for supplier ${supplierId} — will NOT auto-retry (check credentials/configuration)`);
   }
   return false;
 }

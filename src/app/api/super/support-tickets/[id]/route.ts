@@ -3,25 +3,11 @@ import { getSuperAdminFromRequest } from "@/lib/auth";
 import { pool } from "@/db";
 import { saveUploadedFiles, validateUploadLimits } from "@/lib/upload-helpers";
 import { notifyTenantTicketReply } from "@/lib/email-service";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 async function getAdminName(adminId: number): Promise<string> {
   const r = await pool.query("SELECT name FROM super_admins WHERE id = $1", [adminId]);
   return r.rows[0]?.name || "Admin";
-}
-
-// Timeout promise that rejects after ms — used for real connection timeout
-function timeoutPromise(ms: number): Promise<never> {
-  return new Promise((_, reject) =>
-    setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms)
-  );
-}
-
-// Fetch with true connection timeout using Promise.race
-async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 3000): Promise<Response> {
-  return Promise.race([
-    fetch(url, options),
-    timeoutPromise(timeoutMs),
-  ]) as Promise<Response>;
 }
 
 // GET /api/super/support-tickets/[id] — get ticket with all replies + attachments

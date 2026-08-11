@@ -27,7 +27,12 @@ export async function syncAllBindStatus() {
   const serverStartTime = (globalThis as typeof globalThis & { __serverStartTime?: number }).__serverStartTime;
   const startupAge = serverStartTime ? Date.now() - serverStartTime : Infinity;
   const inGracePeriod = startupAge < SERVER_MODE_GRACE_PERIOD_MS;
-  console.log(`Syncing bind_status across all active tenants...${inGracePeriod ? ` (grace period: ${Math.round(startupAge / 1000)}s since startup, skipping SERVER-mode suppliers)` : ""}\n`);
+  // Log only during the startup grace period — this sync runs every 30s on
+  // every server, and the unconditional line previously flooded pm2 logs
+  // (~5.7k lines/day/server). Per-change lines below still log real fixes.
+  if (inGracePeriod) {
+    console.log(`Syncing bind_status across all active tenants (grace period: ${Math.round(startupAge / 1000)}s since startup, skipping SERVER-mode suppliers)\n`);
+  }
 
   const client = await pool.connect();
   try {
@@ -118,7 +123,10 @@ export async function syncAllBindStatus() {
 
     await client.query("SET search_path TO public");
 
-    console.log(`\nDone. Fixed ${totalFixed} stale bind_status entries across ${tenants.length} tenants.`);
+    // Only log when something actually changed (the sync runs every 30s).
+    if (totalFixed > 0) {
+      console.log(`\nBind-status sync: fixed ${totalFixed} stale entries across ${tenants.length} tenants.`);
+    }
   } finally {
     client.release();
   }

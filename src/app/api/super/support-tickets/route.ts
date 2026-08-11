@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSuperAdminFromRequest } from "@/lib/auth";
 import { pool } from "@/db";
 import { ALL_SERVER_IPS, serverLabel, getSelfIp } from "@/lib/server-ips";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 async function getAdminName(adminId: number): Promise<string> {
   const r = await pool.query("SELECT name FROM super_admins WHERE id = $1", [adminId]);
@@ -18,29 +19,19 @@ function logErrorOnce(ip: string, msg: string) {
   }
 }
 
-// Timeout promise that rejects after ms
-function timeoutPromise(ms: number): Promise<never> {
-  return new Promise((_, reject) =>
-    setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms)
-  );
-}
-
-// Fetch with true connection timeout using Promise.race
-async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 3000): Promise<Response> {
-  return Promise.race([
-    fetch(url, options),
-    timeoutPromise(timeoutMs),
-  ]) as Promise<Response>;
-}
-
-// Fetch tickets from a single server
+// Fetch tickets from a single server.
+// Always appends internal=1 so the remote handler returns LOCAL tickets only —
+// without this, every remote request re-triggers aggregation to all siblings,
+// causing exponential request amplification between servers (a single page load
+// balloons into tens of thousands of requests).
 async function fetchTicketsFromServer(
   baseUrl: string,
   bearerToken: string,
   queryString: string
 ): Promise<{ tickets: unknown[]; error?: string }> {
   try {
-    const url = `${baseUrl}/api/super/support-tickets${queryString}`;
+    const sep = queryString ? "&" : "?";
+    const url = `${baseUrl}/api/super/support-tickets${queryString}${sep}internal=1`;
     const res = await fetchWithTimeout(url, {
       headers: { Authorization: `Bearer ${bearerToken}` },
     }, 3000);
@@ -73,6 +64,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const status = url.searchParams.get("status");
   const tenantId = url.searchParams.get("tenantId");
+  const isInternal = url.searchParams.get("internal") === "1";
 
   const queryString = status ? `?status=${status}` : tenantId ? `?tenantId=${tenantId}` : "";
 
@@ -105,6 +97,13 @@ export async function GET(request: Request) {
 
   const result = await pool.query(query, params);
   const localTickets = result.rows.map((t) => ({ ...t, server: localLabel, _serverIp: selfIp }));
+
+  // Internal aggregation hop (called by another server's support-tickets route):
+  // return LOCAL tickets only. Never recurse — this is what prevents the
+  // cross-server request amplification loop.
+  if (isInternal) {
+    return NextResponse.json({ tickets: localTickets });
+  }
 
   // 2. Fetch from all remote servers in parallel (with 3s hard timeout each)
   const remoteIps = ALL_SERVER_IPS.filter((ip: string) => ip !== selfIp && ip !== "127.0.0.1");
