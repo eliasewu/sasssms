@@ -1,9 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { pickFaqs, faqSchema, type FaqItem } from "@/lib/tenant-faq";
+
+// Page FAQ — tenant-guide questions relevant to this page plus the strongest
+// page-specific questions.
+const PAGE_FAQS: FaqItem[] = [
+  ...pickFaqs(1, 4, 13),
+  { q: "Is IP whitelisting required or optional?", a: "IP whitelisting is optional but strongly recommended for production API integrations. It provides an additional security layer beyond API key authentication. You can enable it per API key from the dashboard and add trusted IP addresses as needed." },
+  { q: "Can I use IP whitelisting with the SMPP gateway?", a: "Yes. IP whitelisting extends to all Net2APP services including the SMPP v3.4 gateway. SMPP bind requests from non-whitelisted IPs are rejected at the network level before any SMPP protocol negotiation begins." },
+];
+
 
 
 export const metadata: Metadata = {
-  title: "IP Whitelisting — API Security & Access Control | Net2APP",
+  title: "IP Whitelisting — API Security & Access Control",
   description:
     "Net2APP IP whitelisting provides API security with IP-based access control. Restrict API access to trusted IP addresses only. Supports IPv4, CIDR notation, per-API-key whitelists, and real-time IP management from the dashboard. Secure your SMS gateway, Voice OTP, and Business API endpoints.",
   keywords: [
@@ -20,7 +30,7 @@ export const metadata: Metadata = {
     "API Authentication", "IP Validation",
   ],
   openGraph: {
-    title: "IP Whitelisting — API Security & Access Control | Net2APP",
+    title: "IP Whitelisting — API Security & Access Control",
     description:
       "Secure your SMS gateway API with IP whitelisting. Restrict access to trusted IPs. Supports IPv4, CIDR, and per-key whitelists.",
   },
@@ -47,48 +57,7 @@ const jsonLd = {
     {
       "@type": "FAQPage",
       "@id": "https://net2app.com/ip-whitelisting#faq",
-      "mainEntity": [
-        {
-          "@type": "Question",
-          "name": "What is IP whitelisting?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "IP whitelisting (also called IP allowlisting) is a security mechanism that restricts API access to a predefined set of trusted IP addresses. Any request originating from an IP address not on the whitelist is automatically rejected. This provides an additional layer of security beyond API key authentication, ensuring that even if an API key is compromised, it cannot be used from unauthorized network locations.",
-          },
-        },
-        {
-          "@type": "Question",
-          "name": "How does IP whitelisting work on Net2APP?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Net2APP validates the source IP address of every API request against the tenant's configured IP whitelist. The whitelist supports individual IPv4 addresses (e.g., 203.0.113.1) and CIDR notation ranges (e.g., 203.0.113.0/24). Requests from whitelisted IPs are processed normally. Requests from non-whitelisted IPs receive a 403 Forbidden response. IP whitelists are configurable per API key from the dashboard or via the IP whitelist API.",
-          },
-        },
-        {
-          "@type": "Question",
-          "name": "Can IP whitelisting be used with all APIs?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Yes. IP whitelisting is available for all Net2APP API endpoints including the HTTP SMS API, Voice OTP API, Business API (WhatsApp and Telegram), SMPP gateway, and all RESTful API endpoints. IP whitelisting can be configured per API key, providing granular access control for different integration scenarios.",
-          },
-        },
-        {
-          "@type": "Question",
-          "name": "Does IP whitelisting support IPv6?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Currently, Net2APP IP whitelisting supports IPv4 addresses and IPv4 CIDR notation ranges. IPv6 support is planned for a future release. For hybrid environments, we recommend using a static IPv4 address or a network gateway with consistent outbound IP for API access.",
-          },
-        },
-        {
-          "@type": "Question",
-          "name": "How do I configure IP whitelisting?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "IP whitelisting is configured from the Net2APP dashboard under the IP List or API Security section. You can add, edit, and remove IP addresses and CIDR ranges. Changes take effect immediately. You can also use the IP whitelist REST API to manage whitelist entries programmatically.",
-          },
-        },
-      ],
+      "mainEntity": faqSchema(PAGE_FAQS),
     },
     {
       "@type": "SoftwareApplication",
@@ -131,7 +100,7 @@ export default function IpWhitelistingPage() {
         </Link>
         <div className="hidden lg:flex items-center gap-1">
           <Link href="/" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition">Home</Link>
-          <Link href="#faq" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition hidden md:block">FAQ</Link>
+          <Link href="/faq" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition hidden md:block">FAQ</Link>
           </div>
           <div className="flex items-center gap-3">
             <a href="https://net2app.com" className="px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition shadow-sm">Get Started</a>
@@ -140,7 +109,7 @@ export default function IpWhitelistingPage() {
       </div></nav>
 
       {/* Hero */}
-      <section className="max-w-7xl mx-auto px-6 lg:px-12 pt-16 pb-20">
+      <section id="faq" className="max-w-7xl mx-auto px-6 lg:px-12 pt-16 pb-20 scroll-mt-20">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div>
             <div className="inline-flex items-center gap-2 bg-blue-100 border border-blue-200 rounded-full px-4 py-1.5 mb-6">
@@ -168,112 +137,7 @@ export default function IpWhitelistingPage() {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            {[
-              { value: "IPv4", label: "IP Support", desc: "Individual IPs & CIDR ranges" },
-              { value: "403", label: "Auto Reject", desc: "Non-whitelisted IPs blocked" },
-              { value: "Per-Key", label: "Granular Control", desc: "Different keys, different IPs" },
-              { value: "Real-time", label: "Instant Updates", desc: "Changes take effect immediately" },
-            ].map((s, i) => (
-              <div key={i} className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
-                <p className="text-3xl font-bold text-gray-900 mb-1">{s.value}</p>
-                <p className="text-gray-700 font-medium">{s.label}</p>
-                <p className="text-gray-500 text-sm">{s.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* How It Works */}
-      <section className="py-20 bg-gray-50">
-        <div className="max-w-6xl mx-auto px-6 lg:px-12">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 mb-3">How IP Whitelisting Works</h2>
-            <p className="text-gray-500 text-lg">Simple, effective API access control</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            {[
-              { step: "1", title: "Add IP Addresses", desc: "From the dashboard, add trusted IP addresses or CIDR ranges (e.g., 203.0.113.0/24) to your whitelist. Multiple IPs can be added per API key." },
-              { step: "2", title: "API Request Arrives", desc: "When an API request arrives, Net2APP extracts the source IP address from the request headers. This is the client's public IP address." },
-              { step: "3", title: "IP Validation", desc: "The source IP is checked against all entries in the tenant's IP whitelist. The validation supports exact IP matching and CIDR range matching." },
-              { step: "4", title: "Allow or Block", desc: "If the source IP matches a whitelist entry, the request proceeds to API key authentication and processing. If not, a 403 Forbidden response is returned immediately." },
-            ].map((s, i) => (
-              <div key={i} className="bg-white border border-gray-100 rounded-2xl p-6 relative shadow-sm">
-                <div className="absolute -top-4 -left-4 w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg">{s.step}</div>
-                <h3 className="text-gray-900 font-semibold text-lg mb-3 mt-2">{s.title}</h3>
-                <p className="text-gray-600 text-sm leading-relaxed">{s.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section className="py-20">
-        <div className="max-w-6xl mx-auto px-6 lg:px-12">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">IP Whitelisting Features</h2>
-            <p className="text-gray-500 text-lg">Enterprise-grade API security for your SMS platform</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[
-              { title: "IPv4 Address Support", desc: "Whitelist individual IPv4 addresses for precise access control. Each IP address is independently validated on every API request." },
-              { title: "CIDR Notation Ranges", desc: "Whitelist entire IP ranges using CIDR notation (e.g., 192.168.1.0/24). Useful for organizations with dynamic IP pools or cloud-hosted applications." },
-              { title: "Per-API-Key Whitelisting", desc: "Each API key can have its own IP whitelist. Different keys for different applications or environments, each with appropriate IP restrictions." },
-              { title: "Real-Time Updates", desc: "IP whitelist changes take effect immediately. Add, edit, or remove IP addresses without service interruption or API key rotation." },
-              { title: "Dashboard Management", desc: "Full IP whitelist management from the Net2APP dashboard. View all entries, add new ones, and remove old ones with a simple interface." },
-              { title: "REST API for IP Management", desc: "Programmatically manage IP whitelist entries via REST API. Add, list, and delete IP addresses from your applications or CI/CD pipeline." },
-              { title: "403 Forbidden Response", desc: "Non-whitelisted requests receive a clear 403 Forbidden response with an error message indicating the IP address was not in the whitelist." },
-              { title: "Multi-Tenant Isolation", desc: "Each tenant has an independent IP whitelist. No cross-tenant access possible. PostgreSQL schema isolation ensures complete data separation." },
-              { title: "Security Best Practice", desc: "IP whitelisting is a fundamental security best practice for API endpoints. Combined with API key authentication, it provides defense in depth against unauthorized access." },
-            ].map((f, i) => (
-              <div key={i} className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm hover:shadow-md hover:border-blue-200 transition group">
-                <h3 className="text-gray-900 font-semibold text-lg mb-2 group-hover:text-blue-600 transition">{f.title}</h3>
-                <p className="text-gray-600 text-sm leading-relaxed">{f.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Security Architecture */}
-      <section className="py-20 bg-gray-50">
-        <div className="max-w-6xl mx-auto px-6 lg:px-12">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 mb-3">API Security Architecture</h2>
-            <p className="text-gray-500">Multi-layer security for your SMS gateway</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              { icon: "🛡️", title: "Layer 1 — IP Whitelisting", desc: "First line of defense. Only requests from trusted IP addresses are allowed to proceed to authentication. All other requests receive an immediate 403 response." },
-              { icon: "🔑", title: "Layer 2 — API Key Auth", desc: "Second line of defense. Each request must include a valid API key. Keys can be rotated and revoked independently per tenant and per application." },
-              { icon: "⚡", title: "Layer 3 — Rate Limiting", desc: "Third line of defense. Configurable rate limits per API key and per tenant prevent abuse and ensure fair resource allocation." },
-            ].map((l, i) => (
-              <div key={i} className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
-                <div className="text-4xl mb-4">{l.icon}</div>
-                <h3 className="text-gray-900 font-semibold text-lg mb-3">{l.title}</h3>
-                <p className="text-gray-600 text-sm leading-relaxed">{l.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section id="faq" className="py-20 bg-slate-900/50">
-        <div className="max-w-4xl mx-auto px-6 lg:px-12">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 mb-3">IP Whitelisting — FAQ</h2>
-            <p className="text-gray-500">Common questions about IP-based access control</p>
-          </div>
-          <div className="space-y-4">
-            {[
-              { q: "Is IP whitelisting required or optional?", a: "IP whitelisting is optional but strongly recommended for production API integrations. It provides an additional security layer beyond API key authentication. You can enable it per API key from the dashboard and add trusted IP addresses as needed." },
-              { q: "What happens if my IP address changes?", a: "If your IP address changes and is no longer in the whitelist, API requests will receive a 403 Forbidden response. To prevent service disruption, you can: (1) Use CIDR ranges to cover a pool of IPs, (2) Keep a fallback API key without IP restriction for emergencies, or (3) Update the whitelist via the API before the IP change." },
-              { q: "Can I use IP whitelisting with the SMPP gateway?", a: "Yes. IP whitelisting extends to all Net2APP services including the SMPP v3.4 gateway. SMPP bind requests from non-whitelisted IPs are rejected at the network level before any SMPP protocol negotiation begins." },
-              { q: "How do I know if an IP whitelist request was blocked?", a: "Blocked requests receive a 403 Forbidden HTTP response with a JSON error body indicating the reason. Additionally, failed authentication attempts (including IP whitelist rejections) can be viewed in the dashboard audit log." },
-              { q: "Can I have different whitelists for different API keys?", a: "Yes. Each API key can have its own independent IP whitelist. This allows granular access control — for example, a production API key restricted to your application servers, a development key restricted to your office IP range, and an emergency key with no IP restriction." },
-            ].map((faq, i) => (
+            {PAGE_FAQS.map((faq, i) => (
               <details key={i} className="bg-white border border-gray-100 rounded-xl shadow-sm group open:border-blue-500/50 transition">
                 <summary className="text-gray-900 font-medium px-6 py-4 cursor-pointer list-none flex items-center justify-between group-open:border-b border-gray-100">
                   <span>{faq.q}</span>
@@ -312,6 +176,7 @@ export default function IpWhitelistingPage() {
               <Link href="/voice-otp" className="text-blue-400 hover:text-white text-sm transition">Voice OTP</Link>
               <Link href="/case-studies" className="text-blue-400 hover:text-white text-sm transition">Case Studies</Link>
               <Link href="/comparisons" className="text-blue-400 hover:text-white text-sm transition">Comparisons</Link>
+              <Link href="/faq" className="text-blue-400 hover:text-white text-sm transition">FAQ</Link>
               <Link href="/webmail" className="text-blue-400 hover:text-white text-sm transition">Webmail</Link>
             </div>
           </div>

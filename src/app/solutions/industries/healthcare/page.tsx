@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "SMS Solutions for Healthcare — Appointment Reminders & Patient Alerts | Net2APP",
+  title: "SMS Solutions for Healthcare — Appointment Reminders & Patient Alerts",
   description: "Appointment reminders, prescription fill alerts, patient notifications, and test result communications for healthcare providers with Voice OTP for patient identity verification.",
   keywords: [
     "Healthcare SMS",

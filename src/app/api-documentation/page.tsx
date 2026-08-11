@@ -3,7 +3,7 @@ import Link from "next/link";
 
 
 export const metadata: Metadata = {
-  title: "API Documentation — SMS, Voice OTP, WhatsApp & Telegram API Reference | Net2APP",
+  title: "API Documentation — SMS, Voice OTP, WhatsApp & Telegram API Reference",
   description:
     "Net2APP complete API documentation: SMS API (HTTP REST + SMPP v3.4), Voice OTP API (Asterisk AMI), WhatsApp Business API (Baileys), Telegram MTProto API, SMS Routing API, DLR Webhooks. Authentication, rate limiting, and code examples for Node.js, Python, PHP, and more.",
   keywords: [
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     "CPaaS API Documentation", "SMS Platform API Reference",
   ],
   openGraph: {
-    title: "API Documentation — SMS, Voice OTP & OTT API Reference | Net2APP",
+    title: "API Documentation — SMS, Voice OTP & OTT API Reference",
     description:
       "Complete API documentation for Net2APP SMS gateway: SMS API, Voice OTP API, WhatsApp & Telegram API, SMS Routing API, and DLR webhooks.",
   },

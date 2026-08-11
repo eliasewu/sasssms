@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Lead Alerts — Instant SMS, WhatsApp & Telegram Notifications | Net2APP",
+  title: "Lead Alerts — Instant SMS, WhatsApp & Telegram Notifications",
   description: "Get instant lead notifications via SMS, WhatsApp, and Telegram the moment a prospect fills out a form. Speed-to-lead is critical — respond in seconds, not hours.",
   keywords: [
     "Lead Alerts SMS",

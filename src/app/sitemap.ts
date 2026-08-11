@@ -30,6 +30,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     // ── Priority 0.7 — Content & Info Pages ──
     { url: `${baseUrl}/blog`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
     { url: `${baseUrl}/resources`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${baseUrl}/faq`, lastModified: now, changeFrequency: "weekly", priority: 0.8 },
+    { url: `${baseUrl}/tenant-guide`, lastModified: now, changeFrequency: "weekly", priority: 0.8 },
     { url: `${baseUrl}/api-documentation`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${baseUrl}/contact`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${baseUrl}/webmail`, lastModified: now, changeFrequency: "monthly", priority: 0.6 },

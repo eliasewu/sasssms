@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 
 
 export const metadata: Metadata = {
-  title: "SMS Gateway for Startups — Pay-as-You-Go, No Setup Fees | Net2APP",
+  title: "SMS Gateway for Startups — Pay-as-You-Go, No Setup Fees",
   description:
     "Startup-friendly SMS API with zero setup fees, pay-as-you-go pricing, no monthly minimums, and no hidden costs. Deploy your SMS gateway in 60 seconds with SMPP, HTTP API, Voice OTP, and WhatsApp support.",
   keywords: [
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     "Startup Communications",
   ],
   openGraph: {
-    title: "SMS API for Startups — $0 Setup, Pay-as-You-Go | Net2APP",
+    title: "SMS API for Startups — $0 Setup, Pay-as-You-Go",
     description: "Startup-friendly SMS gateway with zero setup fees, pay-as-you-go pricing, and no monthly minimums.",
   },
 };

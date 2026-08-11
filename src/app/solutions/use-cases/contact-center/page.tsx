@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Contact Center — Omnichannel SMS, Voice OTP, WhatsApp & Telegram | Net2APP",
+  title: "Contact Center — Omnichannel SMS, Voice OTP, WhatsApp & Telegram",
   description: "Integrate SMS, Voice OTP, WhatsApp, and Telegram into your contact center platform. Unify omnichannel communications with a single API, routing engine, and analytics dashboard.",
   keywords: [
     "Contact Center SMS",

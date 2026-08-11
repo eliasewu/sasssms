@@ -2,7 +2,15 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { pickFaqs, faqSchema, type FaqItem } from "@/lib/tenant-faq";
 
+// Page FAQ — tenant-guide questions relevant to billing & plans plus the
+// strongest pricing-specific questions.
+const PAGE_FAQS: FaqItem[] = [
+  ...pickFaqs(2, 3, 8, 12, 13),
+  { q: "Are there any hidden fees?", a: "No. Net2APP has absolutely zero hidden fees. There are no setup fees, no activation fees, no termination fees, and no minimum monthly commitments. What you see on the pricing page is exactly what you pay." },
+  { q: "Can I upgrade or downgrade anytime?", a: "Yes, you can change your plan at any time from the dashboard. Upgrades take effect immediately. Downgrades apply at the end of your current billing cycle. No long-term contracts required." },
+];
 
 interface LandingSettings {
   costPerSms: string;
@@ -33,24 +41,7 @@ const jsonLd = {
     {
       "@type": "FAQPage",
       "@id": "https://net2app.com/pricing#faq",
-      "mainEntity": [
-        {
-          "@type": "Question", "name": "How much does Net2APP SMS Gateway cost?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Net2APP offers three pricing tiers: Starter (free — pay-as-you-go), Professional (dedicated server with included SMS volume), and Enterprise (unlimited everything with all features). There are zero setup fees, zero hidden fees, and zero monthly minimums across all plans. Per-SMS rates and package prices are dynamically configured from the admin panel." },
-        },
-        {
-          "@type": "Question", "name": "Is there really no setup fee?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Net2APP has no setup fees, no activation fees, and no hidden charges. You can deploy your multi-tenant SMS gateway in under 60 seconds with full access to SMPP v3.4, HTTP SMS API, Voice OTP, RCS, and OTT messaging. The Starter plan is completely free to start." },
-        },
-        {
-          "@type": "Question", "name": "Can I switch plans later?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Yes. You can upgrade or downgrade your plan at any time from the Net2APP dashboard. Upgrades take effect immediately, and downgrades apply at the end of your current billing period. There are no long-term contracts or cancellation fees." },
-        },
-        {
-          "@type": "Question", "name": "Do you offer custom enterprise pricing?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Yes. For organizations with very high SMS volumes (100M+ SMS/month), custom infrastructure requirements, or white-label needs, we offer custom enterprise pricing. Contact our sales team at info@net2app.com to discuss your requirements." },
-        },
-      ],
+      "mainEntity": faqSchema(PAGE_FAQS),
     },
     {
       "@type": "Product",
@@ -166,7 +157,7 @@ export default function PricingPage() {
               <Link href="/" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition">Home</Link>
               <Link href="/solutions" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition">Solutions</Link>
               <Link href="/resources" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition">Resources</Link>
-              <a href="#faq" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition">FAQ</a>
+              <Link href="/faq" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition">FAQ</Link>
             </div>
             <div className="flex items-center gap-3">
               <a href="https://net2app.com" className="px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition shadow-sm">Get Started Free</a>
@@ -344,13 +335,7 @@ export default function PricingPage() {
             <p className="text-gray-500">Common questions about Net2APP SMS gateway pricing and plans</p>
           </div>
           <div className="space-y-4">
-            {[
-              { q: "Is Net2APP really free to start?", a: "Yes. The Starter plan offers full platform access with zero setup fees and zero monthly fees. You pay only for the SMS you send. Deploy your isolated tenant in under 60 seconds with no credit card required." },
-              { q: "What's the difference between pay-as-you-go and the Professional plan?", a: `Starter is pure pay-as-you-go — you pay per SMS with a 50 TPS limit. Professional includes a dedicated server with included SMS volume per month, 200 TPS throughput, and SMPP v3.4 + Voice OTP capabilities. Per-SMS rates and package details are dynamically configured.` },
-              { q: "Are there any hidden fees?", a: "No. Net2APP has absolutely zero hidden fees. There are no setup fees, no activation fees, no termination fees, and no minimum monthly commitments. What you see on the pricing page is exactly what you pay." },
-              { q: "Do you offer volume discounts?", a: "Yes. For organizations sending more than 100M SMS per month, we offer custom volume pricing. The Professional plan already includes SMS volume with no per-message charge. Contact sales for enterprise volume discounts." },
-              { q: "Can I upgrade or downgrade anytime?", a: "Yes, you can change your plan at any time from the dashboard. Upgrades take effect immediately. Downgrades apply at the end of your current billing cycle. No long-term contracts required." },
-            ].map((faq, i) => (
+            {PAGE_FAQS.map((faq, i) => (
               <details key={i} className="bg-white border border-gray-100 rounded-xl shadow-sm group open:border-blue-500/50 transition">
                 <summary className="text-gray-900 font-medium px-6 py-4 cursor-pointer list-none flex items-center justify-between group-open:border-b border-gray-100">
                   <span>{faq.q}</span>
@@ -383,6 +368,7 @@ export default function PricingPage() {
                 <Link href="/solutions" className="block text-sm text-gray-400 hover:text-white transition">Solutions</Link>
                 <Link href="/resources" className="block text-sm text-gray-400 hover:text-white transition">Resources</Link>
                 <Link href="/api-documentation" className="block text-sm text-gray-400 hover:text-white transition">API Docs</Link>
+                <Link href="/faq" className="block text-sm text-gray-400 hover:text-white transition">FAQ</Link>
               </div>
             </div>
             <div>

@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 
 
 export const metadata: Metadata = {
-  title: "SMS Use Cases — Verification, Fraud Prevention, Marketing, AI Agents & More | Net2APP",
+  title: "SMS Use Cases — Verification, Fraud Prevention, Marketing, AI Agents & More",
   description:
     "Explore 15 SMS use cases powered by Net2APP: verification & identity, fraud prevention, alerts, appointment reminders, lead alerts, mass texting, marketing, cross-sell, AI agents, IVR, contact centers, and customer data management.",
   keywords: [
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     "SMS Business Solutions",
   ],
   openGraph: {
-    title: "SMS Use Cases — 15 Ways to Use SMS, Voice OTP & RCS | Net2APP",
+    title: "SMS Use Cases — 15 Ways to Use SMS, Voice OTP & RCS",
     description: "From OTP verification and fraud alerts to AI agents and contact centers — explore every SMS use case on one platform.",
   },
 };

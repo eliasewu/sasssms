@@ -1,6 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { pickFaqs, faqSchema, type FaqItem } from "@/lib/tenant-faq";
 
+// Page FAQ — tenant-guide questions relevant to this page plus the strongest
+// page-specific questions.
+const PAGE_FAQS: FaqItem[] = [
+  ...pickFaqs(1, 2, 8, 13),
+  { q: "What makes Net2APP different from traditional CPaaS providers?", a: "The key difference is the business model and architecture. Traditional CPaaS providers are managed services — they own the carrier relationships, set the rates, and you pay per-message premiums. Net2APP is a self-deployed SMS gateway platform — you own the infrastructure, connect your own suppliers, set your own rates, and can even onboard your own clients as sub-tenants. The multi-tenant architecture with PostgreSQL schema isolation means true data separation without shared infrastructure." },
+  { q: "How does the total cost of ownership compare?", a: "For organizations sending 1M+ SMS monthly, Net2APP's TCO is typically 60-99% lower than traditional CPaaS. The Starter plan has zero monthly fees with per-SMS pricing at wholesale rates. The Professional plan ($150/month) includes 10M SMS — at traditional CPaaS rates, 10M SMS would cost $50,000-$500,000. Even adding server costs, the savings are substantial." },
+];
 
 export const metadata: Metadata = {
   title: "SMS Gateway Comparison — Net2APP vs Alternatives | CPaaS Comparison Guide",
@@ -20,7 +28,7 @@ export const metadata: Metadata = {
     "Open Source SMS Gateway Comparison",
   ],
   openGraph: {
-    title: "SMS Gateway Comparison — Net2APP vs CPaaS Alternatives | Net2APP",
+    title: "SMS Gateway Comparison — Net2APP vs CPaaS Alternatives",
     description:
       "Compare Net2APP SMS gateway with traditional CPaaS providers. Feature-by-feature comparison of pricing, architecture, scalability, and features.",
   },
@@ -45,42 +53,9 @@ const jsonLd = {
     },
     {
       "@type": "FAQPage",
-      "@id": "https://net2app.com/comparisons#faq",
-      "mainEntity": [
-        {
-          "@type": "Question",
-          "name": "How does Net2APP compare to traditional CPaaS providers?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Unlike traditional CPaaS providers that charge per-message premiums and lock you into their infrastructure, Net2APP lets you deploy your own multi-tenant SMS gateway with zero setup fees. You own the infrastructure, control your routing, and pay only per SMS at wholesale rates. Net2APP offers PostgreSQL schema-based tenant isolation, SMPP v3.4, Voice OTP, RCS, and OTT messaging — features that typically cost thousands per month with traditional CPaaS vendors.",
-          },
-        },
-        {
-          "@type": "Question",
-          "name": "Is Net2APP cheaper than CPaaS providers?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Yes. Net2APP's Starter plan has zero monthly fees — you pay only per SMS sent. Traditional CPaaS providers typically charge monthly platform fees plus per-message premiums. For organizations sending 1M+ SMS monthly, Net2APP's Professional plan ($150/month with 10M SMS included) can save 60-80% compared to traditional CPaaS pricing. The total cost of ownership is significantly lower because there are no per-message markups, no platform fees on Starter, and you can connect your own suppliers directly.",
-          },
-        },
-        {
-          "@type": "Question",
-          "name": "How does Net2APP's multi-tenant architecture compare to traditional SaaS SMS platforms?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Net2APP uses PostgreSQL schema-based multi-tenancy, giving each tenant a completely isolated database schema. Traditional SaaS SMS platforms typically use shared tables with tenant_id columns, which can lead to data leakage risks and noisy neighbor problems. Net2APP's architecture provides true data isolation, independent scaling per tenant, and the ability to run dedicated servers for Professional and Enterprise customers.",
-          },
-        },
-        {
-          "@type": "Question",
-          "name": "Can Net2APP replace my existing SMS gateway or CPaaS provider?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Yes. Net2APP supports SMPP v3.4, HTTP SMS API, RCS, Voice OTP, WhatsApp Business API, Telegram, and Flash SMS — covering essentially all messaging channels. With 80+ pre-built supplier connectors, auto failover routing, and DLR tracking, you can migrate from any existing SMS gateway or CPaaS provider. The multi-tenant architecture means you can even onboard your own clients as sub-tenants.",
-          },
-        },
-      ],
-    },
+"@id": "",
+"mainEntity": faqSchema(PAGE_FAQS),
+},
   ],
 };
 
@@ -157,6 +132,7 @@ export default function ComparisonsPage() {
             </Link>
             <div className="hidden lg:flex items-center gap-1">
               <Link href="/" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition">Home</Link>
+              <Link href="/faq" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition hidden md:block">FAQ</Link>
               <Link href="/pricing" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition">Pricing</Link>
               <Link href="/blog" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition">Blog</Link>
               <Link href="/resources" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition">Resources</Link>
@@ -265,13 +241,7 @@ export default function ComparisonsPage() {
             <p className="text-gray-500">Common questions when comparing SMS gateway platforms</p>
           </div>
           <div className="space-y-4">
-            {[
-              { q: "What makes Net2APP different from traditional CPaaS providers?", a: "The key difference is the business model and architecture. Traditional CPaaS providers are managed services — they own the carrier relationships, set the rates, and you pay per-message premiums. Net2APP is a self-deployed SMS gateway platform — you own the infrastructure, connect your own suppliers, set your own rates, and can even onboard your own clients as sub-tenants. The multi-tenant architecture with PostgreSQL schema isolation means true data separation without shared infrastructure." },
-              { q: "Is Net2APP suitable as a white-label SMS platform for resellers?", a: "Yes, this is one of Net2APP's primary use cases. The multi-tenant architecture with schema-level isolation, unlimited sub-clients, white-label branding (Enterprise plan), and the ability to set individual rates per client makes it ideal for SMS resellers and aggregators. You can deploy your own branded SMS gateway and onboard clients immediately." },
-              { q: "How does the total cost of ownership compare?", a: "For organizations sending 1M+ SMS monthly, Net2APP's TCO is typically 60-99% lower than traditional CPaaS. The Starter plan has zero monthly fees with per-SMS pricing at wholesale rates. The Professional plan ($150/month) includes 10M SMS — at traditional CPaaS rates, 10M SMS would cost $50,000-$500,000. Even adding server costs, the savings are substantial." },
-              { q: "Can I use my own SMS suppliers with Net2APP?", a: "Yes. Unlike traditional CPaaS providers that lock you into their supplier network, Net2APP lets you connect any SMPP or HTTP SMS supplier. The platform includes 80+ pre-built connectors for major aggregators worldwide, and you can add custom suppliers. You control routing, failover, and cost optimization per destination." },
-              { q: "Does Net2APP support the same features as major CPaaS platforms?", a: "Net2APP supports SMPP v3.4, HTTP REST API, Voice OTP (with Asterisk AMI), RCS messaging, Flash SMS, WhatsApp Business API, Telegram MTProto, DLR webhooks, IP whitelisting, multi-layer routing with auto failover, sub-client management, and automated billing. The feature set is comparable or exceeds most traditional CPaaS providers." },
-            ].map((faq, i) => (
+            {PAGE_FAQS.map((faq, i) => (
               <details key={i} className="bg-white border border-gray-100 rounded-xl shadow-sm group open:border-blue-500/50 transition">
                 <summary className="text-gray-900 font-medium px-6 py-4 cursor-pointer list-none flex items-center justify-between group-open:border-b border-gray-100">
                   <span>{faq.q}</span>
@@ -308,6 +278,7 @@ export default function ComparisonsPage() {
               <Link href="/comparisons" className="text-blue-400 hover:text-white text-sm transition">Comparisons</Link>
               <Link href="/pricing" className="text-blue-400 hover:text-white text-sm transition">Pricing</Link>
               <Link href="/blog" className="text-blue-400 hover:text-white text-sm transition">Blog</Link>
+              <Link href="/faq" className="text-blue-400 hover:text-white text-sm transition">FAQ</Link>
               <Link href="/contact" className="text-blue-400 hover:text-white text-sm transition">Contact</Link>
             </div>
           </div>

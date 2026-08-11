@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Customer Data Management — SMS Surveys & Feedback Collection | Net2APP",
+  title: "Customer Data Management — SMS Surveys & Feedback Collection",
   description: "Collect customer data via SMS surveys, feedback forms, and interactive messaging. Enrich customer profiles with real-time responses and behavioral data.",
   keywords: [
     "Customer Data SMS",

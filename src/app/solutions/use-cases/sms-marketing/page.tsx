@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "SMS Marketing — Bulk SMS Campaigns & Audience Segmentation | Net2APP",
+  title: "SMS Marketing — Bulk SMS Campaigns & Audience Segmentation",
   description: "Build subscriber lists, create audience segments, and run targeted SMS marketing campaigns. Deliver exclusive offers, product launches, and personalized recommendations directly to mobile phones.",
   keywords: [
     "SMS Marketing",

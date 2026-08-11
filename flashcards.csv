@@ -1,0 +1,55 @@
+What is the primary benefit of choosing a server location closest to your target audience in Net2APP?,It ensures lower latency for SMS delivery.
+True or False: A credit card is required to access the Net2APP free trial period.,FALSE
+How many free SMS credits are awarded upon signing up for a Net2APP account?,100 credits
+Which payment methods are accepted for topping up a balance on the Billing page?,"Cryptocurrencies such as USDT, BTC, and BNB."
+What step must a user take after sending a cryptocurrency payment to ensure it is approved?,Upload a screenshot or slip of the payment for super admin review.
+What is the minimum top-up amount required for the Starter plan?,$25
+Monthly cost of the Professional plan: _____.,$150
+Term: Supplier,Definition: An SMS gateway provider that delivers messages for the platform.
+Which version of SMPP is recommended as the default for supplier connections?,SMPP v3.4
+"When adding an HTTP API supplier, what credentials are required instead of SMPP host/port?",The API URL and API key.
+What status must a connection show on the Bind Status page to confirm it is active?,BOUND
+Which four SMPP bind types can be configured for a supplier?,"Transceiver, Transmitter, Receiver, and TX+RX."
+What action is required for Ejoin/Sk Gateways after setting the SMPP credentials to finalize the connection?,Save and Reboot.
+"In Supplier Rate management, what does adding a new rate for a destination do to the previous rate?",It automatically deactivates the old rate.
+Which feature allows a user to set rates for all operators in a country simultaneously?,Bulk Rate Management (or Bulk Import).
+What is mandatory for using WhatsApp and Telegram OTT Connect?,A Proxy.
+Term: Trunk,Definition: A logical entity that connects suppliers to specific routes.
+What does the 'Capacity' setting on a Trunk configuration control?,The maximum number of concurrent SMS allowed.
+How do MCC allow lists function within a Trunk configuration?,They restrict the trunk to handling only specific countries.
+What is the purpose of an MCC deny list on a trunk?,To block specific countries for compliance or business reasons.
+"When configuring Routes, how does priority numbering affect delivery selection?",Lower numbers indicate higher priority.
+What is the primary function of a 'Route Plan'?,To group multiple routes for load balancing and automatic failover.
+Name the three pre-created default Route Plans available in the system.,"Default Plan, SIM OTP, and SIM Marketing."
+Where in the interface do you assign a specific Route Plan to a user?,Clients → Edit Client → Route Plan.
+What is the strict requirement for SMTP usernames when adding new clients?,The username must be unique across all tenants.
+"In client settings, what does the 'TPS limit' prevent?",Abuse of the platform by limiting Transactions Per Second.
+What happens when the 'Force DLR' option is enabled for a client?,The system marks messages as delivered immediately without waiting for supplier receipts.
+How is profit calculated within the Net2APP platform?,The difference between the rate charged to the client and the cost from the supplier.
+Which regex pattern is used in SID Translation to match all incoming sender IDs?,.*
+"In SID Translation, what determines which rule is processed first?","The priority number, where lower numbers run first."
+Process: Number Translation,"Step: Strip First N Digits removes characters, and Add Prefix prepends new text to the result."
+"In Number Translation, what is the scope of a rule labeled 'Global'?",It applies to all entities on the platform.
+What placeholder is used in Content Translation templates to auto-fill an extracted code?,{{OTP}}
+What is the default range for OTP length extraction in Content Translation?,4 to 8 digits.
+How can you verify that a Content Translation rule correctly extracts an OTP before saving?,Click the 'Test' button in the specific rule row using sample text.
+"Under which menu category can you find 'Test SMS', 'Test SMTP', and 'Test HTTP'?",Testing.
+Where should a user look to verify the final delivery status of a sent test message?,The SMS Logs located on the Messages page.
+What information should be included in a support ticket for faster resolution?,Tenant name and relevant message IDs.
+True or False: Support tickets are visible to all users on the platform.,FALSE
+"In Routing, what happens if the Priority 1 route fails?",The system automatically attempts delivery via the next highest priority fallback route.
+Which configuration allows for granular routing based on specific operator prefixes?,Route settings using country code + prefix filtering.
+What does SID Translation primarily modify?,The Sender ID of incoming messages based on regex matching.
+How are clients assigned to specific Translation rules?,By dragging the client from the top bar to the specific rule's scope.
+"If a Number Translation rule strips 2 digits from '00880' and adds prefix '77', what is the result?",77880
+What does the 'Update' button do in the Content Translation interface?,It saves the rule to the database.
+What happens to unsaved changes in Content Translation if 'Cancel' is clicked?,The rule reverts to its last saved state.
+Where is the Knowledge Base located for common Net2APP questions?,net2app.com/resources
+Monthly cost of the Enterprise plan: _____.,$399
+What identifies the operator for a destination in the Rate management section?,MCC/MNC (Mobile Country Code / Mobile Network Code).
+What is the purpose of downloading a CSV from the Client Rates section?,To review markup percentages for reporting and invoicing.
+Under what condition does the free test credit balance refresh?,They refresh periodically.
+Concept: Random SID,Definition: A feature to fix a Sender ID per operator and apply it to specific clients or suppliers.
+What does 'Bind Status' specifically monitor?,The connection state between the platform and the supplier gateway.
+Which tool in SID Translation allows you to see how a specific ID will be transformed by current rules?,The 'Quick Test' box at the top of the SID Translation page.
+"In Content Translation, what does the 'regex' toggle enable for OTP extraction?",The use of a custom regex with capture groups instead of default min/max lengths.

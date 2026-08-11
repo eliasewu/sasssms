@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import { faqSchema, TENANT_FAQS } from "@/lib/tenant-faq";
 
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID || "";
 
@@ -162,13 +163,10 @@ export const metadata: Metadata = {
     },
   },
 
-  // ── Canonical & Alternates ──
-  alternates: {
-    canonical: SITE_URL,
-    languages: {
-      "en": `${SITE_URL}/`,
-    },
-  },
+  // ── Canonical ──
+  // NOTE: no global canonical here — a site-wide canonical pointing at the
+  // homepage would tag every page as a duplicate of / . Each page resolves to
+  // its own URL as canonical (Next.js + search engines handle this).
 
   // ── Open Graph ──
   openGraph: {
@@ -246,6 +244,16 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         "email": "info@net2app.com",
         "foundingDate": "2024",
         "address": { "@type": "PostalAddress", "addressCountry": "AE" },
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "contactType": "customer service",
+          "email": "info@net2app.com",
+          "availableLanguage": ["English"],
+        },
+        "knowsAbout": [
+          "SMS Gateway", "SMPP v3.4", "Voice OTP", "CPaaS", "RCS Messaging",
+          "WhatsApp Business API", "Telegram MTProto", "Bulk SMS", "OTT Messaging",
+        ],
         "sameAs": ["https://github.com/eliasewu/sasssms"],
       },
       {
@@ -277,13 +285,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       {
         "@type": "FAQPage",
         "@id": "https://net2app.com/#faq",
-        "mainEntity": [
-          { "@type": "Question", "name": "What is Net2APP SMS Gateway?", "acceptedAnswer": { "@type": "Answer", "text": "Net2APP is a multi-tenant SaaS SMS gateway platform that lets you deploy your own isolated SMS infrastructure. It supports SMPP v3.4, HTTP API, RCS messaging, Voice OTP with Asterisk, Flash SMS, OTT messaging (WhatsApp, Telegram), and intelligent multi-layer routing. No setup fees — pure pay-as-you-go pricing." } },
-          { "@type": "Question", "name": "How much does Net2APP cost?", "acceptedAnswer": { "@type": "Answer", "text": "Net2APP has zero setup fees, zero monthly fees, and zero hidden fees. You pay only for the SMS you send. The per-SMS rate is dynamically configured by the super admin and visible on the landing page. Professional and Enterprise packages are available with dedicated servers and included SMS volume." } },
-          { "@type": "Question", "name": "What connection types does Net2APP support?", "acceptedAnswer": { "@type": "Answer", "text": "Net2APP supports 8+ connection types: SMPP v3.4, HTTP REST API, RCS (Rich Communication Services), Voice OTP (with Asterisk AMI integration), Flash SMS, OTT messaging (WhatsApp Business API + Telegram), Business API, and Email-to-SMS gateway." } },
-          { "@type": "Question", "name": "Is my data isolated from other tenants?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Net2APP uses PostgreSQL schema-based isolation — each tenant gets their own dedicated database schema with complete data separation. No shared tables, no data leakage." } },
-          { "@type": "Question", "name": "How does Voice OTP work?", "acceptedAnswer": { "@type": "Answer", "text": "Net2APP's Voice OTP engine detects the destination country from the phone number prefix (MCC), maps it to the local language using a 220+ country database, builds an audio playlist (greeting + digits/letters), and originates a call via Asterisk AMI with 3-retry logic. Alphanumeric OTPs (e.g. AB3X9) are fully supported with A-Z letter audio." } },
-        ],
+        "mainEntity": faqSchema(TENANT_FAQS),
       },
       {
         "@type": "BreadcrumbList",

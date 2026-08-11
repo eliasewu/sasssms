@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "SMS Solutions for Ecommerce — Orders, Shipping & Cart Recovery | Net2APP",
+  title: "SMS Solutions for Ecommerce — Orders, Shipping & Cart Recovery",
   description: "Order confirmations, shipping updates, cart abandonment recovery, and personalized product recommendations for ecommerce businesses.",
   keywords: [
     "Ecommerce SMS",

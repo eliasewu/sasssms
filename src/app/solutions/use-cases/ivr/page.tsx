@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "IVR — Interactive Voice Response with SMS Fallback | Net2APP",
+  title: "IVR — Interactive Voice Response with SMS Fallback",
   description: "Build IVR systems with Voice OTP, menu navigation, and SMS fallback. Net2APP's Asterisk AMI integration provides reliable call origination for voice-based customer self-service.",
   keywords: [
     "IVR SMS",

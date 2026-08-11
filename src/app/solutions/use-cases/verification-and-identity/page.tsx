@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Verification & Identity — SMS OTP, Voice OTP & 2FA Solutions | Net2APP",
+  title: "Verification & Identity — SMS OTP, Voice OTP & 2FA Solutions",
   description:
     "Deliver one-time passwords (OTPs) via SMS, Voice Call, WhatsApp, and Telegram for user verification, account registration, password reset, and two-factor authentication (2FA) with 220+ country support.",
   keywords: [
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
     "Password Reset SMS",
   ],
   openGraph: {
-    title: "Verification & Identity — OTP Delivery Solutions | Net2APP",
+    title: "Verification & Identity — OTP Delivery Solutions",
     description: "SMS OTP, Voice OTP, WhatsApp and Telegram verification with 99.9% uptime and 220+ country language detection.",
   },
 };

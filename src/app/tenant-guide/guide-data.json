@@ -1,0 +1,2386 @@
+{
+ "title": "Net2APP Tenant User Guide",
+ "subtitle": "The complete operator guide to the Net2APP SMS gateway platform — account setup, suppliers, routing, clients, translations, testing and support.",
+ "chapters": [
+  {
+   "id": "getting-started",
+   "title": "Getting Started",
+   "icon": "🚀",
+   "desc": "Create your account, understand billing and free credits, and prepare your platform for testing.",
+   "sections": [
+    {
+     "id": "register-account",
+     "title": "Register Your Account",
+     "icon": "📝",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "Go to www.net2app.com and fill in the Sign Up form. Enter your company name, email address, phone number, and choose a password. Select your preferred server location for the best SMS delivery performance. Your account is created instantly with a free Starter plan."
+      },
+      {
+       "t": "callout",
+       "title": "Tips",
+       "items": [
+        "Choose a server location closest to your target audience for lower latency",
+        "All plans include a free trial period — no credit card required"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "top-up-payment",
+     "title": "Top-Up & Payment Procedures",
+     "icon": "💳",
+     "blocks": [
+      {
+       "t": "sub",
+       "text": "Top-Up and Payment Procedures"
+      },
+      {
+       "t": "p",
+       "text": "The platform utilizes a manual approval process for adding funds to an account:"
+      },
+      {
+       "t": "p",
+       "text": "Payment Methods: Billing is primarily handled through cryptocurrency, including options like USDT, BTC, and BNB."
+      },
+      {
+       "t": "p",
+       "text": "Approval Workflow: After choosing an amount, the user must upload a screenshot or payment slip of the transaction. A super admin then reviews and approves the payment to update the balance."
+      }
+     ]
+    },
+    {
+     "id": "test-credits",
+     "title": "Testing & Development Credits",
+     "icon": "🎁",
+     "blocks": [
+      {
+       "t": "sub",
+       "text": "Credits for Testing and Development"
+      },
+      {
+       "t": "p",
+       "text": "To support the \"Testing & Support\" phase of setup, the platform provides several credit-based incentives:"
+      },
+      {
+       "t": "p",
+       "text": "Signup Bonus: New users receive 100 free SMS credits upon registration specifically for testing purposes."
+      }
+     ]
+    },
+    {
+     "id": "financial-integration",
+     "title": "Financial Integration",
+     "icon": "📊",
+     "blocks": [
+      {
+       "t": "sub",
+       "text": "Financial Integration in the Platform Guide"
+      },
+      {
+       "t": "p",
+       "text": "Billing is intrinsically linked to the platform's core operational logic through rate management and reporting:"
+      },
+      {
+       "t": "p",
+       "text": "Profit Calculation: The system's commercial model relies on the difference between Supplier Rates (the cost to the administrator) and Client Rates (the price charged to the user). The platform defines profit as the mathematical difference between these two values."
+      },
+      {
+       "t": "p",
+       "text": "Invoicing and Reporting: To facilitate billing for end-clients, administrators can download CSV files that include markup percentages, which are designed to assist with both internal reporting and external client invoicing."
+      }
+     ]
+    },
+    {
+     "id": "crypto-payment",
+     "title": "Cryptocurrency Payment Process",
+     "icon": "₿",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "In the Net2APP platform, topping up via cryptocurrency is the primary method for adding funds to an account, serving as the financial engine that allows administrators to move from the free trial phase into active message delivery."
+      },
+      {
+       "t": "sub",
+       "text": "Cryptocurrency Payment Process"
+      },
+      {
+       "t": "p",
+       "text": "The platform utilizes a manual verification workflow for handling cryptocurrency transactions to ensure payment accuracy:"
+      },
+      {
+       "t": "p",
+       "text": "Supported Currencies: Administrators can choose from several preferred cryptocurrency payment methods, including USDT, BTC, and BNB."
+      },
+      {
+       "t": "p",
+       "text": "Submission Workflow: To initiate a top-up, the user must navigate to the Billing page, enter the desired amount, and upload a screenshot or payment slip of the transaction."
+      },
+      {
+       "t": "p",
+       "text": "Administrative Approval: Unlike automated credit card payments, these funds are not credited instantly; a super admin must review and approve the payment before the balance is updated."
+      },
+      {
+       "t": "sub",
+       "text": "Financial Requirements and Incentives"
+      },
+      {
+       "t": "p",
+       "text": "The top-up process includes specific thresholds and potential rewards:"
+      },
+      {
+       "t": "p",
+       "text": "Minimum Entry: For users on the Starter plan, the minimum top-up amount is set at $25."
+      },
+      {
+       "t": "p",
+       "text": "First-Payment Bonuses: The sources note that a first payment may qualify for bonus SMS credits, which users can identify via promotional banners on the platform."
+      },
+      {
+       "t": "p",
+       "text": "No Credit Card Required: All plans initially include a free trial period that does not require a credit card, allowing users to evaluate the system before committing cryptocurrency funds."
+      },
+      {
+       "t": "sub",
+       "text": "Context within Account & Billing"
+      },
+      {
+       "t": "p",
+       "text": "Cryptocurrency top-ups are a central component of the broader account management lifecycle:"
+      },
+      {
+       "t": "p",
+       "text": "Plan Upgrades: While every account starts on a free Starter plan, users use their balance to upgrade to Professional ($150/month) or Enterprise ($399/month) tiers directly from the Billing page."
+      },
+      {
+       "t": "p",
+       "text": "Operational Readiness: To avoid using paid credits during the setup phase, the platform provides 100 free SMS credits upon signup and periodically refreshing free test credits specifically for development and validation."
+      }
+     ]
+    },
+    {
+     "id": "login-dashboard",
+     "title": "Login & Dashboard Quick Steps",
+     "icon": "🔑",
+     "blocks": [
+      {
+       "t": "sub",
+       "text": "Login with Google or Email"
+      },
+      {
+       "t": "sub",
+       "text": "Dash Board"
+      },
+      {
+       "t": "sub",
+       "text": "Signup You will get 100 Free sms Credit to test"
+      },
+      {
+       "t": "sub",
+       "text": "Chose Package"
+      },
+      {
+       "t": "sub",
+       "text": "Select page and Payment wallet"
+      }
+     ]
+    },
+    {
+     "id": "top-up-balance",
+     "title": "Top Up Your Balance",
+     "icon": "💰",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "After registration, go to the Billing page and add funds to your account. Choose your preferred cryptocurrency payment method (USDT, BTC, BNB, etc.), enter the amount, and upload a screenshot of your payment. The super admin will review and approve your payment."
+      },
+      {
+       "t": "callout",
+       "title": "Tips",
+       "items": [
+        "Minimum top-up amount is $25 for Starter plans",
+        "Professional plan: $150/month — Enterprise: $399/month"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "supplier-management",
+   "title": "Supplier Management",
+   "icon": "🏭",
+   "desc": "Connect SMS gateway providers via SMPP or HTTP and verify their connections with Bind Status.",
+   "sections": [
+    {
+     "id": "add-supplier",
+     "title": "Add a Supplier",
+     "icon": "🏭",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "Suppliers are the SMS gateway providers that deliver your messages. Go to Suppliers → All Suppliers and click '+ Add Supplier'. Enter the supplier's name, connection type (SMPP or HTTP API), host, port, username, and password. Configure the bind type (Transceiver, Transmitter, Receiver, or TX+RX)."
+      },
+      {
+       "t": "howto",
+       "title": "How to Add a Supplier"
+      },
+      {
+       "t": "callout",
+       "title": "Tips",
+       "items": [
+        "SMPP v3.4 is the most widely supported version — use it as default",
+        "For HTTP API suppliers, enter the API URL and key instead of SMPP credentials",
+        "After adding, check the Bind Status page to confirm the connection is BOUND"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "Supplier Management is the foundational process of integrating the external gateway providers that physically deliver SMS messages. The \"Add Supplier\" function is the primary mechanism for establishing these connections."
+      }
+     ]
+    },
+    {
+     "id": "supplier-process",
+     "title": "The Add Supplier Process",
+     "icon": "⚙️",
+     "blocks": [
+      {
+       "t": "steps",
+       "items": [
+        "1. The \"Add Supplier\" Process"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "To integrate a new provider, administrators navigate to Suppliers → All Suppliers and click \"+ Add Supplier\". The setup requires several key technical details:"
+      },
+      {
+       "t": "p",
+       "text": "Connection Type: Users must choose between SMPP or HTTP API."
+      },
+      {
+       "t": "p",
+       "text": "Credentials: Common fields include the supplier’s name, host, port, username, and password."
+      },
+      {
+       "t": "p",
+       "text": "Bind Configuration: For SMPP connections, users must specify the bind type, such as Transceiver, Transmitter, Receiver, or TX+RX."
+      },
+      {
+       "t": "steps",
+       "items": [
+        "2. Protocol Specifics: SMPP vs. HTTP"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "The sources provide specific guidance based on the chosen protocol:"
+      },
+      {
+       "t": "p",
+       "text": "SMPP: This is the standard for most providers, and the guide recommends using SMPP v3.4 as the default version. For specialized hardware like Ejoin or Sk Gateways, users set the SMPP credentials and server details, then save and reboot to establish the connection."
+      },
+      {
+       "t": "p",
+       "text": "HTTP API: If a supplier uses a RESTful interface rather than SMPP, the administrator enters the API URL and API key in place of standard host/port credentials."
+      },
+      {
+       "t": "p",
+       "text": "Advanced Connectors: For non-standard integrations, the platform offers HTTP Custom API Connect and Pre Load API options, which allow for automated setup once credentials are provided."
+      },
+      {
+       "t": "steps",
+       "items": [
+        "3. Connection Verification"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "After adding a supplier, it is critical to verify that the link is active."
+      },
+      {
+       "t": "p",
+       "text": "Bind Status: Administrators should check the Bind Status page."
+      },
+      {
+       "t": "p",
+       "text": "Successful State: A functional SMPP connection will show as \"BOUND\" and typically display a status of Transceiver."
+      },
+      {
+       "t": "steps",
+       "items": [
+        "4. Post-Integration Management"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "Once a supplier is added and bound, two additional steps are required within the broader management workflow:"
+      },
+      {
+       "t": "p",
+       "text": "Setting Supplier Rates: Administrators must configure how much the supplier charges for different destinations by going to Rates → Supplier Rates. This involves selecting a country and operator (MCC/MNC) to enter the cost per SMS. Only one rate can be active per destination at a time."
+      },
+      {
+       "t": "p",
+       "text": "Trunk Assignment: Suppliers are not used directly by routes; instead, they must be linked to a Trunk. Trunks allow administrators to set capacity limits (maximum concurrent SMS) and define MCC allow/deny lists to control which countries that specific supplier connection will handle."
+      }
+     ]
+    },
+    {
+     "id": "bind-status",
+     "title": "Bind Status Monitoring",
+     "icon": "🔗",
+     "blocks": [
+      {
+       "t": "sub",
+       "text": "The Role of Bind Status in Supplier Management"
+      },
+      {
+       "t": "p",
+       "text": "Supplier Management begins with adding a provider via SMPP or HTTP API. However, the configuration is only considered successful once the connection is validated through the Bind Status page."
+      },
+      {
+       "t": "p",
+       "text": "Successful Connection: A functional connection is indicated when the status displays as \"BOUND\"."
+      },
+      {
+       "t": "p",
+       "text": "Hardware-Specific Indicators: For specific integrations like Ejoin or Sk Gateways, the monitoring interface will specifically show the status as \"Transceiver\" and confirm the SMPP BIND as \"Bound\" after the system is saved and rebooted."
+      },
+      {
+       "t": "sub",
+       "text": "Integration with the Delivery Workflow"
+      },
+      {
+       "t": "p",
+       "text": "Monitoring the bind status serves as the bridge between initial setup and active message routing:"
+      },
+      {
+       "t": "p",
+       "text": "Pre-requisite for Traffic: Before a supplier can be effectively used in a Trunk or assigned a Route, the administrator must ensure the bind is stable."
+      },
+      {
+       "t": "p",
+       "text": "Troubleshooting: The Bind Status page is a primary diagnostic tool. If a supplier is not \"BOUND,\" it cannot receive messages from the platform, regardless of how the rates or routes are configured."
+      },
+      {
+       "t": "p",
+       "text": "Management Hierarchy: Once a supplier is confirmed as bound, administrators move forward with setting Supplier Rates for specific destinations (MCC/MNC) and establishing Trunks to manage capacity limits and MCC allow/deny lists."
+      },
+      {
+       "t": "sub",
+       "text": "Operational Oversight"
+      },
+      {
+       "t": "p",
+       "text": "The platform lists Bind Status as a dedicated management module alongside other critical controls like IP Whitelisting and Translation tools. This centralized monitoring allows administrators to maintain real-time oversight of all connected SMS gateway providers, ensuring that the infrastructure is ready to handle client traffic."
+      }
+     ]
+    },
+    {
+     "id": "ejoin-sk",
+     "title": "Add Ejoin/Sk Gateway",
+     "icon": "🛠️",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "Set supplier smpp user name and password and server  and port ."
+      },
+      {
+       "t": "sub",
+       "text": "Save and Reboot"
+      },
+      {
+       "t": "sub",
+       "text": "It will shows Transceiver and SMPP BIND will show Bound"
+      }
+     ]
+    },
+    {
+     "id": "set-supplier-rates",
+     "title": "Set Supplier Rates",
+     "icon": "💲",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "After adding a supplier, configure their per-destination rates. Go to Rates → Supplier Rates or Bulk Rate Management. Select the supplier, choose a destination country, pick the operator (MCC/MNC), and enter the cost per SMS. Use Bulk Import to add all operators for a country at once."
+      },
+      {
+       "t": "callout",
+       "title": "Tips",
+       "items": [
+        "Only one rate can be active per destination — adding a new rate auto-deactivates the old one",
+        "Use Bulk Rate Management for importing all operators at once with a single rate",
+        "Rates can be toggled Active/Inactive without deleting them"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "supplier-rates-bulk",
+     "title": "Supplier Rates & Bulk Import",
+     "icon": "📦",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "In the Net2APP platform, Supplier Rates & Bulk Import are the final steps in the Supplier Management workflow, turning a technical connection into a functional business asset. While Supplier Management begins with the integration of gateway providers via SMPP or HTTP, the configuration of rates is what allows the system to calculate profitability and manage traffic effectively."
+      },
+      {
+       "t": "steps",
+       "items": [
+        "1. The Foundation: Supplier Integration"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "Before rates can be set, a supplier must be successfully added and verified."
+      },
+      {
+       "t": "p",
+       "text": "Establishment: Administrators add providers by entering credentials (host, port, username, password) and choosing a connection type like SMPP v3.4 or an HTTP API."
+      },
+      {
+       "t": "p",
+       "text": "Verification: For specific hardware like Ejoin/Sk Gateways, the system requires a reboot. Regardless of the type, the connection must show as \"BOUND\" on the Bind Status page before proceeding to rate configuration."
+      },
+      {
+       "t": "steps",
+       "items": [
+        "2. Configuring Supplier Rates"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "Once a supplier is active, administrators must define how much that provider charges for different destinations."
+      },
+      {
+       "t": "p",
+       "text": "Granular Setup: Through Rates → Supplier Rates, users select a supplier, a destination country, and a specific operator defined by its MCC/MNC (Mobile Country Code/Mobile Network Code)."
+      },
+      {
+       "t": "p",
+       "text": "Cost Input: The administrator then enters the specific cost per SMS for that operator."
+      },
+      {
+       "t": "p",
+       "text": "Rule of Recency: The system maintains a strict \"one active rate per destination\" policy. If a new rate is added for an existing destination, the platform automatically deactivates the old one."
+      },
+      {
+       "t": "steps",
+       "items": [
+        "3. Efficiency via Bulk Import & Management"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "To handle large-scale operations across multiple countries and operators, the platform provides specialized bulk tools:"
+      },
+      {
+       "t": "p",
+       "text": "Bulk Import: Instead of manual entry for every network, the Bulk Import feature allows administrators to add all operators for an entire country at once."
+      },
+      {
+       "t": "p",
+       "text": "Bulk Rate Management: This module enables the application of a single rate across all operators simultaneously, significantly reducing the time required for setup and updates."
+      },
+      {
+       "t": "p",
+       "text": "Flexibility: Rates do not need to be deleted to be stopped; they can be toggled between Active and Inactive states as needed."
+      },
+      {
+       "t": "steps",
+       "items": [
+        "4. Strategic Context: Profitability and Trunks"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "The configuration of supplier rates serves two critical functions in the broader platform architecture:"
+      },
+      {
+       "t": "p",
+       "text": "Profit Calculation: The \"Supplier Cost\" defined here is the baseline for the platform's financial logic. Profit is calculated as the mathematical difference between the rate charged to the client (Client Rates) and the cost paid to the supplier."
+      },
+      {
+       "t": "p",
+       "text": "Trunk Integration: After rates are set, the supplier is linked to a Trunk, where administrators manage capacity limits and use MCC allow/deny lists to control which of those priced destinations the trunk will actually handle."
+      },
+      {
+       "t": "p",
+       "text": "By combining robust integration tools with efficient bulk rate management, Net2APP ensures that administrators can maintain accurate, profitable delivery paths across a global network of providers."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "advanced-connectors",
+   "title": "Advanced Connectors",
+   "icon": "🔌",
+   "desc": "Voice OTP, WhatsApp, Telegram and custom HTTP connectors for modern communication channels.",
+   "sections": [
+    {
+     "id": "voice-otp",
+     "title": "Voice OTP & SIP Config",
+     "icon": "📞",
+     "blocks": [
+      {
+       "t": "sub",
+       "text": "Voice OTP"
+      },
+      {
+       "t": "p",
+       "text": "Within the Net2APP platform, Voice OTP and SIP Config are specialized modules categorized under the suite of Advanced Connectors. These features allow the platform to transcend traditional SMS by offering automated voice-based authentication services."
+      },
+      {
+       "t": "sub",
+       "text": "Voice OTP Functionality"
+      },
+      {
+       "t": "p",
+       "text": "The sources indicate that the Voice OTP module includes several critical components for managing automated voice calls:"
+      },
+      {
+       "t": "p",
+       "text": "Audio Management: Administrators can use the Audio upload feature to provide the specific voice files used for the OTP delivery."
+      },
+      {
+       "t": "p",
+       "text": "Customization: The Language setting allows administrators to define the language in which the OTP is delivered, ensuring a localized experience for the end user."
+      },
+      {
+       "t": "p",
+       "text": "Monitoring: The Call Logs feature provides a detailed record of voice attempts, allowing for the same level of oversight available for standard SMS traffic."
+      },
+      {
+       "t": "sub",
+       "text": "SIP Config and Technical Foundation"
+      },
+      {
+       "t": "p",
+       "text": "SIP Config serves as the technical backbone for the voice services. While standard SMS suppliers are integrated via SMPP or HTTP protocols, voice services utilize SIP (Session Initiation Protocol) to manage the signaling and control of voice communication sessions. (Note: The definition of SIP is not in the sources but is common technical knowledge for interpreting the \"SIP Config\" entry)."
+      },
+      {
+       "t": "sub",
+       "text": "Context within Advanced Connectors"
+      },
+      {
+       "t": "p",
+       "text": "Voice OTP and SIP Config are positioned alongside other modern communication tools like the WhatsApp and Telegram Business APIs."
+      },
+      {
+       "t": "p",
+       "text": "Multi-Channel Capability: These connectors signify that the platform is a multi-channel communication hub rather than just a simple SMS gateway."
+      },
+      {
+       "t": "p",
+       "text": "Automated Integration: Much like the \"Pre Load API\" in the same category, these advanced modules are designed to function automatically once the specific credentials and configurations—in this case, the SIP settings—are updated."
+      },
+      {
+       "t": "sub",
+       "text": "Integration with Supplier and Client Management"
+      },
+      {
+       "t": "p",
+       "text": "Although they use different technical protocols, Voice OTP and SIP Config follow the standard administrative workflow of the platform:"
+      },
+      {
+       "t": "p",
+       "text": "Supplier Logic: These voice paths function as \"Suppliers\" or gateway providers that deliver messages."
+      },
+      {
+       "t": "p",
+       "text": "Rate and Profit Management: Administrators must set rates for these voice services to maintain the platform's financial model, where profit is the difference between what the client is charged and the underlying cost of the SIP/Voice provider."
+      },
+      {
+       "t": "p",
+       "text": "Client Access: Clients can utilize Voice OTP services if the administrator assigns them a Route Plan that includes voice-capable routes and ensures they have the correct permissions within their client profile"
+      },
+      {
+       "t": "p",
+       "text": "Language"
+      },
+      {
+       "t": "sub",
+       "text": "Audo upload"
+      },
+      {
+       "t": "sub",
+       "text": "SIP Config"
+      },
+      {
+       "t": "sub",
+       "text": "Call Logs"
+      }
+     ]
+    },
+    {
+     "id": "telegram-api",
+     "title": "Telegram Business API",
+     "icon": "✈️",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "The Telegram Business API is a specialized module within the platform's Advanced Connectors suite, designed to expand communication capabilities beyond traditional SMS."
+      },
+      {
+       "t": "sub",
+       "text": "Functionality and Setup"
+      },
+      {
+       "t": "p",
+       "text": "In the larger context of Advanced Connectors, the Telegram Business API is grouped with other modern tools such as the WhatsApp Business API, Voice OTP, and HTTP Custom API Connect."
+      },
+      {
+       "t": "p",
+       "text": "Automated Integration: Similar to the \"Pre Load API,\" the Telegram Business API is designed to work automatically once the administrator updates the necessary API and credential information."
+      },
+      {
+       "t": "p",
+       "text": "Proxy Requirements: The sources also mention a related \"WhatsApp and Telegram OTT connect\" feature, noting that for these specific Over-The-Top connections, a proxy is mandatory to function."
+      },
+      {
+       "t": "sub",
+       "text": "Integration with Supplier and Routing Management"
+      },
+      {
+       "t": "p",
+       "text": "Although categorized as an advanced connector, the Telegram Business API follows the standard operational logic for Supplier Management,:"
+      },
+      {
+       "t": "p",
+       "text": "Supplier Role: The API acts as a \"Supplier\"—the gateway provider that physically delivers the messages."
+      },
+      {
+       "t": "p",
+       "text": "Financial Configuration: Administrators must define Supplier Rates for this connector to establish the cost baseline. This allows the platform to calculate profit, which is the mathematical difference between the rate charged to the client and the cost of the Telegram supplier."
+      },
+      {
+       "t": "p",
+       "text": "Traffic Control: To manage delivery, the connector must be linked to a Trunk, where administrators can set capacity limits and MCC allow/deny lists for geographic filtering."
+      },
+      {
+       "t": "p",
+       "text": "Routing Hierarchy: This trunk is then assigned to a Route (defining priority and filtering) and eventually bundled into a Route Plan."
+      },
+      {
+       "t": "sub",
+       "text": "Client Access and Validation"
+      },
+      {
+       "t": "p",
+       "text": "For an end user to utilize the Telegram Business API, an administrator must assign a Route Plan containing the relevant Telegram routes to that Client's profile. Before moving to live production, administrators can use the Test SMS feature to verify that the routing and rate matching for this advanced connector are functioning correctly."
+      },
+      {
+       "t": "p",
+       "text": "The platform also provides other advanced monitoring and security tools that support these connectors, such as Call Logs for voice-related services and IP Whitelisting to secure client access"
+      }
+     ]
+    },
+    {
+     "id": "whatsapp-api",
+     "title": "WhatsApp Business API",
+     "icon": "💚",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "The WhatsApp Business API is a specialized module within the Net2APP platform's suite of Advanced Connectors, which expands the gateway's capabilities to support modern, non-traditional communication channels beyond standard SMS. This connector sits alongside other high-level integration tools such as the Telegram Business API, Voice OTP, and HTTP Custom API Connect."
+      },
+      {
+       "t": "sub",
+       "text": "Technical Setup and Connectivity"
+      },
+      {
+       "t": "p",
+       "text": "The WhatsApp Business API is designed for efficient, automated integration within the system:"
+      },
+      {
+       "t": "p",
+       "text": "Automated Functionality: Much like the \"Pre Load API,\" the WhatsApp Business API is intended to work automatically once the administrator has updated the necessary API and credential information."
+      },
+      {
+       "t": "p",
+       "text": "Proxy Requirement: A critical technical distinction for related Over-The-Top (OTT) services, specifically WhatsApp and Telegram OTT connect, is that a proxy is mandatory for the connection to function."
+      },
+      {
+       "t": "p",
+       "text": "Protocol Flexibility: While the platform recommends SMPP v3.4 as the most widely supported version for standard suppliers, these advanced connectors allow administrators to integrate via more modern web-based protocols."
+      },
+      {
+       "t": "sub",
+       "text": "Context within the Supplier and Routing Hierarchy"
+      },
+      {
+       "t": "p",
+       "text": "In the broader platform architecture, the WhatsApp Business API follows the standard workflow for Supplier Management and Routing Configuration:"
+      },
+      {
+       "t": "p",
+       "text": "Supplier Logic: The API serves as a \"Supplier,\" which the sources define as the physical gateway provider that delivers messages."
+      },
+      {
+       "t": "p",
+       "text": "Financial Management: Administrators must configure Supplier Rates for the API. This establishes the cost baseline used to calculate profit, which is the mathematical difference between the rate charged to the client and the supplier cost."
+      },
+      {
+       "t": "p",
+       "text": "Traffic Control via Trunks: To manage message flow, the WhatsApp connector must be linked to a Trunk. This allows administrators to set capacity limits (maximum concurrent SMS) to prevent overloading the connection and to use MCC allow/deny lists for geographic filtering."
+      },
+      {
+       "t": "p",
+       "text": "Pathing and Priority: The trunk is assigned to a Route, where administrators can set granular filters and a numerical priority (where a lower number equals a higher priority) to enable automatic failover logic."
+      },
+      {
+       "t": "sub",
+       "text": "Client Implementation and Validation"
+      },
+      {
+       "t": "p",
+       "text": "The ultimate goal of the WhatsApp Business API connector is to provide end users with an additional communication channel:"
+      },
+      {
+       "t": "p",
+       "text": "Assigning Access: Administrators grant clients access to the API by assigning them a Route Plan that includes the relevant WhatsApp-specific routes."
+      },
+      {
+       "t": "p",
+       "text": "User Profiles: Within the Add Client process, administrators can further customize the service by setting TPS (Transactions Per Second) limits to prevent abuse and configuring IP Whitelisting for security."
+      },
+      {
+       "t": "p",
+       "text": "Testing and Verification: Before live deployment, administrators are encouraged to use the Test SMS feature. By selecting a specific client and destination, they can verify that the routing and rate matching for the WhatsApp Business API are functioning correctly"
+      }
+     ]
+    },
+    {
+     "id": "ott-connect",
+     "title": "WhatsApp & Telegram OTT Connect",
+     "icon": "🔗",
+     "blocks": [
+      {
+       "t": "sub",
+       "text": "Whatsapp and Telgram OTT connect"
+      },
+      {
+       "t": "sub",
+       "text": "Proxy is Mandatory for WhatsApp and Telegram OTT Connect"
+      }
+     ]
+    },
+    {
+     "id": "http-custom-api",
+     "title": "HTTP Custom API Connect",
+     "icon": "🌐",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "HTTP Custom API Connect is a specialized module within the platform's suite of Advanced Connectors, designed to facilitate automated integrations with non-standard SMS gateway providers. It is categorized alongside other modern communication tools like the WhatsApp Business API, Telegram Business API, and Voice OTP."
+      },
+      {
+       "t": "sub",
+       "text": "The Pre Load API Feature"
+      },
+      {
+       "t": "p",
+       "text": "The primary component of this connector mentioned in the sources is the Pre Load Api. This feature is designed for ease of use and efficiency:"
+      },
+      {
+       "t": "p",
+       "text": "Automation: Once an administrator updates the specific API and credential information, the connector is designed to work automatically."
+      },
+      {
+       "t": "p",
+       "text": "Integration: This provides a streamlined path for connecting custom HTTP-based services without the manual configuration typically required for standard gateway providers."
+      },
+      {
+       "t": "sub",
+       "text": "Context within Supplier Management"
+      },
+      {
+       "t": "p",
+       "text": "In the broader framework of the Net2APP platform, HTTP Custom API Connect serves as a specialized type of Supplier,."
+      },
+      {
+       "t": "p",
+       "text": "Connection Alternatives: While the platform recommends SMPP v3.4 as the most widely supported version for standard suppliers, this module offers a more flexible web-based alternative for providers that do not use the SMPP protocol,,."
+      },
+      {
+       "t": "p",
+       "text": "Operational Flow: Despite being an \"advanced\" tool, it still follows the standard management lifecycle. It must be configured with Supplier Rates to establish costs and linked to a Trunk to manage capacity limits and MCC allow/deny lists for geographic filtering,."
+      },
+      {
+       "t": "sub",
+       "text": "Context within Client Management"
+      },
+      {
+       "t": "p",
+       "text": "The ultimate purpose of this connector is to provide delivery paths for Clients:"
+      },
+      {
+       "t": "p",
+       "text": "Routing: Individual routes created for the HTTP Custom API are bundled into Route Plans (such as the Default Plan or SIM OTP) and assigned to specific client profiles,."
+      },
+      {
+       "t": "p",
+       "text": "Profitability: The administrator sets Client Rates for traffic using this connector. The platform then calculates profit as the mathematical difference between the rate charged to the client and the cost of the underlying custom API supplier."
+      },
+      {
+       "t": "p",
+       "text": "Verification: Administrators can use the Test SMS feature or the dedicated Test HTTP page to verify that the credentials, routing logic, and rate matching for the custom API are functioning correctly before moving to live production."
+      },
+      {
+       "t": "p",
+       "text": "By offering the HTTP Custom API Connect, the platform ensures that administrators can quickly integrate a wide variety of third-party messaging services into their delivery infrastructure through automated credential-based setups"
+      },
+      {
+       "t": "p",
+       "text": "Pre Load Api:"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "routing",
+   "title": "Routing",
+   "icon": "🔀",
+   "desc": "Build the delivery hierarchy — Trunks → Routes → Route Plans — with capacity limits and automatic failover.",
+   "sections": [
+    {
+     "id": "add-trunk",
+     "title": "Add a Trunk",
+     "icon": "🔗",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "In the Net2APP platform, Trunks serve as the essential bridge connecting SMS suppliers to the system's routing logic. Within the larger framework of Routing Configuration, they act as the intermediate layer that manages how a supplier's physical connection is utilized before it is assigned to specific delivery paths."
+      },
+      {
+       "t": "sub",
+       "text": "The Role and Setup of Trunks"
+      },
+      {
+       "t": "p",
+       "text": "Trunks are configured by navigating to Routing → Trunks and selecting an integrated supplier. During setup, administrators define several operational parameters:"
+      },
+      {
+       "t": "p",
+       "text": "Supplier Linking: Each trunk is tied to a specific SMS gateway provider (supplier) that was previously added and bound to the system."
+      },
+      {
+       "t": "p",
+       "text": "Capacity Management: Administrators can set a maximum concurrent SMS limit for each trunk. These capacity limits are critical for preventing the overloading of a single supplier connection."
+      },
+      {
+       "t": "p",
+       "text": "Geographic Filtering (MCC Lists): Trunks allow for granular control over destination access through MCC (Mobile Country Code) allow and deny lists."
+      },
+      {
+       "t": "p",
+       "text": "MCC Allow Lists: These restrict the trunk to only handle traffic for specific countries; if left empty, the trunk remains open for all destinations."
+      },
+      {
+       "t": "p",
+       "text": "MCC Deny Lists: These are used to block specific countries, which is particularly useful for maintaining regulatory compliance."
+      },
+      {
+       "t": "sub",
+       "text": "Trunks in the Routing Hierarchy"
+      },
+      {
+       "t": "p",
+       "text": "Trunks are a prerequisite for the more specific layers of message delivery:"
+      },
+      {
+       "t": "p",
+       "text": "Route Pathing: When creating an individual Route, the administrator must select a specific trunk. The route then defines more granular details like country codes, prefixes, and priority levels for that trunk's traffic."
+      },
+      {
+       "t": "p",
+       "text": "Route Plans and Failover: Route Plans group multiple routes together. Because a single route plan can contain routes derived from multiple trunks and suppliers, it enables sophisticated load balancing and failover strategies."
+      },
+      {
+       "t": "p",
+       "text": "Client Assignment: Ultimately, these configurations reach the end user when a Route Plan is assigned to a specific Client. This ensures the client's messages follow the specific pathing, capacity, and geographic restrictions defined at the trunk level."
+      },
+      {
+       "t": "p",
+       "text": "By providing these control mechanisms, Trunks allow administrators to protect their supplier relationships while ensuring that messages are routed according to the technical and compliance requirements of the platform"
+      },
+      {
+       "t": "p",
+       "text": "Trunks connect suppliers to routes. Go to Routing → Trunks and click '+ Add Trunk'. Select the supplier, give the trunk a descriptive name, set the capacity (max concurrent SMS), and configure MCC allow/deny lists if you want to restrict which destinations this trunk handles."
+      },
+      {
+       "t": "howto",
+       "title": "How to Add a Trunk"
+      },
+      {
+       "t": "callout",
+       "title": "Tips",
+       "items": [
+        "Capacity limits prevent overloading a single supplier connection",
+        "MCC allow lists restrict the trunk to specific countries — leave empty for all",
+        "MCC deny lists block specific countries — useful for compliance"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "trunk-capacity",
+     "title": "Trunk Capacity Management",
+     "icon": "⚡",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "In the Net2APP platform, Capacity Management is a critical functional setting within the Trunks module, designed to regulate the flow of traffic between the platform and its integrated suppliers."
+      },
+      {
+       "t": "sub",
+       "text": "Defining Capacity in Trunks"
+      },
+      {
+       "t": "p",
+       "text": "When an administrator creates or edits a trunk (via Routing → Trunks), they must define a capacity, which the sources specify as the maximum concurrent SMS messages permitted for that connection. This setting acts as a mechanical throttle on the outbound traffic sent to a specific gateway provider."
+      },
+      {
+       "t": "sub",
+       "text": "The Role of Capacity Limits"
+      },
+      {
+       "t": "p",
+       "text": "The primary purpose of capacity management within a trunk is to prevent overloading a single supplier connection. Because different suppliers may have varying technical limitations or hardware constraints, setting an appropriate capacity ensures that the platform does not exceed the supplier's processing abilities, which could otherwise lead to message failures or connection drops."
+      },
+      {
+       "t": "sub",
+       "text": "Context within Routing and Flow Control"
+      },
+      {
+       "t": "p",
+       "text": "Capacity management is one of several filters managed at the trunk level that dictate how a supplier is utilized:"
+      },
+      {
+       "t": "p",
+       "text": "Geographic and Technical Constraints: Alongside capacity, trunks use MCC allow/deny lists to restrict or grant access to specific countries."
+      },
+      {
+       "t": "p",
+       "text": "The Routing Hierarchy: Once capacity and geographic rules are set at the trunk level, the trunk is then linked to individual Routes, which define further parameters like priority and prefixes. These routes are eventually grouped into Route Plans and assigned to clients."
+      },
+      {
+       "t": "p",
+       "text": "Inbound vs. Outbound Limits: While Trunk capacity manages the outbound flow to suppliers, the platform maintains a parallel concept for inbound traffic from clients. Administrators set TPS (Transactions Per Second) limits for each client to prevent system abuse and ensure balanced resource allocation across the platform."
+      }
+     ]
+    },
+    {
+     "id": "mcc-lists",
+     "title": "MCC Allow / Deny Lists",
+     "icon": "🌍",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "In the Net2APP platform, MCC (Mobile Country Code) Allow/Deny Lists are critical geographic filtering tools configured at the Trunk level to manage which destinations a specific supplier can handle. These lists act as a primary gatekeeper within the broader routing hierarchy, ensuring that traffic is directed only to supported or compliant regions."
+      },
+      {
+       "t": "sub",
+       "text": "Functional Logic of MCC Lists"
+      },
+      {
+       "t": "p",
+       "text": "The sources define these lists as specialized filters that dictate the destination scope for each trunk:"
+      },
+      {
+       "t": "p",
+       "text": "MCC Allow Lists: These are used to restrict the trunk to specific countries. If an administrator wants a trunk to only serve a handful of regions, they input those country codes here. If the list is left empty, the trunk remains open for all destinations by default."
+      },
+      {
+       "t": "p",
+       "text": "MCC Deny Lists: These are used to block specific countries. This feature is highlighted as being particularly useful for compliance, allowing administrators to programmatically prevent traffic from reaching prohibited or restricted regions."
+      },
+      {
+       "t": "sub",
+       "text": "The Context within Trunks"
+      },
+      {
+       "t": "p",
+       "text": "Trunks serve as the intermediate layer between physical suppliers and logical routes. MCC lists operate alongside other trunk-level controls to ensure stable delivery:"
+      },
+      {
+       "t": "p",
+       "text": "Supplier Connection: A trunk is linked to a supplier that has been successfully added and \"BOUND\" via SMPP or HTTP."
+      },
+      {
+       "t": "p",
+       "text": "Capacity Management: While MCC lists manage where messages go, Capacity limits manage how many are sent concurrently to prevent overloading the supplier's infrastructure."
+      },
+      {
+       "t": "p",
+       "text": "Geographic Governance: By combining MCC filtering with capacity limits, trunks ensure that a supplier is used within its technical capabilities and legal boundaries before any specific routing path is even considered."
+      },
+      {
+       "t": "sub",
+       "text": "Role in the Routing Hierarchy"
+      },
+      {
+       "t": "p",
+       "text": "MCC Allow/Deny lists set the geographic boundaries that all downstream routing must follow:"
+      },
+      {
+       "t": "p",
+       "text": "Filtering for Routes: When an individual Route is created, it is assigned to a specific trunk. If a destination country is blocked at the trunk level via a Deny List, any route attempting to use that trunk for that country will fail to deliver."
+      },
+      {
+       "t": "p",
+       "text": "Route Plan Integration: Since Route Plans group multiple routes from various trunks, MCC lists allow administrators to build redundant delivery paths where some trunks might handle global traffic while others are restricted to specific, high-performance corridors."
+      }
+     ]
+    },
+    {
+     "id": "add-route",
+     "title": "Add a Route",
+     "icon": "🛤️",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "Routes define the path for SMS delivery. Go to Routing → Routes and click '+ Add Route'. Select the trunk, optionally set a country code and prefix for filtering, and set the priority (lower number = higher priority). Multiple routes with different priorities enable automatic fallback."
+      },
+      {
+       "t": "howto",
+       "title": "How to Add a Route"
+      },
+      {
+       "t": "callout",
+       "title": "Tips",
+       "items": [
+        "Priority 1 = highest, Priority 10 = lowest",
+        "Routes with higher priority are tried first — lower priority routes are fallbacks",
+        "Use country code + prefix for granular routing (e.g., route specific operators)"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "In the Net2APP platform, Routes represent the specific logic that defines the path for SMS delivery. Within the broader Routing Configuration hierarchy, Routes bridge the gap between the physical connections (Trunks) and the logic assigned to end users (Route Plans)."
+      },
+      {
+       "t": "steps",
+       "items": [
+        "1. Defining the Path"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "To create a route, administrators navigate to Routing → Routes and select \"+ Add Route\". The configuration of a route involves three primary components:"
+      },
+      {
+       "t": "p",
+       "text": "Trunk Selection: Every route must be linked to a pre-configured Trunk, which in turn is connected to a specific SMS supplier."
+      },
+      {
+       "t": "p",
+       "text": "Granular Filtering: While trunks handle broad geographic filtering via MCC lists, individual routes can use country codes and prefixes to target specific operators or regions with high precision."
+      },
+      {
+       "t": "p",
+       "text": "Priority Assignment: Each route is given a numerical priority level where a lower number indicates a higher priority (e.g., Priority 1 is the highest)."
+      },
+      {
+       "t": "steps",
+       "items": [
+        "2. Automatic Fallback Logic"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "The priority system is central to the platform’s reliability."
+      },
+      {
+       "t": "p",
+       "text": "Primary Routes: The system always attempts to send messages through the route with the highest priority first."
+      },
+      {
+       "t": "p",
+       "text": "Redundancy: By creating multiple routes for the same destination with different priorities, administrators enable automatic fallback. If the high-priority route (Priority 1) fails, the system automatically tries the next available route with a lower priority (e.g., Priority 2 or 3)."
+      },
+      {
+       "t": "steps",
+       "items": [
+        "3. Routes within the Routing Hierarchy"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "Routes do not function in isolation; they are part of a structured flow that governs message traffic:"
+      },
+      {
+       "t": "p",
+       "text": "Dependency on Trunks: A route cannot function without a trunk, which manages the capacity limits and MCC allow/deny lists for the supplier."
+      },
+      {
+       "t": "p",
+       "text": "Grouping into Route Plans: Individual routes are gathered into Route Plans. These plans group various routes—potentially from different trunks and suppliers—to facilitate comprehensive load balancing and failover ordering."
+      },
+      {
+       "t": "p",
+       "text": "Client Assignment: The final step of the routing configuration is assigning a Route Plan to a Client. This dictates that all traffic from that client will follow the specific routes and fallback priorities defined by the administrator."
+      },
+      {
+       "t": "steps",
+       "items": [
+        "4. Verification"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "To ensure that these routes are correctly pathing traffic, the platform includes a Test SMS feature. This allows administrators to verify that routing and rate matching are functioning as intended for specific destinations before moving to live production"
+      }
+     ]
+    },
+    {
+     "id": "country-filter",
+     "title": "Country Code Filtering",
+     "icon": "🏳️",
+     "blocks": [
+      {
+       "t": "sub",
+       "text": "The Role of Country Code Filtering in Routes"
+      },
+      {
+       "t": "p",
+       "text": "When adding or editing a route (via Routing → Routes), administrators can set a specific country code and prefix."
+      },
+      {
+       "t": "p",
+       "text": "Granular Routing: This feature is used to achieve highly specific routing logic, such as targeting specific operators within a country rather than the entire region."
+      },
+      {
+       "t": "p",
+       "text": "Prefix Logic: By combining a country code with a prefix, administrators can distinguish between different mobile network providers to ensure messages are routed through the most cost-effective or reliable supplier for that specific network."
+      },
+      {
+       "t": "sub",
+       "text": "The Broader Routing Context"
+      },
+      {
+       "t": "p",
+       "text": "Country code filtering at the route level works as a refined layer within the platform's multi-tiered routing hierarchy:"
+      },
+      {
+       "t": "p",
+       "text": "Trunk-Level Pre-Filtering: Before a message even reaches a route, it must pass through a Trunk. Trunks use MCC (Mobile Country Code) allow and deny lists to manage broad geographic access and ensure regulatory compliance."
+      },
+      {
+       "t": "p",
+       "text": "Priority and Fallback: Once the system identifies a route that matches a message's country code and prefix, it checks the route's Priority. Routes with a lower number (e.g., Priority 1) are tried first; if delivery fails, the system automatically uses lower-priority routes as fallbacks."
+      },
+      {
+       "t": "p",
+       "text": "Route Plan Integration: These filtered routes are grouped into Route Plans, which are assigned to specific clients. This ensures that a client's traffic is automatically segmented and sent via the correct trunks and suppliers based on the destination number's country code and prefix."
+      },
+      {
+       "t": "sub",
+       "text": "Supporting Tools for Filtering"
+      },
+      {
+       "t": "p",
+       "text": "To ensure that country code filtering works correctly, the platform provides several supplemental tools:"
+      },
+      {
+       "t": "p",
+       "text": "Number Translation: If incoming messages have inconsistent formats (e.g., a \"00\" prefix instead of a standard country code), administrators can use Number Translation to strip or add digits, ensuring the number matches the criteria set in the routing filters."
+      },
+      {
+       "t": "p",
+       "text": "Validation Testing: Administrators are encouraged to use the Test SMS feature to verify that their routing and rate matching (based on country and operator) are functioning as intended for different destinations before traffic goes live"
+      },
+      {
+       "t": "p",
+       "text": "In the Net2APP platform, Country Code Filtering is an optional setting within the Routes configuration that allows for precise control over message pathing. While routing defines the general path for SMS delivery, country code filtering provides the specific parameters needed to target narrow destinations."
+      },
+      {
+       "t": "sub",
+       "text": "Mechanics and Purpose"
+      },
+      {
+       "t": "p",
+       "text": "When an administrator creates a route, they select a trunk and can optionally input a country code and prefix for filtering."
+      },
+      {
+       "t": "p",
+       "text": "Granular Routing: This combination is specifically used to achieve high precision, such as routing traffic to specific operators within a country rather than the entire country as a whole."
+      },
+      {
+       "t": "p",
+       "text": "Priority System: These filtered routes are assigned a priority (where a lower number equals a higher priority). The system attempts to deliver via the highest priority route matching the filter first, using others as automatic fallbacks if the primary path fails."
+      },
+      {
+       "t": "sub",
+       "text": "The Larger Context of Routing Configuration"
+      },
+      {
+       "t": "p",
+       "text": "Country code filtering exists within a multi-layered filtering and translation ecosystem:"
+      },
+      {
+       "t": "p",
+       "text": "Pre-filtering via Trunks: Before a message reaches the route level, it is filtered at the Trunk level. Trunks use MCC (Mobile Country Code) allow and deny lists to manage broad geographic access. An Allow List restricts the trunk to specific countries, while a Deny List is used for blocking regions to ensure compliance."
+      },
+      {
+       "t": "p",
+       "text": "Number Translation: To ensure that incoming numbers correctly match the filters set in a route, administrators use Number Translation. This tool can strip the first N digits (e.g., removing a \"00\" prefix) or add a prefix to normalize the number format so it aligns with the route's country code filtering logic."
+      },
+      {
+       "t": "p",
+       "text": "Route Plans: Individual routes with specific country code filters are grouped into Route Plans. These plans can contain routes from multiple trunks and suppliers, enabling sophisticated load balancing across different operators and regions."
+      },
+      {
+       "t": "p",
+       "text": "Client Assignment: The final routing logic is applied when an administrator assigns a specific Route Plan to a Client. This ensures the client’s traffic is automatically directed through the intended filtered paths."
+      },
+      {
+       "t": "sub",
+       "text": "Validation and Verification"
+      },
+      {
+       "t": "p",
+       "text": "To ensure these filters are working as intended, the platform includes a Test SMS feature. This allows administrators to send messages to different destinations to verify that the routing and rate matching (the difference between what the client is charged and the supplier cost) are functioning correctly before moving to live production"
+      }
+     ]
+    },
+    {
+     "id": "route-plans",
+     "title": "Route Plans",
+     "icon": "📋",
+     "blocks": [
+      {
+       "t": "sub",
+       "text": "The Function of Route Plans"
+      },
+      {
+       "t": "p",
+       "text": "Route Plans are designed to provide structure to multiple delivery options:"
+      },
+      {
+       "t": "p",
+       "text": "Grouping Mechanism: A single Route Plan links multiple individual routes, which can originate from different trunks and various suppliers."
+      },
+      {
+       "t": "p",
+       "text": "Default Templates: The system provides pre-created default plans, such as the Default Plan, SIM OTP, and SIM Marketing, to streamline initial setup."
+      },
+      {
+       "t": "p",
+       "text": "Client Assignment: The final step in the routing workflow is assigning these plans to specific users under the Edit Client settings, ensuring that all traffic from that client follows the administrator's defined logic."
+      },
+      {
+       "t": "sub",
+       "text": "Load Balancing and Failover Logic"
+      },
+      {
+       "t": "p",
+       "text": "The primary operational goals of Route Plans are load balancing and failover, both of which are managed through a numerical priority system:"
+      },
+      {
+       "t": "p",
+       "text": "Priority-Based Ordering: Within a Route Plan, each linked route is assigned a priority level. The system follows a \"lower number = higher priority\" rule, where Priority 1 is the highest and Priority 10 is the lowest."
+      },
+      {
+       "t": "p",
+       "text": "Automatic Fallback: The platform always attempts to deliver messages via the highest-priority route first. If that route fails or is unavailable, the system automatically cycles through the lower-priority routes in the plan as fallbacks to ensure successful delivery."
+      },
+      {
+       "t": "p",
+       "text": "Traffic Distribution: By grouping routes from multiple suppliers and trunks into one plan, administrators can balance the load across different providers based on their performance and capacity."
+      },
+      {
+       "t": "sub",
+       "text": "The Larger Routing Hierarchy"
+      },
+      {
+       "t": "p",
+       "text": "Route Plans sit at the top of a multi-tiered configuration process designed for granular control:"
+      },
+      {
+       "t": "p",
+       "text": "Suppliers: The base layer where physical connections (SMPP or HTTP) are established."
+      },
+      {
+       "t": "p",
+       "text": "Trunks: These link to suppliers and manage capacity limits (max concurrent SMS) and MCC allow/deny lists for geographic filtering."
+      },
+      {
+       "t": "p",
+       "text": "Routes: These link to trunks and define the specific path, including country code and prefix filtering and individual priority levels."
+      },
+      {
+       "t": "p",
+       "text": "Route Plans: These aggregate the routes into a cohesive plan for load balancing and failover."
+      },
+      {
+       "t": "p",
+       "text": "Clients: The end users who are assigned a Route Plan to govern their outbound traffic."
+      },
+      {
+       "t": "sub",
+       "text": "Verification of Configuration"
+      },
+      {
+       "t": "p",
+       "text": "Before these plans go live, the platform emphasizes the use of Test SMS tools. This allows administrators to verify that the routing and rate matching (the profit margin between client rates and supplier costs) are functioning correctly for different destinations within the assigned Route Plan"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "client-management",
+   "title": "Client Management",
+   "icon": "👥",
+   "desc": "Onboard sub-clients with credentials, security limits, routing plans and per-client rates.",
+   "sections": [
+    {
+     "id": "add-client",
+     "title": "Add a Client",
+     "icon": "👤",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "Clients are the end users who send SMS through your platform. Go to Clients → All Clients and click '+ Add Client'. Enter the client's name, email, phone, SMTP credentials (username/password), allowed IP address, TPS limit, and assign a route plan."
+      },
+      {
+       "t": "howto",
+       "title": "How to Add a Client"
+      },
+      {
+       "t": "callout",
+       "title": "Tips",
+       "items": [
+        "SMTP username must be unique across all tenants — the system checks automatically",
+        "TPS (Transactions Per Second) limits prevent abuse — set appropriately",
+        "Enable HTTP API if the client wants RESTful API access instead of SMTP",
+        "Force DLR option skips waiting for supplier delivery receipts and marks messages as delivered immediately"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "In the Net2APP platform, adding a client profile is the foundational step in Client Management, serving as the point where an administrator defines the technical, security, and routing parameters for an end user."
+      },
+      {
+       "t": "sub",
+       "text": "The \"Add Client\" Process"
+      },
+      {
+       "t": "p",
+       "text": "Administrators initiate a client profile by navigating to Clients → All Clients and clicking \"+ Add Client\". The profile setup requires several core pieces of information:"
+      },
+      {
+       "t": "p",
+       "text": "Basic Contact Data: The client's name, email, and phone number."
+      },
+      {
+       "t": "p",
+       "text": "Unique Credentials: Each profile must have its own SMTP credentials (username and password). The system automatically verifies that the SMTP username is unique across all tenants to prevent authentication conflicts."
+      },
+      {
+       "t": "p",
+       "text": "Security Controls: To protect the gateway's stability, administrators must set an Allowed IP address for the client and a TPS (Transactions Per Second) limit to prevent system abuse."
+      },
+      {
+       "t": "sub",
+       "text": "Advanced Technical Profiles"
+      },
+      {
+       "t": "p",
+       "text": "The client profile can be customized to match the user's specific integration needs:"
+      },
+      {
+       "t": "p",
+       "text": "API Access: While profiles are created with SMTP by default, administrators can enable HTTP API access if the client prefers a RESTful interface."
+      },
+      {
+       "t": "p",
+       "text": "Force DLR: This specialized option within the profile allows the system to skip waiting for actual delivery receipts from suppliers, marking messages as delivered immediately for the client."
+      },
+      {
+       "t": "sub",
+       "text": "Integration with Broader Client Management"
+      },
+      {
+       "t": "p",
+       "text": "Once a profile is created, it becomes the anchor for several other management functions:"
+      },
+      {
+       "t": "p",
+       "text": "Routing Logic: Administrators must assign a Route Plan to the client profile. This plan determines which specific trunks and suppliers will handle the client's traffic for load balancing and failover."
+      },
+      {
+       "t": "p",
+       "text": "Financial Configuration: The profile is used to set Client Rates. Administrators define the cost per SMS for specific operators (MCC/MNC) to establish a profit margin, which is the mathematical difference between what the client is charged and the supplier's cost."
+      },
+      {
+       "t": "p",
+       "text": "Translation Rules: Client profiles can be assigned specific SID, Number, or Content Translation rules. Administrators apply these by dragging the client's name from the system's top bar into the scope of a specific rule, such as stripping digits from a phone number or replacing keywords in a message body."
+      },
+      {
+       "t": "sub",
+       "text": "Verification and Testing"
+      }
+     ]
+    },
+    {
+     "id": "client-credentials",
+     "title": "SMTP Credentials & HTTP API",
+     "icon": "🔐",
+     "blocks": [
+      {
+       "t": "sub",
+       "text": "SMTP Credentials as the Primary Access"
+      },
+      {
+       "t": "p",
+       "text": "When an administrator adds a new client through the Clients → All Clients menu, defining SMTP credentials is a core requirement."
+      },
+      {
+       "t": "p",
+       "text": "Unique Identification: Every client must be assigned a specific SMTP username and password."
+      },
+      {
+       "t": "p",
+       "text": "System-Wide Uniqueness: A critical rule in the platform's architecture is that the SMTP username must be unique across all tenants. The system automatically performs a check during setup to prevent conflicts, ensuring that each client is distinctly recognized across the entire platform infrastructure."
+      },
+      {
+       "t": "p",
+       "text": "Standard Integration: These credentials allow clients to use the platform's mail-to-SMS features or standard SMTP protocols for message submission."
+      },
+      {
+       "t": "sub",
+       "text": "HTTP API for RESTful Integration"
+      },
+      {
+       "t": "p",
+       "text": "While SMTP is the default, the platform offers flexibility for developers who require a more modern web interface."
+      },
+      {
+       "t": "p",
+       "text": "Enabling Access: Administrators have the option to enable the HTTP API within the client profile settings."
+      },
+      {
+       "t": "p",
+       "text": "RESTful Alternative: This is specifically designed for clients who prefer RESTful API access over traditional SMTP methods, allowing them to integrate their own software or applications directly with the gateway."
+      },
+      {
+       "t": "sub",
+       "text": "Context in Configuration and Security"
+      },
+      {
+       "t": "p",
+       "text": "These credentials do not exist in isolation; they are part of a broader security and routing profile for each client:"
+      },
+      {
+       "t": "p",
+       "text": "Access Control: Credentials work alongside the Allowed IP address setting to ensure that only authorized users from specific locations can send traffic."
+      },
+      {
+       "t": "p",
+       "text": "Rate and Route Binding: Once a client is authenticated via their credentials, the platform automatically applies their specific Client Rates (the cost per SMS) and their assigned Route Plan (the path the message takes through specific trunks and suppliers)."
+      },
+      {
+       "t": "sub",
+       "text": "Verification of Credentials"
+      },
+      {
+       "t": "p",
+       "text": "To ensure these credentials are functional before moving to live production, the platform provides dedicated testing environments:"
+      },
+      {
+       "t": "p",
+       "text": "Protocol-Specific Testing: Administrators can verify client access through the Test SMTP and Test HTTP pages."
+      },
+      {
+       "t": "p",
+       "text": "Validation: By entering the client’s credentials into these testing tools, the administrator can confirm that the client is correctly authenticated and that their messages are being routed according to the defined rules."
+      }
+     ]
+    },
+    {
+     "id": "tps-ip-whitelist",
+     "title": "TPS Limits & IP Whitelisting",
+     "icon": "🛡️",
+     "blocks": [
+      {
+       "t": "sub",
+       "text": "TPS (Transactions Per Second) Limits"
+      },
+      {
+       "t": "p",
+       "text": "When adding a client via Clients → All Clients, administrators must set a specific TPS limit."
+      },
+      {
+       "t": "p",
+       "text": "Purpose: The primary goal of this setting is to prevent system abuse."
+      },
+      {
+       "t": "p",
+       "text": "System Stability: By capping the number of messages a client can submit every second, the administrator ensures that no single user can overwhelm the platform’s processing capacity or the capacity of the underlying supplier connections."
+      },
+      {
+       "t": "p",
+       "text": "Customization: The guide emphasizes that these limits should be set appropriately based on the client's needs and the platform's resources."
+      },
+      {
+       "t": "sub",
+       "text": "IP Whitelisting (Allowed IP Address)"
+      },
+      {
+       "t": "p",
+       "text": "Security for each client account is further reinforced through the Allowed IP address field."
+      },
+      {
+       "t": "p",
+       "text": "Access Restriction: During the client setup process, administrators input the specific IP address from which the client is authorized to send traffic."
+      },
+      {
+       "t": "p",
+       "text": "Authentication Layer: This acts as a critical layer of defense alongside unique SMTP credentials, ensuring that even if credentials were compromised, traffic would only be accepted from the whitelisted source."
+      },
+      {
+       "t": "p",
+       "text": "Centralized Management: The platform includes a dedicated IP White List module to oversee these configurations across the system."
+      },
+      {
+       "t": "sub",
+       "text": "Role in the Broader Client Workflow"
+      },
+      {
+       "t": "p",
+       "text": "These security settings are part of a comprehensive profile that governs every aspect of a client's interaction with the gateway:"
+      },
+      {
+       "t": "p",
+       "text": "Integration: TPS and IP Whitelisting are configured alongside the client's SMTP or HTTP API credentials and their assigned Route Plan."
+      },
+      {
+       "t": "p",
+       "text": "Operational Control: While TPS manages the volume of incoming traffic from the client, other settings like Trunk Capacity manage the outbound flow to suppliers, creating a balanced end-to-end delivery chain."
+      },
+      {
+       "t": "p",
+       "text": "Validation: To confirm that a client's security and traffic settings are functional, administrators can use the Test SMS feature or the protocol-specific Test SMTP/HTTP pages before moving the client into a live production environment"
+      }
+     ]
+    },
+    {
+     "id": "assign-route-plan",
+     "title": "Assign a Route Plan to a Client",
+     "icon": "📌",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "In the Net2APP platform, assigning a Route Plan is the final and critical step in Client Management that connects an end user to the platform’s delivery infrastructure. While Client Management involves setting up the technical and financial parameters for users, the Route Plan dictates the actual path their messages will take."
+      },
+      {
+       "t": "sub",
+       "text": "The Mechanism of Assignment"
+      },
+      {
+       "t": "p",
+       "text": "Route plans are assigned to clients through two primary administrative actions:"
+      },
+      {
+       "t": "p",
+       "text": "Initial Setup: When an administrator adds a new client (via Clients → All Clients → + Add Client), assigning a route plan is one of the required fields alongside credentials and security settings."
+      },
+      {
+       "t": "p",
+       "text": "Modifying Existing Accounts: Administrators can update or change a user's delivery logic at any time by navigating to Clients → Edit Client → Route Plan."
+      },
+      {
+       "t": "sub",
+       "text": "The Purpose within Client Management"
+      },
+      {
+       "t": "p",
+       "text": "Assigning a specific plan is how an administrator applies complex routing logic to a simple client account:"
+      },
+      {
+       "t": "p",
+       "text": "Load Balancing and Failover: Because a Route Plan groups multiple individual routes together, assigning one ensures the client’s traffic benefits from automatic fallback if a primary supplier fails."
+      },
+      {
+       "t": "p",
+       "text": "Service Specialization: Administrators can assign different types of plans based on the client's needs. The system provides pre-created templates such as the Default Plan, SIM OTP, or SIM Marketing to streamline this process."
+      },
+      {
+       "t": "p",
+       "text": "Supplier Linkage: A single assigned route plan can contain routes from multiple trunks and suppliers, allowing the administrator to manage a client's global reach through a single assignment."
+      },
+      {
+       "t": "sub",
+       "text": "Integration with Other Client Controls"
+      },
+      {
+       "t": "p",
+       "text": "The assignment of a Route Plan works in tandem with other client-specific configurations to ensure a stable and profitable service:"
+      },
+      {
+       "t": "p",
+       "text": "Security and Volume: It operates alongside the client's TPS (Transactions Per Second) limit and IP Whitelisting, which protect the platform while the route plan manages the message delivery."
+      },
+      {
+       "t": "p",
+       "text": "Financial Alignment: While the Route Plan handles the technical pathing, administrators must also configure Client Rates for that specific user. The profit is then calculated as the difference between these assigned rates and the costs of the suppliers used within the assigned Route Plan."
+      },
+      {
+       "t": "p",
+       "text": "Message Processing: Clients assigned to a plan can also be subjected to specific Translation rules (Sender ID, Number, or Content) by dragging the client’s profile into the scope of a defined rule."
+      },
+      {
+       "t": "p",
+       "text": "Verification"
+      }
+     ]
+    },
+    {
+     "id": "set-client-rates",
+     "title": "Set Client Rates",
+     "icon": "💵",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "Configure how much to charge each client per SMS. Go to Rates → Client Rates or Bulk Rate Management. Select the client, choose a destination country, pick the operator, and enter the rate. Your profit is the difference between the client rate and the supplier cost."
+      },
+      {
+       "t": "callout",
+       "title": "Tips",
+       "items": [
+        "Only one rate per destination can be active — auto-dedup on save",
+        "Use Bulk Rate Management to set rates for all operators at once",
+        "Download CSV with markup percentages for reporting and invoicing"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "testing-support",
+   "title": "Testing & Support",
+   "icon": "🧪",
+   "desc": "Validate your configuration with test tools and logs, then reach out through support tickets.",
+   "sections": [
+    {
+     "id": "test-sms",
+     "title": "Test SMS Sending",
+     "icon": "🧪",
+     "blocks": [
+      {
+       "t": "sub",
+       "text": "Test SMS"
+      },
+      {
+       "t": "sub",
+       "text": "Test SMS Sending"
+      },
+      {
+       "t": "p",
+       "text": "Before going live, send test messages. Go to Testing → Test SMS, select a client, enter the destination number and message content, and click Send. You can also test via SMTP (Test SMTP page) or HTTP API (Test HTTP page). Use free test credits for development."
+      },
+      {
+       "t": "callout",
+       "title": "Tips",
+       "items": [
+        "Free test credits refresh periodically — check the header badge",
+        "Test different destinations to verify routing and rate matching"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "sms-logs",
+     "title": "SMS Logs & Delivery Status",
+     "icon": "📜",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "n the Net2APP platform, SMS Logs and Delivery Status serve as the primary diagnostic tools within the broader Testing and Support framework. They provide the necessary visibility to confirm that the platform's complex routing, translation, and financial configurations are executing correctly in a real-world environment."
+      },
+      {
+       "t": "sub",
+       "text": "Verification through SMS Logs"
+      },
+      {
+       "t": "p",
+       "text": "The SMS Logs, located on the Messages page, are the central repository for monitoring traffic. Their role is critical during the testing phase:"
+      },
+      {
+       "t": "p",
+       "text": "Testing Workflow: After sending a message via the Test SMS, Test SMTP, or Test HTTP pages, administrators are instructed to check these logs to verify the actual delivery status."
+      },
+      {
+       "t": "p",
+       "text": "Validation of Settings: This log verification allows administrators to ensure that routing and rate matching (the profit margin between client and supplier rates) are functioning as intended before moving a client to live production."
+      },
+      {
+       "t": "p",
+       "text": "Call Logs: For administrators using Voice OTP services, the platform provides a parallel Call Logs feature to monitor voice-based authentication attempts."
+      },
+      {
+       "t": "sub",
+       "text": "Managing Delivery Status"
+      },
+      {
+       "t": "p",
+       "text": "The platform offers specific controls that influence how delivery status is reported and recorded in the logs:"
+      },
+      {
+       "t": "p",
+       "text": "Force DLR (Delivery Receipt): In the Client Management settings, administrators can enable a \"Force DLR\" option. When active, the system skips waiting for an actual receipt from the supplier and immediately marks the message as delivered in the logs. This is often used to provide immediate status updates to clients regardless of the underlying supplier's processing time."
+      },
+      {
+       "t": "sub",
+       "text": "The Role in Support and Troubleshooting"
+      },
+      {
+       "t": "p",
+       "text": "When technical issues arise, the data contained within the logs becomes the foundation for resolution:"
+      },
+      {
+       "t": "p",
+       "text": "Support Ticket Integration: If an administrator encounters an issue and needs to create a support ticket, the guide recommends including relevant message IDs."
+      },
+      {
+       "t": "p",
+       "text": "Faster Resolution: These message IDs, retrieved from the SMS Logs, allow the Net2APP support team to pinpoint specific failures and troubleshoot the tenant's configuration more efficiently."
+      },
+      {
+       "t": "p",
+       "text": "Evidence for Tickets: Support tickets are private and allow for the attachment of screenshots, which can be taken directly from the log pages to illustrate delivery failures or routing errors."
+      }
+     ]
+    },
+    {
+     "id": "get-support",
+     "title": "Get Support",
+     "icon": "🎫",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "In the Net2APP platform, the Support Ticket System serves as the primary formal communication channel for resolving technical issues that cannot be addressed through initial Testing and self-service troubleshooting. It is integrated into the broader \"Testing & Support\" framework to ensure that configurations are validated before going live and maintained successfully during production."
+      },
+      {
+       "t": "sub",
+       "text": "The Role of the Support Ticket System"
+      },
+      {
+       "t": "p",
+       "text": "The support system is designed to provide private, direct assistance from the Net2APP technical team:"
+      },
+      {
+       "t": "p",
+       "text": "Access and Creation: Administrators can create a new request by navigating to Settings → Support Tickets and clicking \"+ New Ticket\"."
+      },
+      {
+       "t": "p",
+       "text": "Detailed Reporting: The system allows users to describe their issues in detail and attach screenshots, which is particularly helpful for illustrating delivery failures or configuration errors seen in the logs."
+      },
+      {
+       "t": "p",
+       "text": "Privacy: All tickets are strictly private, meaning they are only visible to the tenant administrator and the Net2APP support team."
+      },
+      {
+       "t": "sub",
+       "text": "Integration with Testing and Logs"
+      },
+      {
+       "t": "p",
+       "text": "The support system is most effective when used in conjunction with the platform's diagnostic tools:"
+      },
+      {
+       "t": "p",
+       "text": "Data-Driven Resolution: To achieve faster resolution, the sources emphasize including your tenant name and specific message IDs in the ticket. These message IDs are typically retrieved from the SMS Logs (Messages page) after a failed delivery or test."
+      },
+      {
+       "t": "p",
+       "text": "Verification Pre-Support: Before resorting to a ticket, administrators are encouraged to use the Test SMS, Test SMTP, or Test HTTP pages to verify that routing and rate matching are configured correctly."
+      },
+      {
+       "t": "p",
+       "text": "Module-Specific Testing: Specialized features like SID Translation and Content Translation offer their own \"Quick Test\" and \"Test\" buttons to verify rules locally before they impact live traffic, potentially reducing the need for support."
+      },
+      {
+       "t": "sub",
+       "text": "The Broader Support Ecosystem"
+      },
+      {
+       "t": "p",
+       "text": "The Ticket System is part of a multi-tiered support strategy:"
+      },
+      {
+       "t": "p",
+       "text": "Self-Service: Administrators are encouraged to check the Knowledge Base at net2app.com/resources for common questions before opening a ticket."
+      },
+      {
+       "t": "p",
+       "text": "Development Support: The platform provides free test credits that refresh periodically, allowing administrators to extensively test and troubleshoot their own configurations without financial risk or the immediate need for external support."
+      },
+      {
+       "t": "p",
+       "text": "Connectivity Monitoring: The Bind Status page acts as a real-time support tool, allowing administrators to confirm if a supplier connection is \"BOUND\" and functional before investigating deeper routing issues"
+      },
+      {
+       "t": "p",
+       "text": "If you encounter any issues, create a support ticket. Go to Settings → Support Tickets and click '+ New Ticket'. Describe your issue in detail, attach screenshots if helpful, and submit. The Net2APP support team will respond promptly."
+      },
+      {
+       "t": "callout",
+       "title": "Tips",
+       "items": [
+        "Include your tenant name and any relevant message IDs for faster resolution",
+        "Check the Knowledge Base at net2app.com/resources for common questions",
+        "Tickets are private — only you and the Net2APP support team can see them"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "translations-filters",
+   "title": "Translations & Filters",
+   "icon": "🔄",
+   "desc": "Transform sender IDs, numbers and message content — and block unwanted traffic.",
+   "sections": [
+    {
+     "id": "translations-overview",
+     "title": "Translations & Filters Overview",
+     "icon": "🧩",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "n the Net2APP platform, Translations and Filters are advanced configuration modules that allow administrators to dynamically modify message metadata and restrict traffic flow. Within the larger context of the platform guide, these tools ensure that messages meet supplier requirements, comply with regional regulations, and provide a customized experience for end users."
+      },
+      {
+       "t": "steps",
+       "items": [
+        "1. Data Translation Modules"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "Translation modules are used to transform the content, sender information, or destination format of an SMS as it passes through the gateway."
+      },
+      {
+       "t": "p",
+       "text": "SID (Sender ID) Translation: This module uses regex patterns to match incoming sender IDs and replace them with a new ID. It includes a Quick Test feature to verify transformations and allows administrators to fix a specific Sender ID based on the operator."
+      },
+      {
+       "t": "p",
+       "text": "Number Translation: This tool normalizes phone numbers by stripping a specific number of leading digits (e.g., removing \"00\") and adding a prefix (e.g., adding a country code). This ensures the number format matches the specific requirements of a chosen supplier or trunk."
+      },
+      {
+       "t": "p",
+       "text": "Content Translation: Primarily used for OTP (One-Time Password) management, this module matches keywords in the SMS body (like \"facebook\" or \"OTP\") and replaces the text with a new template. It can automatically extract digits of a specific length or use a custom regex to find and reformat the OTP code into a template like {{OTP}}."
+      },
+      {
+       "t": "steps",
+       "items": [
+        "2. Filtering and Traffic Control"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "Filters are used to restrict where messages can be sent or to block specific types of traffic entirely."
+      },
+      {
+       "t": "p",
+       "text": "Geographic Filtering (MCC Lists): At the Trunk level, administrators use MCC (Mobile Country Code) allow and deny lists. Allow lists restrict a trunk to specific countries, while deny lists are used to block regions for compliance purposes."
+      },
+      {
+       "t": "p",
+       "text": "Granular Route Filtering: When configuring Routes, administrators can set specific country codes and prefixes. This allows the platform to target specific operators or narrow regions within a country for more precise pathing."
+      },
+      {
+       "t": "p",
+       "text": "Content and Number Restrictions: The platform includes a Number Blacklist to prevent messages to specific recipients and a Content Filter to block messages containing unauthorized keywords or patterns."
+      },
+      {
+       "t": "steps",
+       "items": [
+        "3. The Operational Context: Scope and Priority"
+       ]
+      },
+      {
+       "t": "p",
+       "text": "Translations and filters do not apply globally by default; they are managed through a structured assignment system:"
+      },
+      {
+       "t": "p",
+       "text": "Scope Assignment: Administrators assign rules by dragging clients or suppliers from the system’s top bar into the scope of a specific rule. This allows for highly targeted logic—for example, applying a Number Translation only to messages from a specific client or for a specific supplier."
+      },
+      {
+       "t": "p",
+       "text": "Priority Execution: All translation rules follow a numerical priority system where lower numbers run first. This allows administrators to stack multiple rules (e.g., stripping digits then adding a prefix) in a specific order of operation."
+      }
+     ]
+    },
+    {
+     "id": "sid-translation",
+     "title": "SID (Sender ID) Translation",
+     "icon": "🆔",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "SID (Sender ID) Translation is a specialized module within the Translations & Filters framework that allows administrators to dynamically modify the origin information of an SMS. By utilizing Regex (Regular Expression) matching, the system can identify specific incoming sender IDs and replace them with preferred alternatives before the message is delivered to the end recipient."
+      },
+      {
+       "t": "sub",
+       "text": "Mechanics of SID Translation"
+      },
+      {
+       "t": "p",
+       "text": "The SID Translation process is built on several key technical components:"
+      },
+      {
+       "t": "p",
+       "text": "Match Sender (Regex): This is the core filtering mechanism. Administrators enter a regex pattern to identify which incoming sender IDs should trigger a change. For example, using the pattern .* will match all incoming sender IDs, effectively applying the rule to all traffic within the assigned scope."
+      },
+      {
+       "t": "p",
+       "text": "Replace With: This field defines the new sender ID that will be applied to any messages that match the regex pattern."
+      },
+      {
+       "t": "p",
+       "text": "Quick Test: To ensure accuracy, the module includes a tool at the top of the page where administrators can type a sample sender ID to see which rule it matches and what the final transformed ID will look like."
+      },
+      {
+       "t": "p",
+       "text": "Advanced Options: Beyond simple regex replacement, administrators can also use Random SID or \"fixed sid Operator wise,\" allowing for even more granular control over how the sender information appears based on the destination network."
+      },
+      {
+       "t": "sub",
+       "text": "The Larger Context: Translations & Filters"
+      },
+      {
+       "t": "p",
+       "text": "SID Translation is one of three primary translation tools—alongside Number Translation and Content Translation—that share a unified management logic:"
+      },
+      {
+       "t": "p",
+       "text": "Priority System: Like all translation and filter rules in the platform, SID Translation follows a numerical priority system. Lower numbers run first, allowing administrators to stack multiple rules and control the exact order in which transformations occur."
+      },
+      {
+       "t": "p",
+       "text": "Scope Assignment: Rules are not applied globally by default. Instead, administrators define the Scope by dragging clients or suppliers from the system’s top bar into the rule's configuration. This ensures that specific sender ID modifications only apply to designated users or outbound delivery paths."
+      },
+      {
+       "t": "p",
+       "text": "Workflow Integration: These translations work in tandem with filters like the Number Blacklist and Content Filter to ensure that messages are not only formatted correctly but also compliant with regional regulations."
+      }
+     ]
+    },
+    {
+     "id": "number-translation",
+     "title": "Number Translation",
+     "icon": "🔢",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "In the Net2APP platform, Number Translation is a specialized module within the Translations & Filters framework designed to normalize destination numbers to meet the specific formatting requirements of various suppliers or trunks."
+      },
+      {
+       "t": "sub",
+       "text": "Mechanics of Number Translation"
+      },
+      {
+       "t": "p",
+       "text": "The process of translating a number involves two primary sequential actions:"
+      },
+      {
+       "t": "p",
+       "text": "Strip First N Digits: This function removes a specified number of characters from the beginning of an incoming phone number. For example, an administrator can strip the first two digits from a number like \"00880\" to leave just \"880\"."
+      },
+      {
+       "t": "p",
+       "text": "Add Prefix: After the stripping process is complete, this function prepends a specific string of text or numbers to the result. Using the previous example, if \"77\" is added to the stripped number \"880,\" the final translated destination becomes \"77880\"."
+      },
+      {
+       "t": "sub",
+       "text": "Scope and Priority Management"
+      },
+      {
+       "t": "p",
+       "text": "Like other modules in the translation suite, Number Translation uses a structured system for application and order of operations:"
+      },
+      {
+       "t": "p",
+       "text": "Targeted Scope: Rules can be set to Global, which applies them to all traffic on the platform, or they can be assigned to specific Clients or Suppliers. Administrators assign these specific rules by dragging the entity from the system’s top bar into the rule's configuration."
+      },
+      {
+       "t": "p",
+       "text": "Execution Priority: Rules are executed based on a numerical priority system where lower numbers run first. This allows for complex, multi-step transformations where one rule might prepare a number for a subsequent rule."
+      },
+      {
+       "t": "sub",
+       "text": "Context within Translations & Filters"
+      },
+      {
+       "t": "p",
+       "text": "Number Translation is a critical component of the platform's broader message-processing engine:"
+      },
+      {
+       "t": "p",
+       "text": "Complementary Tools: It works alongside SID Translation, which uses regex to modify sender IDs, and Content Translation, which uses regex and templates to reformat OTP messages."
+      },
+      {
+       "t": "p",
+       "text": "System Integrity: While filters like the Number Blacklist and Content Filter block unauthorized traffic, Number Translation ensures that valid traffic is formatted correctly to prevent delivery failures caused by mismatched country codes or prefixes."
+      },
+      {
+       "t": "p",
+       "text": "Routing Alignment: Proper number translation is essential for the Routes configuration to function correctly, as granular routing often depends on matching specific country codes and prefixes that must be normalized before they hit the routing logic."
+      }
+     ]
+    },
+    {
+     "id": "content-translation",
+     "title": "Content Translation",
+     "icon": "✏️",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "In the Net2APP platform, Content Translation is a specialized module within the Translations & Filters suite designed primarily for OTP (One-Time Password) management. It allows administrators to automatically identify, extract, and reformat authentication codes into standardized templates before delivery."
+      },
+      {
+       "t": "sub",
+       "text": "Mechanics of OTP Extraction"
+      },
+      {
+       "t": "p",
+       "text": "The module uses a multi-step process to transform incoming message content:"
+      },
+      {
+       "t": "p",
+       "text": "Keyword Matching: The \"Match Content\" field uses a regex pattern to identify specific keywords in the SMS body that signal an authentication request, such as facebook|FB|OTP."
+      },
+      {
+       "t": "p",
+       "text": "Code Extraction:"
+      },
+      {
+       "t": "p",
+       "text": "Standard Length: By default, the system extracts digits between a Min and Max length (typically 4–8 digits)."
+      },
+      {
+       "t": "p",
+       "text": "Custom Regex: Administrators can toggle a custom regex to use capture groups for more complex extractions, such as OTP[:_](\\d+), where the first capture group is used as the extracted OTP value."
+      },
+      {
+       "t": "p",
+       "text": "Template Replacement: Once the code is extracted, the system replaces the original message with a new template defined in the \"Replace With\" field. The placeholder {{OTP}} is used to automatically fill in the extracted code."
+      },
+      {
+       "t": "sub",
+       "text": "Context within Translations & Filters"
+      },
+      {
+       "t": "p",
+       "text": "Content Translation follows the same operational logic as other translation tools, such as SID and Number Translation:"
+      },
+      {
+       "t": "p",
+       "text": "Priority Execution: All rules are assigned a numerical priority. Lower numbers run first, ensuring that content is translated in the exact order intended by the administrator."
+      },
+      {
+       "t": "p",
+       "text": "Scope Assignment: Rules are not universal by default. Administrators define the Scope by dragging clients or suppliers from the platform’s top bar into a specific rule's configuration, allowing for different OTP templates for different users or delivery paths."
+      },
+      {
+       "t": "p",
+       "text": "Validation and Testing: To prevent errors in message delivery, each rule includes a \"Test\" button. This allows administrators to input sample text and verify that the system correctly extracts the OTP and applies the intended template before the rule goes live."
+      },
+      {
+       "t": "sub",
+       "text": "Strategic Role in the Platform"
+      }
+     ]
+    },
+    {
+     "id": "blacklist-filter",
+     "title": "Number Blacklist & Content Filter",
+     "icon": "🚫",
+     "blocks": [
+      {
+       "t": "p",
+       "text": "Number Blacklist and Content Filter serve as critical security and compliance tools within the broader Translations & Filters framework. While translation modules modify message data, these filtering tools are designed to restrict or block unauthorized traffic entirely to protect the gateway's integrity,."
+      },
+      {
+       "t": "sub",
+       "text": "Number Blacklist"
+      },
+      {
+       "t": "p",
+       "text": "The Number Blacklist is a module used to prevent messages from being sent to specific recipients."
+      },
+      {
+       "t": "p",
+       "text": "Access Restriction: It allows administrators to block specific destination numbers, ensuring that no messages from any client or through any supplier are delivered to those blacklisted contacts,."
+      },
+      {
+       "t": "p",
+       "text": "Compliance: This is particularly useful for managing \"Do Not Disturb\" lists or adhering to regional regulations that prohibit messaging specific numbers,."
+      },
+      {
+       "t": "sub",
+       "text": "Content Filter"
+      },
+      {
+       "t": "p",
+       "text": "The Content Filter is used to monitor and block messages based on their body text rather than their destination."
+      },
+      {
+       "t": "p",
+       "text": "Keyword Blocking: This tool allows administrators to define unauthorized keywords or patterns that should not be allowed through the gateway."
+      },
+      {
+       "t": "p",
+       "text": "Security Layer: It works alongside Content Translation; while the translation module reformats OTP codes, the Content Filter ensures that any malicious or unauthorized message content is stopped before it enters the delivery queue,."
+      },
+      {
+       "t": "sub",
+       "text": "Integration with Translations & Filters Logic"
+      },
+      {
+       "t": "p",
+       "text": "Both the Number Blacklist and Content Filter operate under the same administrative rules that govern the platform's translation modules:"
+      },
+      {
+       "t": "p",
+       "text": "Scope Assignment: These filters are not necessarily global; administrators can define their Scope by dragging specific clients or suppliers from the system’s top bar into the rule's configuration,. This allows an administrator to apply a blacklist to one client while allowing the traffic for another."
+      },
+      {
+       "t": "p",
+       "text": "Priority Execution: All rules within the Translations & Filters suite follow a numerical Priority system where lower numbers run first,,. This ensures that filters are applied in the exact sequence intended by the administrator."
+      },
+      {
+       "t": "p",
+       "text": "System Synergy: These filters complement other security measures like MCC (Mobile Country Code) deny lists at the trunk level and IP Whitelisting at the client level, creating a multi-layered defense against system abuse,,."
+      },
+      {
+       "t": "p",
+       "text": "Verification"
+      }
+     ]
+    },
+    {
+     "id": "quick-ref-sid",
+     "title": "SID Translation — Quick Reference",
+     "icon": "⚡",
+     "blocks": [
+      {
+       "t": "callout",
+       "title": "How SID Translation Works",
+       "items": [
+        "Match Sender: Regex pattern to match incoming sender IDs. Use .* to match all.",
+        "Replace With: The new sender ID for matched messages.",
+        "Quick Test: Type a sender ID at the top and click Test to see which rule matches and what it transforms to.",
+        "Update / Cancel: Save or revert changes per rule.",
+        "Scope: Drag clients/suppliers from the top bar to assign rules. Check the Applies To table."
+       ]
+      }
+     ]
+    },
+    {
+     "id": "quick-ref-number",
+     "title": "Number Translation — Quick Reference",
+     "icon": "⚡",
+     "blocks": [
+      {
+       "t": "callout",
+       "title": "How it works",
+       "items": [
+        "Strip First N Digits: Removes the first N characters from incoming numbers. Example: strip 2 from \"00880\" → \"880\"",
+        "Add Prefix: Prepends text to the number after stripping. Example: add \"77\" to \"880\" → \"77880\"",
+        "Scope: Global applies to all. Client/Supplier applies only to messages from that specific entity."
+       ]
+      }
+     ]
+    },
+    {
+     "id": "quick-ref-content",
+     "title": "Content Translation — Quick Reference",
+     "icon": "⚡",
+     "blocks": [
+      {
+       "t": "callout",
+       "title": "How Content Translation Works",
+       "items": [
+        "Match Content: Regex pattern to find keywords in the SMS body (e.g., facebook|FB|OTP)",
+        "Replace With: The new message template. Use {{OTP}} to auto-fill the extracted code.",
+        "OTP Length: Extracts digits between Min and Max length. Default: 4–8 digits. Toggle regex to use a custom regex with capture groups.",
+        "Custom Regex: Optional — overrides min/max. Use (\\d{6}) for exact length, or OTP[:_](\\d+) with a capture group. Group 1 is used as the OTP value.",
+        "Test: Click Test per row to run the rule against custom sample text and see the extracted OTP + transformed output.",
+        "Update: Saves the rule to the database. Cancel reverts unsaved changes to the last saved state.",
+        "Scope: Drag clients/suppliers from the top bar to assign them to specific rules."
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "study-guide",
+   "title": "Study Guide",
+   "icon": "📚",
+   "desc": "Comprehension quiz, answer key, essay topics and the key-term glossary.",
+   "sections": [
+    {
+     "id": "quiz",
+     "title": "Part 1 — Comprehension Quiz",
+     "icon": "📝",
+     "blocks": [
+      {
+       "t": "quiz",
+       "items": [
+        {
+         "q": "What is the significance of selecting a server location during the account registration process?",
+         "a": "Selecting a server location is a critical step to ensure optimal SMS delivery performance. Users should choose the location closest to their target audience to achieve the lowest possible latency for their messages."
+        },
+        {
+         "q": "Describe the process for topping up an account balance on the platform.",
+         "a": "To add funds, a user must navigate to the Billing page and select a preferred cryptocurrency payment method such as USDT, BTC, or BNB. After entering the amount and making the payment, the user must upload a screenshot of the payment slip for the super admin to review and approve."
+        },
+        {
+         "q": "What are the primary differences between adding an SMPP supplier and an HTTP API supplier?",
+         "a": "For SMPP suppliers, which typically use version 3.4, the user must enter a host, port, username, password, and bind type. In contrast, HTTP API suppliers require the entry of a specific API URL and a key rather than traditional SMPP credentials."
+        },
+        {
+         "q": "How does the \"Bind Status\" page assist in supplier management?",
+         "a": "The Bind Status page is used to verify that the connection to an SMS gateway provider is active and functioning. A successful connection will be labeled as \"BOUND,\" confirming that the transceiver and SMPP settings are correctly configured."
+        },
+        {
+         "q": "What is the purpose of configuring \"Trunks\" within the routing system?",
+         "a": "Trunks serve as the bridge between suppliers and routes, allowing administrators to set capacity limits to prevent overloading a single connection. They also feature MCC allow and deny lists, which restrict or permit traffic to specific countries for compliance and operational control."
+        },
+        {
+         "q": "Explain the logic used by the platform to prioritize different routes.",
+         "a": "Routing priority is determined by a numerical value where a lower number represents a higher priority (e.g., Priority 1 is the highest). The system attempts to deliver messages through the highest priority route first, using lower priority routes as automatic fallbacks if necessary."
+        },
+        {
+         "q": "What role do \"Route Plans\" play in message delivery?",
+         "a": "Route Plans group multiple routes together to facilitate load balancing and failover management. These plans can contain routes from various trunks and suppliers and are assigned to specific clients to define their unique delivery paths."
+        },
+        {
+         "q": "What is the \"Force DLR\" option in the client settings, and what does it do?",
+         "a": "The Force DLR (Delivery Receipt) option is a setting that changes how the system reports message status to a client. When enabled, the system skips waiting for the actual delivery receipt from the supplier and immediately marks the message as delivered."
+        },
+        {
+         "q": "How does the Number Translation feature modify incoming digits?",
+         "a": "Number Translation allows the system to strip a specific number of leading digits from a phone number and optionally prepend a new prefix. For example, the system can strip the first two digits of \"00880\" and add \"77\" to transform the number into \"77880.\""
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "answer-key",
+     "title": "Part 2 — Answer Key",
+     "icon": "✅",
+     "blocks": [
+      {
+       "t": "bullets",
+       "items": [
+        "Server location selection impacts delivery performance; choosing a location near the target audience reduces latency.",
+        "Users select a cryptocurrency (USDT, BTC, etc.), enter the amount, and must upload a payment screenshot for manual approval by the super admin.",
+        "SMPP requires host/port/bind settings, whereas HTTP API requires a URL and an API key. SMPP v3.4 is the default supported version.",
+        "It confirms the connection status. A \"BOUND\" status indicates that the supplier connection is established and ready for use.",
+        "Trunks connect suppliers to routes, manage concurrent SMS capacity limits, and use MCC lists to filter destination countries.",
+        "Prioritization uses a numerical scale where lower numbers (1) are tried before higher numbers (10), allowing for structured fallback options.",
+        "Route Plans aggregate routes for load balancing and failover, allowing administrators to assign complex routing logic to specific clients.",
+        "Force DLR bypasses the supplier's actual delivery confirmation, marking messages as delivered instantly in the system for the client.",
+        "It uses \"Strip First N Digits\" to remove characters and \"Add Prefix\" to prepend new ones, allowing for global or entity-specific number formatting."
+       ]
+      }
+     ]
+    },
+    {
+     "id": "essays",
+     "title": "Part 3 — Essay Questions",
+     "icon": "📄",
+     "blocks": [
+      {
+       "t": "essays",
+       "items": [
+        {
+         "title": "The Hierarchy of SMS Routing",
+         "prompt": "Discuss the relationship between Suppliers, Trunks, Routes, and Route Plans. Explain how these four elements work together to ensure a message travels from a client to its final destination."
+        },
+        {
+         "title": "Financial Management and Profitability",
+         "prompt": "Analyze the platform's rate management system. How does the interplay between Supplier Rates and Client Rates allow a platform administrator to manage profitability and handle multi-operator (MCC/MNC) environments?"
+        },
+        {
+         "title": "System Reliability and Failover Strategy",
+         "prompt": "Describe the various mechanisms the platform uses to ensure high availability and message delivery, including Bind Status monitoring, Route Priority, and the use of Route Plans for load balancing."
+        },
+        {
+         "title": "Advanced Message Transformation",
+         "prompt": "Evaluate the utility of the Translation engines (SID, Number, and Content). How do these tools allow an administrator to customize traffic for different suppliers or clients without changing the source data?"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "glossary",
+     "title": "Part 4 — Glossary of Key Terms",
+     "icon": "📖",
+     "blocks": [
+      {
+       "t": "glossary",
+       "rows": [
+        [
+         "Bind Status",
+         "The connection state between the platform and an SMS supplier; \"BOUND\" indicates a successful connection."
+        ],
+        [
+         "DLR (Delivery Receipt)",
+         "A notification from a supplier confirming that a message has been delivered to the recipient's device."
+        ],
+        [
+         "MCC / MNC",
+         "Mobile Country Code and Mobile Network Code; used to identify specific countries and mobile operators for rate setting."
+        ],
+        [
+         "OTP (One-Time Password)",
+         "A unique, temporary code extracted from message content, often handled via the Content Translation tool."
+        ],
+        [
+         "Regex (Regular Expression)",
+         "A sequence of characters used as a search pattern to match and transform Sender IDs or message content."
+        ],
+        [
+         "Route Plan",
+         "A logical grouping of multiple routes used to manage load balancing and fallback for specific clients."
+        ],
+        [
+         "SID (Sender ID)",
+         "The name or number that appears as the sender of an SMS; can be transformed using SID Translation rules."
+        ],
+        [
+         "SMPP",
+         "Short Message Peer-to-Peer; a standard protocol for exchanging SMS messages between entities (v3.4 is the platform default)."
+        ],
+        [
+         "TPS (Transactions Per Second)",
+         "A limit placed on clients to restrict the number of messages sent per second to prevent system overload."
+        ]
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

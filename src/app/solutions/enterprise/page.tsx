@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 
 
 export const metadata: Metadata = {
-  title: "Enterprise SMS Gateway — Dedicated Infrastructure, White-Label, SLA | Net2APP",
+  title: "Enterprise SMS Gateway — Dedicated Infrastructure, White-Label, SLA",
   description:
     "Net2APP Enterprise SMS gateway with dedicated infrastructure, unlimited TPS, white-label branding, SLA guarantees, 24/7 priority support, and multi-tenant PostgreSQL schema isolation.",
   keywords: [
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     "Enterprise Messaging",
   ],
   openGraph: {
-    title: "Enterprise SMS Gateway — Dedicated & White-Label | Net2APP",
+    title: "Enterprise SMS Gateway — Dedicated & White-Label",
     description: "Enterprise-grade SMS infrastructure with dedicated servers, unlimited TPS, white-label branding, and SLA guarantees.",
   },
 };

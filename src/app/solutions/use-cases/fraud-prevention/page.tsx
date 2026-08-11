@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Fraud Prevention — Real-Time SMS, Flash SMS & Voice Alerts | Net2APP",
+  title: "Fraud Prevention — Real-Time SMS, Flash SMS & Voice Alerts",
   description:
     "Send real-time fraud alerts and suspicious activity notifications via SMS, Flash SMS (priority screen pop-up), and Voice OTP. IP whitelisting for API security ensures only authorized users can trigger communications.",
   keywords: [
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     "Fraud Notification Platform",
   ],
   openGraph: {
-    title: "Fraud Prevention — SMS & Voice Fraud Alerts | Net2APP",
+    title: "Fraud Prevention — SMS & Voice Fraud Alerts",
     description: "Real-time fraud alerts via SMS, Flash SMS, and Voice OTP with API IP whitelisting for security.",
   },
 };

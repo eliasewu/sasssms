@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "SMS Solutions for Hospitality — Bookings, Check-In & Guest Feedback | Net2APP",
+  title: "SMS Solutions for Hospitality — Bookings, Check-In & Guest Feedback",
   description: "Booking confirmations, check-in reminders, guest feedback surveys, and concierge SMS services for hotels and travel businesses.",
   keywords: [
     "Hospitality SMS",

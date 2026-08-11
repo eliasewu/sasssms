@@ -3,7 +3,7 @@ import Link from "next/link";
 
 
 export const metadata: Metadata = {
-  title: "Case Studies — Real-World SMS Gateway Success Stories | Net2APP",
+  title: "Case Studies — Real-World SMS Gateway Success Stories",
   description:
     "Net2APP case studies: see how businesses across financial services, healthcare, ecommerce, education, and retail use our SMS gateway for authentication, marketing, notifications, and customer engagement. Real results with SMPP, Voice OTP, RCS, and OTT messaging.",
   keywords: [
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     "SMS Gateway ROI", "SMS Platform Success Story",
   ],
   openGraph: {
-    title: "Case Studies — Real-World SMS Gateway Success Stories | Net2APP",
+    title: "Case Studies — Real-World SMS Gateway Success Stories",
     description:
       "Real results from businesses using Net2APP SMS gateway. Financial services, healthcare, ecommerce, education, and retail success stories.",
   },

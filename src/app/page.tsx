@@ -96,44 +96,6 @@ const jsonLd = {
         ]
       },
       {
-        "@type": "FAQPage",
-        "@id": "https://net2app.com/#faq",
-        "mainEntity": [
-          {
-            "@type": "Question",
-            "name": "What is Net2APP and how does it work?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Net2APP is a multi-tenant CPaaS (Communications Platform as a Service) that lets you deploy your own SMS gateway in under 60 seconds. It includes SMPP v3.4, HTTP SMS API, Voice OTP, RCS, WhatsApp, and Telegram — all with zero setup fees and pay-as-you-go pricing. Each tenant gets an isolated PostgreSQL schema for complete data privacy."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "How much does Net2APP cost?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Net2APP has zero setup fees, zero monthly minimums, and zero hidden costs. You pay only for the SMS you send, starting at $0.00030/SMS on the Starter plan. The Professional plan ($150/month) includes 10M SMS with no per-message charge, and the Enterprise plan ($400/month) offers unlimited TPS with SLA guarantees."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "What protocols and connection types does Net2APP support?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Net2APP supports 8+ connection types: SMPP v3.4, HTTP/REST API, RCS (Rich Communication Services), Flash SMS, Voice OTP (via Asterisk AMI), OTT messaging (WhatsApp Business API + Telegram MTProto), Email SMTP, and SIP Trunking. Pre-built connector templates for 80+ SMS providers are included."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "Is Net2APP suitable for serving multiple clients?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Yes. Net2APP is built from the ground up as a multi-tenant platform. Each client gets an isolated PostgreSQL schema, dedicated API keys, individual routing plans, and separate billing. You can create unlimited sub-clients with their own rates, TPS limits, and features — making it ideal for SMS resellers, aggregators, and enterprises managing multiple business units."
-            }
-          }
-        ]
-      },
-      {
       "@type": "ItemList",
       "name": "Net2APP Products & Services",
       "description": "Complete CPaaS product suite including conversations, communications, authentication, and customer data platforms.",
@@ -461,6 +423,7 @@ export default function LandingPage() {
               <Link href="/case-studies" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition">Case Studies</Link>
               <Link href="/comparisons" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition">Comparisons</Link>
               <Link href="/blog" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition">Blog</Link>
+              <Link href="/faq" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition">FAQ</Link>
               <Link href="/pricing" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition">Pricing</Link>
               <Link href="/contact" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition">Contact</Link>
             </div>
@@ -562,6 +525,7 @@ export default function LandingPage() {
               <Link href="/case-studies" className="block text-sm font-medium text-gray-600 hover:text-gray-900 py-2" onClick={() => setShowMobile(false)}>Case Studies</Link>
               <Link href="/comparisons" className="block text-sm font-medium text-gray-600 hover:text-gray-900 py-2" onClick={() => setShowMobile(false)}>Compare Platforms</Link>
               <Link href="/blog" className="block text-sm font-medium text-gray-600 hover:text-gray-900 py-2" onClick={() => setShowMobile(false)}>Blog</Link>
+              <Link href="/faq" className="block text-sm font-medium text-gray-600 hover:text-gray-900 py-2" onClick={() => setShowMobile(false)}>FAQ</Link>
               <Link href="/pricing" className="block text-sm font-medium text-gray-600 hover:text-gray-900 py-2" onClick={() => setShowMobile(false)}>Pricing</Link>
               <Link href="/contact" className="block text-sm font-medium text-gray-600 hover:text-gray-900 py-2" onClick={() => setShowMobile(false)}>Contact</Link>
               <Link href="/webmail" className="block text-sm font-medium text-gray-600 hover:text-gray-900 py-2" onClick={() => setShowMobile(false)}>Webmail</Link>
@@ -1757,6 +1721,51 @@ export default function LandingPage() {
         </div>
       </div>
 
+      {/* FAQ - Tenant User Guide Q&A */}
+      <section id="faq" className="py-20 bg-slate-50 scroll-mt-20">
+        <div className="max-w-7xl mx-auto px-6 lg:px-12">
+          <div className="text-center mb-14">
+            <div className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-full px-4 py-1.5 mb-4">
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+              <span className="text-blue-700 text-sm font-medium">Tenant Guide Q&A</span>
+            </div>
+            <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">Frequently Asked Questions</h2>
+            <p className="text-gray-500 text-lg max-w-3xl mx-auto">Everything you need to know about getting started, billing, suppliers, routing, and translations — straight from the Net2APP Tenant User Guide.</p>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {[
+              { q: "What is Net2APP and how does it work?", a: "Net2APP is a multi-tenant CPaaS (Communications Platform as a Service) that lets you deploy your own SMS gateway in under 60 seconds. It includes SMPP v3.4, HTTP SMS API, Voice OTP, RCS, WhatsApp, and Telegram — all with zero setup fees and pay-as-you-go pricing. Each tenant gets an isolated PostgreSQL schema for complete data privacy." },
+              { q: "Is a credit card required to start the Net2APP free trial?", a: "No. All plans include a free trial period and no credit card is required. Sign up, get your account created instantly on the free Starter plan, and receive 100 free SMS credits to test the platform." },
+              { q: "How do I top up my balance and which payment methods are accepted?", a: "Billing is primarily handled through cryptocurrency — including USDT, BTC, and BNB. Go to the Billing page, enter the amount, and upload a screenshot or payment slip of the transaction. A super admin then reviews and approves the payment to update the balance. The minimum top-up on the Starter plan is $25." },
+              { q: "How do I connect SMS suppliers to Net2APP?", a: "Go to Suppliers → All Suppliers and click '+ Add Supplier'. For SMPP suppliers, enter the name, host, port, username, and password, then configure the bind type (Transceiver, Transmitter, Receiver, or TX+RX). SMPP v3.4 is recommended as the default. For HTTP API suppliers, enter the API URL and API key instead of host/port credentials. After adding, check the Bind Status page to confirm the connection shows as BOUND." },
+              { q: "What does the Bind Status page monitor?", a: "Bind Status monitors the connection state between the platform and the supplier gateway. A functional SMPP connection displays as 'BOUND' — typically with a Transceiver status. For Ejoin/Sk gateways, save and reboot after setting the SMPP credentials to finalize the connection." },
+              { q: "How does SMS routing work — Trunks, Routes, and Route Plans?", a: "Net2APP uses a 4-layer routing hierarchy: Suppliers are linked to Trunks (which set capacity limits — the maximum concurrent SMS — and MCC allow/deny lists for geographic filtering). Trunks are assigned to Routes, which define country codes, prefixes, and priority (lower numbers = higher priority). Routes are grouped into Route Plans (Default Plan, SIM OTP, SIM Marketing) for load balancing and automatic failover, and each plan is assigned to a client under Clients → Edit Client → Route Plan." },
+              { q: "What happens if the Priority 1 route fails?", a: "The system automatically attempts delivery via the next highest-priority fallback route. Because Route Plans group multiple routes — potentially from different trunks and suppliers — delivery automatically fails over to the next available path, ensuring high reliability." },
+              { q: "How is profit calculated within the Net2APP platform?", a: "Profit is the difference between the rate charged to the client (Client Rates) and the cost paid to the supplier (Supplier Rates) for each destination. Rates are set per operator using MCC/MNC (Mobile Country Code / Mobile Network Code), and only one rate can be active per destination — adding a new rate automatically deactivates the old one." },
+              { q: "What does the Force DLR option do for clients?", a: "When Force DLR is enabled for a client, the system marks messages as delivered immediately without waiting for supplier delivery receipts. For real delivery verification, check the SMS Logs on the Messages page." },
+              { q: "What is required for WhatsApp and Telegram OTT Connect?", a: "A proxy is mandatory for WhatsApp and Telegram OTT connections to function. Once the API and credential information is updated, the connector works automatically as part of the Advanced Connectors suite." },
+              { q: "Can I translate sender IDs, numbers, and message content?", a: "Yes. SID Translation uses regex patterns to match and replace incoming sender IDs (with a Quick Test box to preview transformations). Number Translation strips leading digits and adds prefixes — for example, stripping 2 digits from '00880' and adding prefix '77' produces '77880'. Content Translation extracts OTP codes (default 4–8 digits, or a custom regex) and fills them into templates using the {{OTP}} placeholder. Rules are assigned by dragging clients/suppliers into a rule's scope, and lower priority numbers run first." },
+              { q: "How do I set rates for all operators in a country at once?", a: "Use Bulk Rate Management (or Bulk Import) under Rates. Instead of entering rates operator-by-operator, Bulk Import adds all operators for an entire country at once — significantly reducing setup time for large-scale operations." },
+              { q: "Where can I find help and support?", a: "The Knowledge Base for common Net2APP questions is located at net2app.com/resources. For direct assistance, create a support ticket via Settings → Support Tickets — tickets are private, and including your tenant name and relevant message IDs speeds up resolution." },
+            ].map((faq, i) => (
+              <details key={i} className="bg-white border border-gray-100 rounded-xl shadow-sm group open:border-blue-500/50 transition h-fit">
+                <summary className="text-gray-900 font-medium px-6 py-4 cursor-pointer list-none flex items-center justify-between gap-4 group-open:border-b border-gray-100">
+                  <span>{faq.q}</span>
+                  <span className="text-blue-400 text-xl group-open:rotate-180 transition-transform shrink-0">▼</span>
+                </summary>
+                <div className="px-6 py-4">
+                  <p className="text-gray-600 text-sm leading-relaxed">{faq.a}</p>
+                </div>
+              </details>
+            ))}
+          </div>
+          <div className="mt-12 flex flex-wrap items-center justify-center gap-3">
+            <Link href="/tenant-guide" className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition font-semibold shadow-sm">📘 Read the Tenant User Guide →</Link>
+            <Link href="/resources" className="inline-flex items-center gap-2 px-6 py-3 border-2 border-gray-200 text-gray-700 rounded-xl hover:border-gray-300 hover:bg-gray-50 transition font-semibold">Browse the Knowledge Base</Link>
+          </div>
+        </div>
+      </section>
+
       {/* CTA - Clean Design */}
       <div className="py-20 bg-gradient-to-r from-blue-600 to-indigo-600">
         <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
@@ -1797,6 +1806,7 @@ export default function LandingPage() {
                 <Link href="/case-studies" className="block text-sm text-gray-400 hover:text-white transition">Case Studies</Link>
                 <Link href="/comparisons" className="block text-sm text-gray-400 hover:text-white transition">Comparisons</Link>
                 <Link href="/resources" className="block text-sm text-gray-400 hover:text-white transition">Resources</Link>
+                <Link href="/faq" className="block text-sm text-gray-400 hover:text-white transition">FAQ</Link>
                 <Link href="/api-documentation" className="block text-sm text-gray-400 hover:text-white transition">API Docs</Link>
               </div>
             </div>

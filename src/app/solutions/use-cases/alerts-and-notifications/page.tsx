@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Alerts & Notifications — SMS, Flash SMS & Emergency Broadcasts | Net2APP",
+  title: "Alerts & Notifications — SMS, Flash SMS & Emergency Broadcasts",
   description:
     "Send system alerts, status updates, emergency broadcasts, and critical notifications. Use Flash SMS (Class 0) for messages that appear as instant screen pop-ups that cannot be ignored.",
   keywords: [
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     "Notification SMS API",
   ],
   openGraph: {
-    title: "Alerts & Notifications — SMS Alert System | Net2APP",
+    title: "Alerts & Notifications — SMS Alert System",
     description: "System alerts, emergency broadcasts, and critical notifications via SMS and Flash SMS priority delivery.",
   },
 };

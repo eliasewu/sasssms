@@ -3,7 +3,7 @@ import Link from "next/link";
 
 
 export const metadata: Metadata = {
-  title: "Resources — SMS Gateway Documentation, Guides & API Reference | Net2APP",
+  title: "Resources — SMS Gateway Documentation, Guides & API Reference",
   description:
     "Net2APP resources hub: SMS API documentation, integration guides, SMPP tutorials, Voice OTP setup, RCS messaging docs, WhatsApp Business API guides, and more. Everything you need to deploy and manage your SMS gateway platform.",
   keywords: [
@@ -17,7 +17,7 @@ export const metadata: Metadata = {
     "SMPP v3.4 Tutorial", "Asterisk Voice OTP Guide",
   ],
   openGraph: {
-    title: "Resources — SMS Gateway Documentation & Guides | Net2APP",
+    title: "Resources — SMS Gateway Documentation & Guides",
     description:
       "Complete SMS gateway documentation, API references, integration guides, and tutorials. SMPP, HTTP API, Voice OTP, RCS, and OTT messaging resources.",
   },
@@ -118,6 +118,7 @@ const docSections = [
     category: "Setup Guides",
     icon: "🚀",
     links: [
+      { title: "Tenant User Guide", href: "/tenant-guide", desc: "The complete operator guide to the Net2APP platform — account setup, crypto billing, supplier management, routing, clients, translations, testing and support." },
       { title: "Getting Started Guide", href: "/", desc: "Deploy your SMS gateway in 60 seconds. Step-by-step setup for new tenants including API key generation and first SMS." },
       { title: "SMPP Gateway Setup", href: "/sms-routing", desc: "Configure SMPP v3.4 connections with bind modes, TPS limits, and supplier integration. Complete SMPP setup tutorial." },
       { title: "Voice OTP Configuration", href: "/voice-otp", desc: "Set up Asterisk AMI for Voice OTP delivery. Configure SIP trunks, language detection, and audio files." },

@@ -4,7 +4,7 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Blog — SMS Gateway Insights, Guides & Industry News | Net2APP",
+  title: "Blog — SMS Gateway Insights, Guides & Industry News",
   description:
     "Net2APP blog: expert insights on SMS gateway technology, SMPP v3.4, Voice OTP, RCS messaging, WhatsApp Business API, SMS marketing strategies, CPaaS industry trends, and multi-tenant SMS platform best practices. Stay updated on cloud communications.",
   keywords: [
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     "A2P SMS Guide", "SMS Compliance Blog", "Messaging API Blog",
   ],
   openGraph: {
-    title: "Blog — SMS Gateway Insights & Guides | Net2APP",
+    title: "Blog — SMS Gateway Insights & Guides",
     description:
       "Expert guides on SMS gateway technology, Voice OTP, RCS, WhatsApp API, and CPaaS industry trends. Stay updated on cloud communications.",
   },

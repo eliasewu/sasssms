@@ -1,9 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { pickFaqs, faqSchema, type FaqItem } from "@/lib/tenant-faq";
+
+// Page FAQ — tenant-guide questions relevant to the HTTP SMS API plus the
+// strongest API-specific questions.
+const PAGE_FAQS: FaqItem[] = [
+  ...pickFaqs(4, 5, 9, 11, 13),
+  { q: "How do I receive delivery reports (DLR) for my messages?", a: "When sending an SMS via the API, you provide a callback URL. The system pushes DLR updates to this URL as HTTP POST requests whenever the message status changes. The payload includes message ID, status, timestamp, and error codes." },
+  { q: "What are the rate limits for the HTTP SMS API?", a: "Rate limits are configurable per tenant and displayed in the dashboard. You can set maximum TPS (transactions per second), daily message caps, and per-API-key rate limits. Professional and Enterprise plans include higher TPS allocations." },
+];
 
 
 export const metadata: Metadata = {
-  title: "HTTP SMS API — RCS Messaging & Flash SMS Gateway | Net2APP",
+  title: "HTTP SMS API — RCS Messaging & Flash SMS Gateway",
   description:
     "Net2APP provides RESTful HTTP SMS API with RCS (Rich Communication Services), Flash SMS priority messaging, bulk SMS, DLR webhooks, and rate limiting. Integrate SMS into any application with simple HTTP requests. Supports Unicode, alphanumeric sender IDs, and delivery reports.",
   keywords: [
@@ -19,7 +28,7 @@ export const metadata: Metadata = {
     "Enterprise SMS API",
   ],
   openGraph: {
-    title: "HTTP SMS API — RCS & Flash SMS Gateway | Net2APP",
+    title: "HTTP SMS API — RCS & Flash SMS Gateway",
     description:
       "RESTful HTTP SMS API with RCS messaging, Flash SMS, DLR webhooks, and rate limiting. Simple HTTP POST integration for bulk and transactional SMS.",
   },
@@ -46,48 +55,7 @@ const jsonLd = {
     {
       "@type": "FAQPage",
       "@id": "https://net2app.com/http-sms-api#faq",
-      "mainEntity": [
-        {
-          "@type": "Question",
-          "name": "What is the HTTP SMS API?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Net2APP's HTTP SMS API is a RESTful API that allows you to send SMS messages using simple HTTP POST requests. It supports bulk SMS, transactional SMS, RCS (Rich Communication Services), Flash SMS (priority screen messages), Unicode characters, alphanumeric sender IDs, and delivery report callbacks via webhooks. Authentication is handled via API keys with optional IP whitelisting for security.",
-          },
-        },
-        {
-          "@type": "Question",
-          "name": "What is RCS Messaging?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "RCS (Rich Communication Services) is the next-generation SMS standard that supports rich media, interactive buttons, branded messaging, read receipts, and typing indicators. Unlike traditional SMS, RCS enables businesses to send messages with images, videos, carousels, quick reply buttons, and suggested actions — providing an app-like messaging experience directly in the native SMS app on Android devices.",
-          },
-        },
-        {
-          "@type": "Question",
-          "name": "What is Flash SMS?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Flash SMS (also called Class 0 SMS) is a special type of SMS message that appears immediately on the recipient's screen as a pop-up notification without being saved to the inbox. Flash SMS is ideal for urgent alerts, emergency notifications, time-sensitive one-time passwords, and critical system alerts where immediate visibility is required.",
-          },
-        },
-        {
-          "@type": "Question",
-          "name": "Does the HTTP SMS API support DLR (Delivery Reports)?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Yes. Net2APP's HTTP SMS API provides real-time DLR (Delivery Report) support via webhook callbacks. When you send an SMS via the API, you register a callback URL, and the system pushes delivery reports (DELIVERED, UNDELIVERABLE, EXPIRED, REJECTED, etc.) to your endpoint asynchronously. Standard DLR status codes are supported including ENROUTE, DELIVERED, EXPIRED, DELETED, UNDELIVERABLE, ACCEPTED, UNKNOWN, REJECTED, and SKIPPED.",
-          },
-        },
-        {
-          "@type": "Question",
-          "name": "How do I authenticate with the HTTP SMS API?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Net2APP HTTP SMS API supports multiple authentication methods: (1) API Key — include your unique API key in the request header or as a query parameter. (2) IP Whitelisting — restrict API access to specific IP addresses for enhanced security. Both authentication methods can be configured from the Net2APP dashboard.",
-          },
-        },
-      ],
+      "mainEntity": faqSchema(PAGE_FAQS),
     },
     {
       "@type": "SoftwareApplication",
@@ -130,7 +98,7 @@ export default function HttpSmsApiPage() {
         </Link>
         <div className="hidden lg:flex items-center gap-1">
           <Link href="/" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition">Home</Link>
-          <Link href="#faq" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition hidden md:block">FAQ</Link>
+          <Link href="/faq" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition hidden md:block">FAQ</Link>
           </div>
           <div className="flex items-center gap-3">
             <a href="https://net2app.com" className="px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition shadow-sm">Get Started</a>
@@ -265,13 +233,7 @@ export default function HttpSmsApiPage() {
             <p className="text-gray-500">Common questions about our SMS API, RCS, and Flash SMS services</p>
           </div>
           <div className="space-y-4">
-            {[
-              { q: "What programming languages can I use with the HTTP SMS API?", a: "The HTTP SMS API works with any programming language that can make HTTP requests — JavaScript/Node.js, Python, PHP, Ruby, Java, C#, Go, Rust, and more. We provide code examples and SDK snippets for popular languages." },
-              { q: "How do I receive delivery reports (DLR) for my messages?", a: "When sending an SMS via the API, you provide a callback URL. The system pushes DLR updates to this URL as HTTP POST requests whenever the message status changes. The payload includes message ID, status, timestamp, and error codes." },
-              { q: "What is the difference between RCS and standard SMS?", a: "RCS (Rich Communication Services) supports rich media (images, videos), interactive buttons, branded messaging, read receipts, and typing indicators. Standard SMS is plain text only. RCS requires compatible devices and carriers but provides a significantly enhanced user experience similar to OTT messaging apps." },
-              { q: "Can I send Flash SMS programmatically?", a: "Yes. Flash SMS can be sent through the HTTP SMS API by specifying a message class parameter (Class 0). Flash SMS messages appear as pop-up notifications on the recipient's screen and are not automatically saved to the inbox. They are ideal for urgent alerts and time-sensitive notifications." },
-              { q: "What are the rate limits for the HTTP SMS API?", a: "Rate limits are configurable per tenant and displayed in the dashboard. You can set maximum TPS (transactions per second), daily message caps, and per-API-key rate limits. Professional and Enterprise plans include higher TPS allocations." },
-            ].map((faq, i) => (
+            {PAGE_FAQS.map((faq, i) => (
               <details key={i} className="bg-white border border-gray-100 rounded-xl shadow-sm group open:border-blue-500/50 transition">
                 <summary className="text-gray-900 font-medium px-6 py-4 cursor-pointer list-none flex items-center justify-between group-open:border-b border-gray-100">
                   <span>{faq.q}</span>
@@ -310,6 +272,7 @@ export default function HttpSmsApiPage() {
               <Link href="/ott-pairing" className="text-blue-400 hover:text-white text-sm transition">OTT Pairing</Link>
               <Link href="/case-studies" className="text-blue-400 hover:text-white text-sm transition">Case Studies</Link>
               <Link href="/comparisons" className="text-blue-400 hover:text-white text-sm transition">Comparisons</Link>
+              <Link href="/faq" className="text-blue-400 hover:text-white text-sm transition">FAQ</Link>
               <Link href="/webmail" className="text-blue-400 hover:text-white text-sm transition">Webmail</Link>
             </div>
           </div>

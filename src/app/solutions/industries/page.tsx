@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 
 
 export const metadata: Metadata = {
-  title: "SMS Solutions by Industry — Financial, Healthcare, Retail, Ecommerce & More | Net2APP",
+  title: "SMS Solutions by Industry — Financial, Healthcare, Retail, Ecommerce & More",
   description:
     "Net2APP SMS gateway solutions for financial services, healthcare, retail, nonprofit, hospitality, ecommerce, public sector, and education. Industry-specific features including Voice OTP, RCS, Flash SMS, and WhatsApp API.",
   keywords: [
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     "SMS by Industry",
   ],
   openGraph: {
-    title: "SMS Gateway Solutions by Industry | Net2APP",
+    title: "SMS Gateway Solutions by Industry",
     description: "Industry-specific SMS solutions for financial services, healthcare, retail, ecommerce, education, and more.",
   },
 };

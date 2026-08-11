@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 
 
 export const metadata: Metadata = {
-  title: "SMS Solutions by Team — Developers, Marketing, Product, CX & Data Engineering | Net2APP",
+  title: "SMS Solutions by Team — Developers, Marketing, Product, CX & Data Engineering",
   description:
     "Net2APP SMS gateway tools for every team: RESTful API and SMPP for developers, campaign management for marketing, Voice OTP for product teams, omnichannel engagement for CX, and data pipelines for data engineering.",
   keywords: [
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     "SMS for Business Teams",
   ],
   openGraph: {
-    title: "SMS Gateway Solutions by Team | Net2APP",
+    title: "SMS Gateway Solutions by Team",
     description: "Net2APP provides tailored SMS tools for developers, marketers, product managers, CX teams, and data engineers.",
   },
 };
