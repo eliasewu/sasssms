@@ -16,7 +16,7 @@ async function main() {
   try {
     const expected = extractColumnDefs(TENANT_TABLE_DEFS);
     const { rows: tenants } = await client.query(
-      "SELECT schema_name FROM tenants WHERE is_active = true ORDER BY id"
+      "SELECT t.schema_name FROM tenants t WHERE t.is_active = true AND EXISTS (SELECT 1 FROM pg_namespace n WHERE n.nspname = t.schema_name) ORDER BY t.id"
     );
 
     console.log(`Healing ${tenants.length} active tenant schemas...\n`);
