@@ -20,10 +20,11 @@ cd "$APP_DIR"
 
 # All known server IPs (SSH key auth preferred, password as fallback)
 SERVERS=(
-  "15.235.35.125"   # Canada — Toronto
+  "15.235.35.125"   # Canada — Toronto (dev box)
   "149.56.22.232"   # Canada — Toronto (Origin)
   "54.37.252.5"     # France — Paris
   "145.239.1.7"     # Germany — Frankfurt
+  "139.99.148.65"   # Australia — Sydney
 )
 SSH_USER="ubuntu"
 SSH_PASS="Telco1988"
