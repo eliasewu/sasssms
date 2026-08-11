@@ -365,6 +365,12 @@ export const suppliers = pgTable("suppliers", {
   lastBindTime: timestamp("last_bind_time"),
   bindError: text("bind_error"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  // NOTE: Tenant schemas ALSO carry updated_at, deleted_at, deleted_by,
+  // gsm_device_id, connector_id (from src/lib/tenant-schema.ts createTenantSchema)
+  // which are intentionally NOT in this drizzle model — drizzle-kit push only
+  // manages the PUBLIC schema and would otherwise try to drop them from tenant
+  // tables. See drizzle/0040_add_suppliers_updated_at_columns.sql for the
+  // tenant-schema backfill of these columns.
 });
 
 export const trunks = pgTable("trunks", {
