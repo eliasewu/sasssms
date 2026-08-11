@@ -142,6 +142,15 @@ npm run build
 # Push schema
 npx drizzle-kit push 2>&1 | tail -3 || info "Schema push - check manually"
 
+# Tenant schema column backfill (drizzle/0040) — adds suppliers.updated_at,
+# deleted_at, deleted_by, gsm_device_id, connector_id to tenant schemas that
+# predate those columns. Idempotent (ADD COLUMN IF NOT EXISTS); safe on every run.
+# Fixes "column updated_at of relation suppliers does not exist".
+if [ -f "$APP_DIR/drizzle/0040_add_suppliers_updated_at_columns.sql" ]; then
+  psql "postgresql://${DB_USER}:${DB_PASS}@127.0.0.1:5432/${DB_NAME}" -f "$APP_DIR/drizzle/0040_add_suppliers_updated_at_columns.sql" 2>&1 | tail -3 || true
+  ok "Tenant suppliers column backfill applied"
+fi
+
 # ── 8. PM2, Systemd Service & Auto-Recovery ──
 echo "[8/9] PM2 + Systemd + Auto-Recovery..."
 command -v pm2 &>/dev/null || npm install -g pm2
@@ -203,6 +212,7 @@ cat > "$APP_DIR/health-check.sh" << 'HCSCRIPT'
 #!/bin/bash
 LOG_FILE="/var/log/net2app-health.log"
 APP_PORT=5556
+APP_DIR="/opt/net2app"
 LOCK_FILE="/tmp/net2app-health.lock"
 exec 200>"$LOCK_FILE"
 /usr/bin/flock -n 200 || exit 0
@@ -238,6 +248,60 @@ if [ "$PM2_DOWN" = true ] || ! ss -tlnp 2>/dev/null | grep -q ":$APP_PORT "; the
         log "Port still down — forcing fresh PM2 start"
         pm2 start npm --name "net2app" -- run start 2>&1 >> "$LOG_FILE" || true
         pm2 save 2>&1 >> "$LOG_FILE" || true
+    fi
+fi
+
+# CSS integrity guard — detect stale build manifest (server references deleted CSS)
+if ss -tlnp 2>/dev/null | grep -q ":$APP_PORT "; then
+    APP_CWD="$APP_DIR"
+    PID=$(pm2 pid net2app 2>/dev/null | tr -d '[:space:]')
+    if [ -n "$PID" ] && [ -d "/proc/$PID" ]; then
+        CWD=$(readlink -f "/proc/$PID/cwd" 2>/dev/null)
+        [ -n "$CWD" ] && [ -d "$CWD" ] && APP_CWD="$CWD"
+    fi
+    HTML=$(curl -s --compressed --max-time 5 "http://127.0.0.1:$APP_PORT/" 2>/dev/null || true)
+    if [ -n "$HTML" ]; then
+        CSS_MISSING=0
+        for URL in $(echo "$HTML" | grep -oE '/_next/static/[a-zA-Z0-9/_-]+\.css' | sort -u); do
+            if [ ! -f "${APP_CWD}/.next${URL#/_next}" ]; then
+                log "CSS asset missing on disk: ${APP_CWD}/.next${URL#/_next}"
+                CSS_MISSING=1
+            fi
+        done
+        if [ "$CSS_MISSING" = 1 ]; then
+            NOW=$(date +%s)
+            LAST=$(cat /tmp/net2app-css-restart 2>/dev/null || echo 0)
+            if [ $((NOW - LAST)) -ge 120 ]; then
+                log "Stale build manifest — referenced CSS assets missing. Restarting net2app"
+                pm2 restart net2app 2>&1 >> "$LOG_FILE" || true
+                echo "$NOW" > /tmp/net2app-css-restart
+            fi
+        fi
+    fi
+fi
+
+# /faq 500 guard — stale client-reference-manifest (Next.js InvariantError)
+# Same root cause as the CSS guard, but only surfaces on some routes like /faq.
+# Probe /faq; on 500 confirm the manifest error in the fresh pm2 error log, restart.
+if ss -tlnp 2>/dev/null | grep -q ":$APP_PORT "; then
+    FAQ_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$APP_PORT/faq" 2>/dev/null || true)
+    if [ "$FAQ_CODE" = "500" ]; then
+        ERR_LOG=""
+        for p in "$HOME/.pm2/logs/net2app-error.log" /root/.pm2/logs/net2app-error.log /home/ubuntu/.pm2/logs/net2app-error.log; do
+            [ -f "$p" ] && ERR_LOG="$p" && break
+        done
+        if [ -z "$ERR_LOG" ]; then
+            ERR_LOG=$(pm2 jlist 2>/dev/null | grep -o '"pm_err_log_path":"[^"]*"' | head -1 | cut -d'"' -f4)
+        fi
+        if [ -n "$ERR_LOG" ] && [ -f "$ERR_LOG" ] && tail -n 200 "$ERR_LOG" 2>/dev/null | grep -q "client reference manifest for route"; then
+            NOW=$(date +%s)
+            LAST=$(cat /tmp/net2app-manifest-restart 2>/dev/null || echo 0)
+            if [ $((NOW - LAST)) -ge 120 ]; then
+                log "/faq 500 — stale client reference manifest detected. Restarting net2app"
+                pm2 restart net2app 2>&1 >> "$LOG_FILE" || true
+                echo "$NOW" > /tmp/net2app-manifest-restart
+            fi
+        fi
     fi
 fi
 HCSCRIPT
