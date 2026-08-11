@@ -346,13 +346,13 @@ async function suiteSupplierCostPrefixMatch() {
     await insertSupplierRate(90004, "44", 0.00040);
 
     const cost = await lookupSupplierCost("+999123456789", 90004, schemaName);
-    assert.equal(cost, 0.00020, "default supplier cost (0.00020)");
+    assert.equal(cost, 0.00004, "default supplier cost (0.00004)");
   });
 
   await test("returns default when no rates exist for supplier", async () => {
     const { schemaName } = await getTestContext();
     const cost = await lookupSupplierCost("+8801712345678", 99999, schemaName);
-    assert.equal(cost, 0.00020, "default cost when no supplier_rates configured");
+    assert.equal(cost, 0.00004, "default cost when no supplier_rates configured");
   });
 
   await test("skips inactive supplier rates", async () => {
