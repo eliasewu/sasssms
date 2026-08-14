@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { MCC_LANGUAGE_DATABASE } from "@/lib/voice-otp-database";
 import { useConfirmModal } from "@/components/confirm-modal";
+import AudioDuration from "@/components/audio-duration";
 
 // Extract unique languages from the 220+ MCC database, sorted alphabetically
 const DB_LANGUAGES = [...new Set(
@@ -1071,6 +1072,9 @@ function AudioTile({ lang, digit, label, audio, playingAudio, setPlayingAudio, o
       <span className="text-[10px] text-slate-400">
         {hasFile ? "Uploaded" : "Click to upload"}
       </span>
+      {hasFile && (
+        <div className="mt-0.5"><AudioDuration url={audio!.file_url} /></div>
+      )}
       
       {/* Action buttons — always visible */}
       <div className="mt-2 flex items-center justify-center gap-1.5">

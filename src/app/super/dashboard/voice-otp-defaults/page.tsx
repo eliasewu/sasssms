@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import AudioDuration from "@/components/audio-duration";
 
 interface DefaultAudio {
   id: number; language: string; digit: string;
@@ -746,6 +747,7 @@ export default function SuperVoiceOtpDefaultsPage() {
             <div key={f.id} className="flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-1.5 text-xs">
               <span className="font-semibold text-indigo-600">{f.language}</span>
               <span className="font-mono">{f.digit}</span>
+              <AudioDuration url={f.fileUrl} />
               <button onClick={() => { if (f.fileUrl) setPlayingAudio(f.fileUrl); }} className="text-blue-500 hover:text-blue-700" title="Play ▶️">▶️</button>
               <button onClick={() => handleDelete(f.id)} className="text-red-400 hover:text-red-600" title="Delete">×</button>
             </div>
@@ -776,6 +778,9 @@ function AudioTile({ label, audio, playingAudio, setPlayingAudio, onUpload, onDe
       <span className="text-[10px] text-slate-400">
         {hasFile ? "Uploaded" : "Click to upload"}
       </span>
+      {hasFile && (
+        <div className="mt-0.5"><AudioDuration url={audio!.fileUrl} /></div>
+      )}
       <div className="mt-2 flex items-center justify-center gap-1.5">
         <button onClick={onUpload} className="w-7 h-7 bg-slate-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-slate-600 transition" title="Upload audio">📁</button>
         {hasFile && (
