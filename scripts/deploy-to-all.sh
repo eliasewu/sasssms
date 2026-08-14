@@ -99,6 +99,20 @@ for IP in "${SERVERS[@]}"; do
     # Install watchdog
     ssh_do "$IP" "sudo cp /opt/net2app/scripts/net2app-watchdog.sh /usr/local/bin/net2app-watchdog 2>/dev/null; sudo chmod +x /usr/local/bin/net2app-watchdog 2>/dev/null; (crontab -l 2>/dev/null | grep -v net2app-watchdog; echo '*/2 * * * * /usr/local/bin/net2app-watchdog') | crontab - 2>/dev/null" 2>/dev/null
 
+    # Sync Android APK artifact (so APK download works on every server)
+    # The APK is a build artifact kept in /opt/net2app/android-app on this box.
+    APK_SRC="$APP_DIR/android-app"
+    [ -d "/opt/net2app/android-app" ] && ls /opt/net2app/android-app/*.apk >/dev/null 2>&1 && APK_SRC="/opt/net2app/android-app"
+    if [ -d "$APK_SRC" ] && ls "$APK_SRC/"*.apk >/dev/null 2>&1; then
+      ssh_do "$IP" "sudo mkdir -p /opt/net2app/android-app && sudo chown $SSH_USER:$SSH_USER /opt/net2app/android-app" 2>/dev/null
+      SSHPASS="$SSH_PASS" sshpass -e rsync -avz --delete \
+        -e 'ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10' \
+        "$APK_SRC/" "$SSH_USER@$IP:/opt/net2app/android-app/" 2>/dev/null || \
+      rsync -avz --delete \
+        -e 'ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes' \
+        "$APK_SRC/" "$SSH_USER@$IP:/opt/net2app/android-app/" 2>/dev/null || true
+    fi
+
     echo "restarted ✅"
   else
     echo "FAILED ❌"

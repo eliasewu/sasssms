@@ -53,6 +53,7 @@ export default function ServersPage() {
   const [msg, setMsg] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [deploying, setDeploying] = useState<string | null>(null);
+  const [deployProgress, setDeployProgress] = useState<Record<string, { running: boolean; succeeded?: boolean; log: string }>>({});
   const [healthChecking, setHealthChecking] = useState<string | null>(null);
   const [healthData, setHealthData] = useState<Record<string, HealthInfo>>({});
 
@@ -150,18 +151,22 @@ export default function ServersPage() {
         return;
       }
 
-      if (data.deployResult?.success) {
+      if (data.deployResult?.started) {
+        // Async deploy — poll the log until it finishes (full install can
+        // take 15-25 min: Node/Postgres/Redis/Nginx/Java/Asterisk/Tailscale).
+        setMsg(`🚀 Deploy started for ${form.locationId} (${form.ipAddress}) — installing...`);
+        setShowForm(false);
+        loadServers();
+        pollDeploy(form.locationId);
+      } else if (data.deployResult?.success) {
         setMsg(`✅ Server deployed to ${form.locationId} (${form.ipAddress})`);
+        setTimeout(() => setMsg(""), 8000);
+        setShowForm(false);
+        loadServers();
+        setTimeout(() => checkHealth(form.locationId), 30000);
       } else {
-        setMsg(`⚠️ Deployed with warnings: ${data.deployResult?.message?.substring(0, 200)}`);
+        setMsg(`⚠️ Deploy issue: ${data.deployResult?.message?.substring(0, 200)}`);
       }
-
-      setTimeout(() => setMsg(""), 8000);
-      setShowForm(false);
-      loadServers();
-
-      // Auto health check after 30 seconds
-      setTimeout(() => checkHealth(form.locationId), 30000);
     } catch {
       setMsg("Network error during deployment");
       setTimeout(() => setMsg(""), 5000);
@@ -169,6 +174,34 @@ export default function ServersPage() {
       setDeploying(null);
     }
   };
+
+  // Poll deploy progress for a location until the async install finishes.
+  const pollDeploy = useCallback(async (locationId: string) => {
+    const tick = async () => {
+      try {
+        const res = await fetch(`/api/super/servers?deploy=${locationId}`);
+        const data = await res.json();
+        if (!mountedRef.current) return;
+        const d = data.deploy;
+        if (!d) return;
+        setDeployProgress((prev) => ({ ...prev, [locationId]: d }));
+        if (d.running) {
+          setTimeout(tick, 8000);
+        } else {
+          // Finished — refresh list + health check
+          setMsg(d.succeeded
+            ? `✅ Server deployed to ${locationId}!`
+            : `⚠️ Deploy finished for ${locationId} with issues — see log.`);
+          setTimeout(() => setMsg(""), 10000);
+          loadServers();
+          setTimeout(() => checkHealth(locationId), 10000);
+        }
+      } catch {
+        if (mountedRef.current) setTimeout(tick, 8000);
+      }
+    };
+    tick();
+  }, [loadServers, checkHealth]);
 
   const handleRemove = async (locationId: string, country: string) => {
     if (!await confirmDelete(`Remove server from "${country}"? This clears the IP and credentials but keeps the location.`)) return;
@@ -257,6 +290,40 @@ export default function ServersPage() {
           : "bg-red-50 border border-red-200 text-red-700"
         }`}>
           {msg}
+        </div>
+      )}
+
+      {/* Live deploy progress (async a2z install) */}
+      {Object.entries(deployProgress).filter(([, d]) => d.running || d.log).length > 0 && (
+        <div className="bg-slate-900 rounded-xl border border-slate-700 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-semibold text-slate-100">
+              {Object.values(deployProgress).some(d => d.running)
+                ? "🚀 Deployment in progress..."
+                : "📄 Last deploy output"}
+            </p>
+            <button
+              onClick={() => setDeployProgress({})}
+              className="text-xs text-slate-400 hover:text-slate-200"
+            >✕</button>
+          </div>
+          {Object.entries(deployProgress).filter(([, d]) => d.running || d.log).map(([id, d]) => (
+            <div key={id} className="mb-2 last:mb-0">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-xs font-mono text-slate-300">{id}</span>
+                {d.running ? (
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700">
+                    <span className="w-2.5 h-2.5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" /> RUNNING
+                  </span>
+                ) : d.succeeded ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700">✅ DONE</span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700">❌ FAILED</span>
+                )}
+              </div>
+              <pre className="bg-black/40 rounded-lg p-3 text-[10px] font-mono text-slate-300 max-h-56 overflow-y-auto whitespace-pre-wrap">{d.log || "Waiting for output..."}</pre>
+            </div>
+          ))}
         </div>
       )}
 

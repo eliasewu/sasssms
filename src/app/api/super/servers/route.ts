@@ -10,10 +10,43 @@
 import { NextResponse } from "next/server";
 import { getSuperAdminFromRequest } from "@/lib/auth";
 import { pool } from "@/db";
-import { execSync } from "child_process";
+import { execSync, spawn } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { mkdir, writeFile, unlink } from "fs/promises";
 import { join } from "path";
+
+/** Directory where in-flight deploy logs are written (persisted across restarts). */
+const DEPLOY_LOGS_DIR = join(process.cwd(), "deploy-logs");
+
+interface DeployJob {
+  pid: number;
+  startTs: string;
+  locationId: string;
+  ipAddress: string;
+}
+
+/** In-memory registry of running deploys (so GET ?deploy=ID can report status). */
+const runningDeploys = new Map<string, DeployJob>();
+
+function readDeployLogTail(locationId: string, maxLen = 4000): string {
+  try {
+    const logFile = join(DEPLOY_LOGS_DIR, `${locationId}.log`);
+    if (!existsSync(logFile)) return "";
+    const content = readFileSync(logFile, "utf-8");
+    return content.length > maxLen ? content.slice(-maxLen) : content;
+  } catch {
+    return "";
+  }
+}
+
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 interface ServerLocation {
   id: string;
@@ -254,8 +287,28 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const checkId = url.searchParams.get("check");
+  const deployId = url.searchParams.get("deploy");
 
   const locations = await getServerLocations();
+
+  // Deploy status / log tail for an in-flight (or finished) deployment
+  if (deployId) {
+    const running = runningDeploys.get(deployId);
+    const job = running && isPidAlive(running.pid) ? running : undefined;
+    const log = readDeployLogTail(deployId);
+    const finished = !job;
+    const succeeded = finished && (log.includes("Installation Complete") || log.includes("deployed successfully") || log.includes("✅ Net2APP deployed successfully"));
+    return NextResponse.json({
+      deploy: {
+        locationId: deployId,
+        running: !!job,
+        startedAt: job?.startTs || running?.startTs || null,
+        finished,
+        succeeded,
+        log,
+      },
+    });
+  }
 
   // Health check a single server
   if (checkId) {
@@ -385,46 +438,75 @@ export async function POST(request: Request) {
   }
 
   // Trigger deployment if requested
-  let deployResult: { success: boolean; message: string } | null = null;
+  let deployResult: { success: boolean; message: string; started: boolean } | null = null;
   if (deploy) {
     locations[targetIndex].healthStatus = "deploying";
     await saveServerLocations(locations);
 
-    try {
-      const deployScript = join(process.cwd(), "scripts", "deploy-to-server.sh");
-      if (!existsSync(deployScript)) {
-        deployResult = { success: false, message: "Deploy script not found" };
-      } else {
-        console.log(`[ServerManager] Deploying to ${targetId} (${ipAddress})...`);
-        const output = execSync(
-          `bash ${deployScript} ${targetId} 2>&1`,
-          {
-            timeout: 300000,
-            encoding: "utf-8",
-            env: {
-              ...process.env,
-              DEPLOY_IP: ipAddress,
-              DEPLOY_USER: sshUser,
-              DEPLOY_SSH_PASS: sshPass,
-              DEPLOY_SU_PASS: suPass || sshPass,
-            },
-          }
-        );
-        console.log(`[ServerManager] Deploy output for ${targetId}:\n${output.substring(0, 500)}`);
-        deployResult = {
-          success: output.includes("Installation Complete") || output.includes("deployed successfully"),
-          message: output.substring(output.length - 300),
-        };
+    const deployScript = join(process.cwd(), "scripts", "deploy-to-server.sh");
+    if (!existsSync(deployScript)) {
+      deployResult = { success: false, message: "Deploy script not found", started: false };
+    } else {
+      try {
+        // Full a2z install (Node/Postgres/Redis/Nginx/Java/Asterisk/Tailscale)
+        // can take 15-25 min, so the deploy runs ASYNCHRONOUSLY: the request
+        // returns immediately, output streams to deploy-logs/<id>.log, and the
+        // UI polls GET /api/super/servers?deploy=<id> for progress. On finish
+        // the script writes the success marker and the poller updates status.
+        await mkdir(DEPLOY_LOGS_DIR, { recursive: true });
+        const logFile = join(DEPLOY_LOGS_DIR, `${targetId}.log`);
+        await writeFile(logFile, `[deploy] Starting a2z install for ${targetId} (${ipAddress}) at ${new Date().toISOString()}\n`);
 
-        locations[targetIndex].lastDeployed = new Date().toISOString();
-        locations[targetIndex].healthStatus = deployResult.success ? "online" : "offline";
+        const child = spawn("bash", [deployScript, targetId], {
+          detached: true,
+          stdio: ["ignore", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            DEPLOY_IP: ipAddress,
+            DEPLOY_USER: sshUser,
+            DEPLOY_SSH_PASS: sshPass,
+            DEPLOY_SU_PASS: suPass || sshPass,
+            DEPLOY_SMPP_PORT: String(port || 2775),
+          },
+        });
+
+        // Stream the script's stdout+stderr into the log file.
+        (async () => {
+          try {
+            const { createWriteStream } = await import("fs");
+            const out = createWriteStream(logFile, { flags: "a" });
+            child.stdout?.pipe(out);
+            child.stderr?.pipe(out);
+            child.on("error", (e) => out.write(`\n[deploy] spawn error: ${e.message}\n`));
+            child.on("close", (code) => {
+              out.write(`\n[deploy] exited with code ${code} at ${new Date().toISOString()}\n`);
+              out.end();
+              runningDeploys.delete(targetId);
+            });
+          } catch (e) {
+            console.error("[ServerManager] deploy log stream error:", e);
+          }
+        })();
+
+        runningDeploys.set(targetId, {
+          pid: child.pid!,
+          startTs: new Date().toISOString(),
+          locationId: targetId,
+          ipAddress,
+        });
+        child.unref();
+
+        console.log(`[ServerManager] Deploy ${targetId} started (pid ${child.pid}) — async, log at ${logFile}`);
+        deployResult = { success: true, message: "Deployment started", started: true };
+      } catch (err: any) {
+        console.error("[ServerManager] Failed to start deploy:", err);
+        deployResult = {
+          success: false,
+          message: err?.message?.substring(0, 500) || String(err).substring(0, 500),
+          started: false,
+        };
+        locations[targetIndex].healthStatus = "offline";
       }
-    } catch (err: any) {
-      deployResult = {
-        success: false,
-        message: err?.stderr?.substring(0, 500) || err?.message?.substring(0, 500) || String(err).substring(0, 500),
-      };
-      locations[targetIndex].healthStatus = "offline";
     }
   }
 

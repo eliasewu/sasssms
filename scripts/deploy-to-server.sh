@@ -1,14 +1,19 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════
-#  Net2APP Server Manager — Auto-Deploy Script
-#  Called by: POST /api/super/servers (deploy=true)
-#  Env vars:  DEPLOY_IP, DEPLOY_USER, DEPLOY_SSH_PASS, DEPLOY_SU_PASS
+#  Net2APP Server Manager — Full Auto-Deploy Script (a2z install)
+#  Called by: POST /api/super/servers (deploy=true) — runs asynchronously
+#  Env vars:  DEPLOY_IP, DEPLOY_USER, DEPLOY_SSH_PASS, DEPLOY_SU_PASS,
+#             DEPLOY_SMPP_PORT (default 2775)
 #  Arg 1:     LOCATION_ID (e.g. canada, france)
 #
-#  Strategy: lightweight provision (Node/PM2/PG/nginx) + rsync app
-#  files from local server + remote build + PM2 start.
-#  This replaces the old install.sh-from-/tmp approach which failed
-#  because package.json was not in the CWD.
+#  Installs the FULL platform on the target server, exactly like install.sh:
+#    Node.js 22, PostgreSQL, Redis, Nginx, Java 21, Asterisk 20 (Voice OTP),
+#    Tailscale + 3proxy (OTT), PM2 + systemd auto-start, health-check cron,
+#    nightly schema-heal cron, and the Net2APP app itself.
+#  App files are rsynced from THIS server (the super-admin box) to the target.
+#  SMPP port comes from DEPLOY_SMPP_PORT (default 2775).
+#
+#  Success marker written at the end: "✅ Net2APP deployed successfully!"
 # ═══════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -17,6 +22,7 @@ SSH_USER="${DEPLOY_USER:-ubuntu}"
 SSH_PASS="${DEPLOY_SSH_PASS:-}"
 SU_PASS="${DEPLOY_SU_PASS:-${SSH_PASS}}"
 LOCATION_ID="${1:-unknown}"
+SMPP_PORT="${DEPLOY_SMPP_PORT:-2775}"
 APP_DIR="/opt/net2app"
 
 if [ -z "$IP" ] || [ -z "$SSH_PASS" ]; then
@@ -94,19 +100,19 @@ sudo_stdin() {
   fi
 }
 
-# ── 2. Lightweight provisioning (Node.js, PM2, PostgreSQL, nginx, redis) ──
-log "Provisioning server (Node.js, PM2, PostgreSQL, nginx, redis)..."
+# ── 2. Full a2z provisioning (Node.js, PostgreSQL, Redis, Nginx, Java 21,
+#        Asterisk 20, Tailscale, 3proxy) ──
+log "Provisioning full platform stack (Node, PG, Redis, Nginx, Java 21, Asterisk 20, Tailscale)..."
 
-# Run provisioning as root via sudo — installs only what's needed (no Asterisk)
-# Pattern: sudo password first line (only when sudo needs one), then heredoc
-# script (for bash -s)
-{ sudo_stdin; cat << 'PROVISION_EOF'; } | ssh_cmd "sudo -S bash -s" 2>&1 | tail -20
+# Run provisioning as root via sudo. Pattern: sudo password first line (only
+# when sudo needs one), then heredoc script (for bash -s).
+{ sudo_stdin; cat << 'PROVISION_EOF'; } | ssh_cmd "sudo -S bash -s" 2>&1 | tail -25
 set -e
 export DEBIAN_FRONTEND=noninteractive
 
 # System packages
 apt-get update -qq
-apt-get install -y -qq curl wget git nginx redis-server build-essential 2>&1 | tail -3
+apt-get install -y -qq curl wget git nginx redis-server build-essential unzip certbot python3-certbot-nginx 2>&1 | tail -3
 
 # PostgreSQL
 if ! command -v psql &>/dev/null; then
@@ -119,6 +125,7 @@ sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='app_db'" | g
   sudo -u postgres psql -c "CREATE DATABASE app_db OWNER postgres;"
 sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';" 2>/dev/null || true
 systemctl enable --now postgresql
+systemctl enable --now redis-server 2>/dev/null || true
 
 # Node.js 22
 if ! command -v node &>/dev/null; then
@@ -130,6 +137,60 @@ fi
 if ! command -v pm2 &>/dev/null; then
   npm install -g pm2 2>&1 | tail -3
 fi
+
+# Java 21 (SMPP SMSC/ESME helpers)
+if ! command -v java &>/dev/null || ! java -version 2>&1 | grep -q "21"; then
+  apt-get install -y -qq openjdk-21-jdk openjdk-21-jre 2>&1 | tail -3 || echo "WARN: Java 21 install had issues (Voice OTP SMSC helper may be unavailable)"
+fi
+
+# Asterisk 20 (Voice OTP) — best-effort; skip if it takes too long on weak boxes
+if ! command -v asterisk &>/dev/null; then
+  echo "Installing Asterisk 20 (Voice OTP) — this can take 10-20 min..."
+  apt-get install -y -qq build-essential libssl-dev libncurses5-dev libnewt-dev libxml2-dev libsqlite3-dev uuid-dev libjansson-dev libedit-dev libgsm1-dev mpg123 sox unixodbc unixodbc-dev pkg-config liblua5.2-dev libspeex-dev libspeexdsp-dev libogg-dev libvorbis-dev libcurl4-openssl-dev 2>&1 | tail -3 || true
+  apt-get install -y -qq libsrtp2-dev 2>/dev/null || true
+  cd /usr/src
+  rm -rf asterisk-20*/
+  wget -q https://downloads.asterisk.org/pub/telephony/asterisk/asterisk-20-current.tar.gz -O asterisk-20.tar.gz || echo "WARN: Asterisk download failed — Voice OTP will be unavailable"
+  if [ -f asterisk-20.tar.gz ]; then
+    tar -xzf asterisk-20.tar.gz
+    ASTERISK_DIR=$(find /usr/src -maxdepth 1 -name "asterisk-20*" -type d | head -1)
+    cd "$ASTERISK_DIR"
+    [ -f contrib/scripts/install_prereq ] && contrib/scripts/install_prereq install 2>&1 | tail -3 || true
+    ./configure --with-jansson-bundled --with-pjproject-bundled 2>&1 | tail -3
+    make menuselect.makeopts 2>/dev/null || true
+    menuselect/menuselect --enable chan_sip --enable chan_pjsip --enable res_pjsip --enable codec_gsm --enable codec_ulaw --enable codec_alaw --enable app_dial --enable app_playback menuselect.makeopts 2>/dev/null || true
+    make -j$(nproc) 2>&1 | tail -5
+    make install 2>&1 | tail -3
+    make samples 2>&1 | tail -2 || true
+    make config 2>&1 | tail -2 || true
+    ldconfig
+    id asterisk &>/dev/null || useradd -r -d /var/lib/asterisk -s /sbin/nologin -c "Asterisk" asterisk || true
+    for D in /etc/asterisk /var/lib/asterisk /var/log/asterisk /var/spool/asterisk /usr/lib/asterisk /var/run/asterisk; do [ -d "$D" ] && chown -R asterisk:asterisk "$D" || true; done
+    cat > /etc/asterisk/sip.conf <<'SIP'
+[general]
+context=default; bindport=5060; bindaddr=0.0.0.0; language=en
+disallow=all; allow=ulaw; allow=alaw; allow=gsm
+nat=force_rport,comedia; qualify=yes
+SIP
+    cat > /etc/asterisk/manager.conf <<'AMI'
+[general]
+enabled=yes; port=5038; bindaddr=127.0.0.1; displayconnects=yes
+[admin]
+secret=Telco1988; deny=0.0.0.0/0.0.0.0; permit=127.0.0.1/255.255.255.0; read=all; write=all
+[net2app]
+secret=Telco1988; deny=0.0.0.0/0.0.0.0; permit=127.0.0.1/255.255.255.0; read=all; write=all
+AMI
+    chown -R asterisk:asterisk /etc/asterisk || true
+    systemctl daemon-reload || true
+    systemctl enable asterisk 2>/dev/null || true
+    systemctl start asterisk 2>/dev/null || true
+    echo "Asterisk 20 installed"
+  fi
+fi
+
+# Tailscale + 3proxy (OTT residential proxy)
+command -v tailscale &>/dev/null || curl -fsSL https://tailscale.com/install.sh | sh 2>&1 | tail -2 || true
+apt-get install -y -qq 3proxy 2>/dev/null || true
 
 echo "PROVISION_DONE"
 PROVISION_EOF
@@ -150,6 +211,21 @@ sudo_stdin | ssh_cmd "sudo -S mkdir -p $APP_DIR && sudo chown $SSH_USER:$SSH_USE
 rsync_cmd "$LOCAL_APP_DIR/" "$SSH_USER@$IP:$APP_DIR/" 2>&1 | tail -5
 log "Application files synced"
 
+# ── 3b. Sync the Android APK artifact so /api/tenant/android-app/download
+#        works on the new server. The APK is a separate build artifact that
+#        lives in /opt/net2app/android-app (this box's deployed copy).
+#        Fall back to the repo dir for local (dev) runs. ──
+APK_SRC="$LOCAL_APP_DIR/android-app"
+[ -d "/opt/net2app/android-app" ] && ls /opt/net2app/android-app/*.apk >/dev/null 2>&1 && APK_SRC="/opt/net2app/android-app"
+if [ -d "$APK_SRC" ] && ls "$APK_SRC/"*.apk >/dev/null 2>&1; then
+  log "Syncing Android APK from $APK_SRC..."
+  sudo_stdin | ssh_cmd "sudo -S mkdir -p $APP_DIR/android-app && sudo chown $SSH_USER:$SSH_USER $APP_DIR/android-app" 2>/dev/null
+  rsync_cmd "$APK_SRC/" "$SSH_USER@$IP:$APP_DIR/android-app/" 2>&1 | tail -2
+  log "Android APK synced"
+else
+  log "WARN: No APK found locally — APK download will 404 until it's uploaded"
+fi
+
 # ── 4. Setup .env, install deps, build, and start PM2 ──
 log "Installing dependencies and building on remote server..."
 
@@ -169,13 +245,15 @@ DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/app_db
 JWT_SECRET=$JWT_SECRET
 NODE_ENV=production
 PORT=5556
-SMPP_PORT=2775
+SMPP_PORT=$SMPP_PORT
 NEXT_PUBLIC_APP_URL=https://net2app.com
 ENVEOF
   chmod 600 "$APP_DIR/.env"
-  echo "Created new .env"
+  echo "Created new .env (SMPP_PORT=$SMPP_PORT)"
 else
-  echo "Preserved existing .env"
+  # Ensure SMPP_PORT is set even on updates
+  grep -q '^SMPP_PORT=' "$APP_DIR/.env" || echo "SMPP_PORT=$SMPP_PORT" >> "$APP_DIR/.env"
+  echo "Preserved existing .env (SMPP_PORT ensured)"
 fi
 
 # Install dependencies
@@ -186,6 +264,11 @@ npm run build 2>&1 | tail -5
 
 # Push database schema
 npx drizzle-kit push 2>&1 | tail -3 || echo "DB_WARNING: drizzle push had issues (may need manual run)"
+
+# Tenant schema column backfill (drizzle/0040) — idempotent
+if [ -f "$APP_DIR/drizzle/0040_add_suppliers_updated_at_columns.sql" ]; then
+  psql "postgresql://postgres:postgres@127.0.0.1:5432/app_db" -f "$APP_DIR/drizzle/0040_add_suppliers_updated_at_columns.sql" 2>&1 | tail -2 || echo "DB_WARNING: 0040 backfill skipped"
+fi
 
 # Start with PM2
 pm2 delete net2app 2>/dev/null || true
@@ -321,8 +404,9 @@ systemctl enable nginx
 # Open firewall ports
 iptables -I INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
 iptables -I INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
-iptables -I INPUT -p tcp --dport 2775 -j ACCEPT 2>/dev/null || true
+iptables -I INPUT -p tcp --dport $SMPP_PORT -j ACCEPT 2>/dev/null || true
 iptables -I INPUT -p tcp --dport 5556 -j ACCEPT 2>/dev/null || true
+iptables -I INPUT -p udp --dport 5060 -j ACCEPT 2>/dev/null || true
 
 echo "NGINX_DONE"
 NGINX_EOF
@@ -340,6 +424,69 @@ if [ -f /opt/net2app/scripts/net2app-watchdog.sh ]; then
 fi
 WATCHDOG_EOF
 
+# ── 6b. systemd auto-start service + health-check cron + schema-heal cron ──
+log "Installing systemd service + monitoring crons..."
+{ sudo_stdin; cat << 'SVC_EOF'; } | ssh_cmd "sudo -S bash -s" 2>&1 | tail -8
+set -e
+APP_DIR="/opt/net2app"
+
+# Dedicated systemd unit for PM2 resurrection on boot
+cat > /etc/systemd/system/net2app.service << 'SVCUNIT'
+[Unit]
+Description=Net2APP SMS Platform (Next.js)
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target postgresql.service redis-server.service
+
+[Service]
+Type=forking
+User=root
+Environment=PATH=/usr/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/sbin:/bin
+Environment=NODE_ENV=production
+Environment=PM2_HOME=/root/.pm2
+WorkingDirectory=/opt/net2app
+ExecStart=/usr/bin/pm2 resurrect
+ExecReload=/usr/bin/pm2 reload all
+ExecStop=/usr/bin/pm2 kill
+Restart=always
+RestartSec=10
+TimeoutStartSec=60
+TimeoutStopSec=30
+StartLimitIntervalSec=300
+StartLimitBurst=5
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
+SVCUNIT
+
+systemctl disable pm2-root.service 2>/dev/null || true
+systemctl daemon-reload
+systemctl enable net2app.service 2>/dev/null || true
+
+# health-check.sh ships with the app source (rsynced above)
+if [ -f "$APP_DIR/health-check.sh" ]; then
+  chmod +x "$APP_DIR/health-check.sh"
+  (crontab -l 2>/dev/null | grep -v health-check.sh; echo "* * * * * /opt/net2app/health-check.sh") | crontab - 2>/dev/null || true
+  echo "Health-check cron installed"
+fi
+
+# Nightly schema-heal cron
+if [ -f "$APP_DIR/scripts/heal-schemas-cron.sh" ]; then
+  chmod +x "$APP_DIR/scripts/heal-schemas-cron.sh"
+  (crontab -l 2>/dev/null | grep -v heal-schemas-cron.sh; echo "0 3 * * * /opt/net2app/scripts/heal-schemas-cron.sh") | crontab - 2>/dev/null || true
+  echo "Schema-heal cron installed"
+fi
+
+systemctl enable --now postgresql 2>/dev/null || true
+systemctl enable --now redis-server 2>/dev/null || true
+systemctl enable --now nginx 2>/dev/null || true
+if systemctl list-units --type=service 2>/dev/null | grep -q asterisk; then
+  systemctl enable --now asterisk 2>/dev/null || true
+fi
+
+echo "SVC_DONE"
+SVC_EOF
+
 # ── 7. Setup PM2 auto-start on boot ──
 log "Setting up PM2 auto-start..."
 { sudo_stdin; cat << 'STARTUP_EOF'; } | ssh_cmd "sudo -S bash -s" 2>&1 | tail -5
@@ -353,7 +500,7 @@ STARTUP_EOF
 
 # ── 8. Verify deployment ──
 log "Verifying deployment..."
-sleep 5
+sleep 8
 
 HEALTHY=true
 
@@ -366,8 +513,21 @@ else
   HEALTHY=false
 fi
 
-# Check PM2 (PM2 runs as root, so check with PM2_HOME=/root/.pm2)
-PM2_STATUS=$(ssh_cmd "PM2_HOME=/root/.pm2 pm2 jlist 2>/dev/null | grep -o '\"status\":\"online\"' | head -1" 2>/dev/null || echo "")
+# Check SMPP port
+SMPP_STATUS=$(ssh_cmd "ss -tlnp 2>/dev/null | grep -c ':$SMPP_PORT '" 2>/dev/null || echo "0")
+if [ "$SMPP_STATUS" != "0" ]; then
+  log "SMPP port $SMPP_PORT: listening ✅"
+else
+  log "WARNING: SMPP port $SMPP_PORT not listening"
+  HEALTHY=false
+fi
+
+# Check PM2 — runs as root on some servers, as ubuntu on others, so probe
+# both (root's PM2 requires sudo since ssh_cmd runs as the SSH user).
+PM2_STATUS=$(ssh_cmd "sudo PM2_HOME=/root/.pm2 pm2 jlist 2>/dev/null | grep -o '\"status\":\"online\"' | head -1" 2>/dev/null || echo "")
+if [ -z "$PM2_STATUS" ]; then
+  PM2_STATUS=$(ssh_cmd "PM2_HOME=/home/ubuntu/.pm2 pm2 jlist 2>/dev/null | grep -o '\"status\":\"online\"' | head -1" 2>/dev/null || echo "")
+fi
 if [ -n "$PM2_STATUS" ]; then
   log "PM2: online ✅"
 else
@@ -400,6 +560,7 @@ if [ "$HEALTHY" = true ]; then
   echo "  ✅ Net2APP deployed successfully!"
   echo "  🌐 https://$IP"
   echo "  📱 App: $IP:5556"
+  echo "  📡 SMPP: $IP:$SMPP_PORT"
   echo "  📍 Location: $LOCATION_ID"
 else
   echo "  ⚠️  Deployment completed with warnings"
