@@ -29,7 +29,10 @@ RUN npm ci
 # ── Stage 2: build ────────────────────────────────────────────────────
 FROM node:22-slim AS build
 WORKDIR /app
-ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    # Enables `output: standalone` in next.config.ts for THIS build only —
+    # the PM2 fleet builds without it so `next start` keeps working.
+    NEXT_OUTPUT_STANDALONE=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build

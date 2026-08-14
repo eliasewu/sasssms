@@ -28,9 +28,11 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   typescript: { ignoreBuildErrors: true },
-  // Standalone output — required for the Kubernetes container build (k8s/Dockerfile).
-  // `next start` on the PM2 fleet is unaffected; standalone adds .next/standalone.
-  output: "standalone",
+  // Standalone output is ONLY for the Kubernetes container build (k8s/Dockerfile
+  // sets NEXT_OUTPUT_STANDALONE=1 during its build stage). The PM2 fleet runs
+  // `next start`, which Next.js explicitly does NOT support with output:
+  // standalone — enabling it here broke page rendering fleet-wide.
+  output: process.env.NEXT_OUTPUT_STANDALONE === "1" ? "standalone" : undefined,
   serverExternalPackages: ["pg", "drizzle-orm", "bcryptjs", "smpp"],
   experimental: {
     serverActions: { bodySizeLimit: "10mb" },
