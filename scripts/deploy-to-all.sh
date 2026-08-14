@@ -63,10 +63,12 @@ rsync_do() {
   local ip=$1
   rsync -avz --delete \
     --exclude node_modules --exclude .next --exclude .git --exclude .server-creds \
+    --exclude public/uploads \
     -e 'ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes' \
     "$APP_DIR/" "$SSH_USER@$ip:/opt/net2app/" 2>/dev/null || \
   SSHPASS="$SSH_PASS" sshpass -e rsync -avz --delete \
     --exclude node_modules --exclude .next --exclude .git --exclude .server-creds \
+    --exclude public/uploads \
     -e 'ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10' \
     "$APP_DIR/" "$SSH_USER@$ip:/opt/net2app/" 2>/dev/null
 }

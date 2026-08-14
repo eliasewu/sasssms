@@ -47,11 +47,13 @@ rsync_cmd() {
   if [ "$USE_SSHPASS" = true ]; then
     sshpass -e rsync -avz --delete \
       --exclude node_modules --exclude .next --exclude .git --exclude .server-creds --exclude .env \
+      --exclude public/uploads \
       -e 'ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15' \
       "$@"
   else
     rsync -avz --delete \
       --exclude node_modules --exclude .next --exclude .git --exclude .server-creds --exclude .env \
+      --exclude public/uploads \
       -e 'ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o BatchMode=yes' \
       "$@"
   fi
