@@ -151,15 +151,28 @@ async function seedDefaultsToTenants(targetTenants: { id: number; schemaName: st
             );
             configId = newConfig.rows[0].id;
           }
+          // Dedup-safe upsert: older pushes had no unique index on
+          // (config_id, language, digit), so repeated seeds could leave
+          // duplicate rows with STALE file_urls behind (the SELECT below
+          // returned many, and only the first got updated). Fix it by
+          // deleting ALL rows for this key, then inserting the canonical
+          // default — idempotent and always converges to a single row.
           const existingAudio = await client.query(
             `SELECT id, file_url FROM "${tenant.schemaName}".voice_otp_audio WHERE config_id = $1 AND language = $2 AND digit = $3`,
             [configId, def.language, def.digit]
           );
           if (existingAudio.rows.length > 0) {
-            if (existingAudio.rows[0].file_url !== def.fileUrl) {
+            const needsUpdate = existingAudio.rows.some((r) => r.file_url !== def.fileUrl)
+              || existingAudio.rows.length !== 1;
+            if (needsUpdate) {
               await client.query(
-                `UPDATE "${tenant.schemaName}".voice_otp_audio SET file_name = $1, file_url = $2, audio_type = $3 WHERE id = $4`,
-                [def.fileName, def.fileUrl, def.audioType, existingAudio.rows[0].id]
+                `DELETE FROM "${tenant.schemaName}".voice_otp_audio WHERE config_id = $1 AND language = $2 AND digit = $3`,
+                [configId, def.language, def.digit]
+              );
+              await client.query(
+                `INSERT INTO "${tenant.schemaName}".voice_otp_audio (config_id, language, digit, file_name, file_url, audio_type)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [configId, def.language, def.digit, def.fileName, def.fileUrl, def.audioType]
               );
               tenantGotNew = true;
             }

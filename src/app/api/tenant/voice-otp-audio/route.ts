@@ -72,18 +72,13 @@ export async function POST(request: Request) {
     audioType = body.audioType || "wav";
   }
 
-  // Check if already exists
-  const existing = await tenantQuery(tenant.schemaName,
-    "SELECT id FROM voice_otp_audio WHERE config_id = $1 AND language = $2 AND digit = $3",
+  // Dedup-safe upsert: older versions had no unique index on
+  // (config_id, language, digit), so re-uploads could leave duplicate rows
+  // with stale file_urls. Delete ALL rows for this key, then insert the new
+  // one — idempotent and always converges to a single row.
+  await tenantQuery(tenant.schemaName,
+    "DELETE FROM voice_otp_audio WHERE config_id = $1 AND language = $2 AND digit = $3",
     [configId, language, digit]);
-  
-  if (existing.rows.length > 0) {
-    await tenantQuery(tenant.schemaName,
-      "UPDATE voice_otp_audio SET file_name = $1, file_url = $2, audio_type = $3 WHERE id = $4",
-      [fileName, fileUrl, audioType, existing.rows[0].id]);
-    
-    return NextResponse.json({ success: true, action: "updated", fileUrl, fileName });
-  }
 
   await tenantQuery(tenant.schemaName,
     "INSERT INTO voice_otp_audio (config_id, language, digit, file_name, file_url, audio_type) VALUES ($1,$2,$3,$4,$5,$6)",
