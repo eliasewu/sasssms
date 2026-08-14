@@ -10,6 +10,58 @@ const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "voice-defaults
 const ALLOWED_EXTENSIONS = ["mp3", "wav", "ogg"];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
+// The 11 core OTP slots every language needs: greeting + digits 0-9.
+const BULK_DIGITS = ["greeting", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
+/**
+ * Map an uploaded file's name to its OTP slot (greeting / digit / letter).
+ * Accepts: "greeting.wav", "0.mp3", "english_1.wav", "Greeting - 3.ogg",
+ * "digit_5.mp3", "a.wav". Returns null for unrecognized names.
+ */
+function digitFromFileName(name: string): string | null {
+  const base = name
+    .replace(/\.[a-z0-9]+$/i, "")
+    .toLowerCase()
+    .replace(/[_\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (base === "greeting" || base.endsWith(" greeting")) return "greeting";
+  const slots = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+    ..."abcdefghijklmnopqrstuvwxyz".split("")];
+  for (const d of slots) {
+    if (base === d || base.endsWith(" " + d)) return d;
+  }
+  return null;
+}
+
+// Upsert one default-audio row for (language, digit). Returns the action and id.
+async function upsertDefaultAudio(
+  language: string,
+  digit: string,
+  fileName: string,
+  fileUrl: string | null,
+  audioType: string
+): Promise<{ action: "updated" | "inserted"; id: number }> {
+  const allRows = await db.select()
+    .from(voiceOtpDefaultAudio)
+    .where(
+      and(
+        eq(voiceOtpDefaultAudio.language, language),
+        eq(voiceOtpDefaultAudio.digit, digit)
+      )
+    );
+  if (allRows.length > 0) {
+    await db.update(voiceOtpDefaultAudio)
+      .set({ fileName, fileUrl, audioType })
+      .where(eq(voiceOtpDefaultAudio.id, allRows[0].id));
+    return { action: "updated", id: allRows[0].id };
+  }
+  const [result] = await db.insert(voiceOtpDefaultAudio).values({
+    language, digit, fileName, fileUrl, audioType,
+  }).returning();
+  return { action: "inserted", id: result.id };
+}
+
 // GET — list all default audio files
 export async function GET(request: Request) {
   const admin = getSuperAdminFromRequest(request);
@@ -19,89 +71,110 @@ export async function GET(request: Request) {
   return NextResponse.json({ audio: result });
 }
 
-// POST — upload a default audio file (multipart) or create a record (JSON)
+// POST — upload default audio file(s). Supports:
+//  1. Single file (multipart):  language + digit + file
+//  2. Bulk (multipart):         language + multiple `file` parts, each file's
+//     digit derived from its filename (greeting.wav, 0.wav ... 9.wav)
+//  3. Legacy JSON record:       { language, digit, fileName, fileUrl, audioType }
 export async function POST(request: Request) {
   const admin = getSuperAdminFromRequest(request);
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const contentType = request.headers.get("content-type") || "";
 
-  let language: string;
-  let digit: string;
-  let fileName: string;
-  let fileUrl: string | null = null;
-  let audioType = "wav";
-
   if (contentType.startsWith("multipart/form-data")) {
     const formData = await request.formData();
-    language = formData.get("language") as string;
-    digit = formData.get("digit") as string;
-    const file = formData.get("file") as File | null;
-
-    if (!language || !digit) {
-      return NextResponse.json({ error: "language and digit are required" }, { status: 400 });
+    const language = ((formData.get("language") as string) || "").trim();
+    if (!language) {
+      return NextResponse.json({ error: "language is required" }, { status: 400 });
     }
-    if (!file || file.size === 0) {
+
+    const files = formData.getAll("file").filter((f): f is File => f instanceof File && f.size > 0);
+    if (files.length === 0) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
-    if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: `File too large. Max ${MAX_FILE_SIZE / 1024 / 1024}MB.` }, { status: 413 });
-    }
-    const ext = file.name.split(".").pop()?.toLowerCase() || "";
-    if (!ALLOWED_EXTENSIONS.includes(ext)) {
-      return NextResponse.json({ error: `Invalid file type. Allowed: ${ALLOWED_EXTENSIONS.join(", ")}` }, { status: 400 });
+
+    const singleDigit = (formData.get("digit") as string | null)?.trim() || null;
+    const results: { ok: boolean; digit: string; fileName?: string; fileUrl?: string; action?: string; id?: number; error?: string }[] = [];
+    const seen = new Set<string>();
+
+    for (const file of files) {
+      // Legacy single upload carries the digit in the form; bulk derives it
+      // from each file's name.
+      const digit = files.length === 1 && singleDigit ? singleDigit : digitFromFileName(file.name);
+      if (!digit || seen.has(digit)) continue;
+      seen.add(digit);
+
+      const ext = file.name.split(".").pop()?.toLowerCase() || "";
+      if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        results.push({ ok: false, digit, error: `Invalid file type. Allowed: ${ALLOWED_EXTENSIONS.join(", ")}` });
+        continue;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        results.push({ ok: false, digit, error: `File too large. Max ${MAX_FILE_SIZE / 1024 / 1024}MB.` });
+        continue;
+      }
+
+      const audioType = ext === "mp3" ? "mp3" : "wav";
+      const randSuffix = Math.random().toString(36).slice(2, 6);
+      const fileName = `default_${language}_${digit}_${Date.now()}_${randSuffix}.${ext}`;
+
+      await mkdir(UPLOAD_DIR, { recursive: true });
+      await writeFile(path.join(UPLOAD_DIR, fileName), Buffer.from(await file.arrayBuffer()));
+      const fileUrl = `/uploads/voice-defaults/${fileName}`;
+      const { action, id } = await upsertDefaultAudio(language, digit, fileName, fileUrl, audioType);
+      results.push({ ok: true, digit, fileName, fileUrl, action, id });
     }
 
-    audioType = ext === "mp3" ? "mp3" : "wav";
-    const randSuffix = Math.random().toString(36).slice(2, 6);
-    fileName = `default_${language}_${digit}_${Date.now()}_${randSuffix}.${ext}`;
+    // Auto-push to all active tenants once after any successful writes
+    const uploaded = results.filter(r => r.ok);
+    if (uploaded.length > 0) {
+      const activeTenants = await db.select({ id: tenants.id, schemaName: tenants.schemaName, companyName: tenants.companyName })
+        .from(tenants).where(eq(tenants.isActive, true));
+      seedDefaultsToTenants(activeTenants).catch(e => console.error("Auto-seed after upload failed:", e));
+    }
 
-    await mkdir(UPLOAD_DIR, { recursive: true });
-    const buffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(path.join(UPLOAD_DIR, fileName), buffer);
-    fileUrl = `/uploads/voice-defaults/${fileName}`;
-  } else {
-    const body = await request.json();
-    language = body.language;
-    digit = body.digit;
-    fileName = body.fileName || `default_${language}_${digit}.wav`;
-    fileUrl = body.fileUrl || null;
-    audioType = body.audioType || "wav";
+    // Single-file upload → keep the legacy response shape
+    if (files.length === 1 && uploaded.length === 1) {
+      const r = uploaded[0];
+      return NextResponse.json({ success: true, action: r.action, fileUrl: r.fileUrl, fileName: r.fileName, id: r.id });
+    }
+
+    const errors = results.filter(r => !r.ok).map(r => `"${r.digit}": ${r.error}`);
+    const coreUploaded = uploaded.filter(r => BULK_DIGITS.includes(r.digit)).length;
+    const extra = uploaded.length - coreUploaded;
+    const missing = BULK_DIGITS.filter(d => !seen.has(d));
+
+    return NextResponse.json({
+      success: true,
+      action: "bulk",
+      message: `Bulk upload complete: ${uploaded.length} file(s) saved for ${language}`,
+      bulk: {
+        total: BULK_DIGITS.length,
+        uploaded: coreUploaded,
+        extra,
+        missing,
+        errors,
+      },
+    });
   }
 
-  // Upsert: check if record for language+digit already exists
-  const allRows = await db.select()
-    .from(voiceOtpDefaultAudio)
-    .where(
-      and(
-        eq(voiceOtpDefaultAudio.language, language),
-        eq(voiceOtpDefaultAudio.digit, digit)
-      )
-    );
+  // ── JSON body (legacy/backwards compat) ──
+  const body = await request.json();
+  const language = body.language;
+  const digit = body.digit;
+  const fileName = body.fileName || `default_${language}_${digit}.wav`;
+  const fileUrl = body.fileUrl || null;
+  const audioType = body.audioType || "wav";
 
-  if (allRows.length > 0) {
-    await db.update(voiceOtpDefaultAudio)
-      .set({ fileName, fileUrl, audioType })
-      .where(eq(voiceOtpDefaultAudio.id, allRows[0].id));
+  const { action, id } = await upsertDefaultAudio(language, digit, fileName, fileUrl, audioType);
 
-    // Auto-push updated audio to all active tenants (fire-and-forget)
-    const activeTenants = await db.select({ id: tenants.id, schemaName: tenants.schemaName, companyName: tenants.companyName })
-      .from(tenants).where(eq(tenants.isActive, true));
-    seedDefaultsToTenants(activeTenants).catch(e => console.error("Auto-seed after upload failed:", e));
-
-    return NextResponse.json({ success: true, action: "updated", fileUrl, fileName, id: allRows[0].id });
-  }
-
-  const [result] = await db.insert(voiceOtpDefaultAudio).values({
-    language, digit, fileName, fileUrl, audioType,
-  }).returning();
-
-  // Auto-push new audio to all active tenants (fire-and-forget)
+  // Auto-push to all active tenants (fire-and-forget)
   const activeTenants = await db.select({ id: tenants.id, schemaName: tenants.schemaName, companyName: tenants.companyName })
     .from(tenants).where(eq(tenants.isActive, true));
   seedDefaultsToTenants(activeTenants).catch(e => console.error("Auto-seed after upload failed:", e));
 
-  return NextResponse.json({ success: true, action: "inserted", fileUrl, fileName, id: result.id }, { status: 201 });
+  return NextResponse.json({ success: true, action, fileUrl, fileName, id }, { status: action === "inserted" ? 201 : 200 });
 }
 
 // DELETE — delete a default audio file

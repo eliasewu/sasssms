@@ -58,6 +58,10 @@ export default function SuperVoiceOtpDefaultsPage() {
   const [httpResult, setHttpResult] = useState<{message: string} | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingUploadRef = useRef<{ lang: string; digit: string } | null>(null);
+  // ── Bulk upload state (upload all 11 files for a language at once) ──
+  const bulkInputRef = useRef<HTMLInputElement>(null);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ total: number; uploaded: number; extra: number; missing: string[]; errors: string[] } | null>(null);
 
   const flash = (text: string, err = false) => {
     if (err) { setMsgError(text); setTimeout(() => setMsgError(""), 4000); }
@@ -256,6 +260,34 @@ export default function SuperVoiceOtpDefaultsPage() {
 
   const selectAllTenants = () => {
     setSelectedTenantIds(tenants.map(t => t.id));
+  };
+
+  // Bulk upload: one request with all selected files; the API maps each
+  // filename to its slot (greeting.wav, 0.wav ... 9.wav).
+  const handleBulkUpload = async () => {
+    const input = bulkInputRef.current;
+    if (!input || !input.files || input.files.length === 0) return;
+    setBulkUploading(true);
+    setBulkResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("language", selectedLang);
+      Array.from(input.files).forEach(f => formData.append("file", f, f.name));
+      const res = await fetch("/api/super/voice-otp-defaults", { method: "POST", body: formData });
+      const data = await res.json();
+      if (res.ok) {
+        if (data.bulk) setBulkResult(data.bulk);
+        flash(data.message || "Bulk upload complete");
+        load();
+      } else {
+        flash(`${data.error || "Bulk upload failed"}`, true);
+      }
+    } catch {
+      flash("Bulk upload error", true);
+    } finally {
+      setBulkUploading(false);
+      input.value = "";
+    }
   };
 
   return (
@@ -640,6 +672,14 @@ export default function SuperVoiceOtpDefaultsPage() {
       )}
 
       <input type="file" ref={fileInputRef} accept=".mp3,.wav,.ogg" className="hidden" />
+      <input
+        ref={bulkInputRef}
+        type="file"
+        accept=".mp3,.wav,.ogg"
+        multiple
+        className="hidden"
+        onChange={handleBulkUpload}
+      />
 
       {uploading && (
         <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
@@ -681,7 +721,42 @@ export default function SuperVoiceOtpDefaultsPage() {
           <span className="text-xs text-slate-400">
             {audioFiles.filter(f => f.language === selectedLang).length} files uploaded
           </span>
+          <button
+            onClick={() => bulkInputRef.current?.click()}
+            disabled={bulkUploading}
+            className="ml-auto bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white px-4 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5"
+            title="Select greeting + digits 0-9 files for this language (name them greeting.wav, 0.wav ... 9.wav)"
+          >
+            {bulkUploading ? (
+              <><span className="animate-spin">⏳</span> Uploading {selectedLang}...</>
+            ) : (
+              <><span>📦</span> Bulk Upload (11 files)</>
+            )}
+          </button>
         </div>
+
+        <p className="text-xs text-slate-400 mb-4 -mt-2">
+          📦 Name the files <code className="bg-slate-100 px-1 rounded">greeting.wav</code>, <code className="bg-slate-100 px-1 rounded">0.wav</code> … <code className="bg-slate-100 px-1 rounded">9.wav</code>
+          (any of <strong>.mp3 / .wav / .ogg</strong>), select them all at once, and they upload for <strong>{selectedLang}</strong> —
+          one click, auto-pushed to all tenants.
+        </p>
+
+        {bulkResult && (
+          <div className={`mb-4 p-4 rounded-xl border ${bulkResult.missing.length === 0 && bulkResult.errors.length === 0 ? "bg-green-50 border-green-200" : "bg-purple-50 border-purple-200"}`}>
+            <p className="font-semibold text-purple-800">
+              {bulkResult.uploaded}/{bulkResult.total} core files uploaded for {selectedLang}
+              {bulkResult.extra > 0 && <span className="text-xs font-normal text-purple-500"> (+{bulkResult.extra} letter/extra file{bulkResult.extra > 1 ? "s" : ""})</span>}
+            </p>
+            {bulkResult.missing.length > 0 && (
+              <p className="text-xs text-amber-600 mt-1">
+                ⚠️ Not uploaded (name files: greeting.wav, 0.wav … 9.wav): {bulkResult.missing.join(", ")}
+              </p>
+            )}
+            {bulkResult.errors.length > 0 && (
+              <p className="text-xs text-red-600 mt-1">Errors: {bulkResult.errors.join("; ")}</p>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
           {/* Greeting tile */}
@@ -756,7 +831,8 @@ export default function SuperVoiceOtpDefaultsPage() {
       </div>
 
       <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 text-sm text-indigo-700">
-        <strong>💡 How it works:</strong> Upload default audio here. Click <strong>"Push to Tenants"</strong> to send to all or specific tenants.
+        <strong>💡 How it works:</strong> Upload default audio per tile, or use <strong>📦 Bulk Upload</strong> to drop in all 11 files
+        (greeting + 0-9) for a language at once. Click <strong>"Push to Tenants"</strong> to send to all or specific tenants.
         The audio files appear in each tenant&apos;s Voice OTP → Audio tab. Tenants can still upload their own custom audio.
         Auto-creates language configs if missing.
       </div>
