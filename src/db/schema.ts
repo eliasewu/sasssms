@@ -501,7 +501,8 @@ export const voiceOtpSipConfig = pgTable("voice_otp_sip_config", { id: serial("i
 export const voiceOtpDefaultAudio = pgTable("voice_otp_default_audio", {
   id: serial("id").primaryKey(),
   language: varchar("language", { length: 50 }).notNull(),
-  digit: varchar("digit", { length: 5 }).notNull(),
+  // NOTE: 20 not 5 — the builtin default slot is literally "greeting" (8 chars)
+  digit: varchar("digit", { length: 20 }).notNull(),
   fileName: varchar("file_name", { length: 255 }),
   fileUrl: text("file_url"),
   audioType: varchar("audio_type", { length: 10 }).default("wav"),

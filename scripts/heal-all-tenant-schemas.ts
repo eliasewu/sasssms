@@ -59,6 +59,43 @@ async function healPublicTenantsTable(client: any): Promise<{ added: number; fai
   return { added, failed };
 }
 
+async function healIdDefaults(client: any, schema: string): Promise<number> {
+  // Some old schemas were created with voice_otp_config / voice_otp_audio /
+  // voice_otp_sip_config tables whose `id` column has NO default (no
+  // sequence). Any INSERT that doesn't name id fails with "null value in
+  // column id violates not-null constraint" (e.g. the super-admin default
+  // audio push creating a new config). Create a per-table sequence and wire it.
+  let fixed = 0;
+  const tables = ["voice_otp_config", "voice_otp_audio", "voice_otp_sip_config"];
+  for (const table of tables) {
+    try {
+      const { rows } = await client.query(
+        `SELECT 1 FROM information_schema.columns
+         WHERE table_schema = $1 AND table_name = $2
+           AND column_name = 'id' AND is_identity = 'NO' AND column_default IS NULL`,
+        [schema, table]
+      );
+      if (rows.length === 0) continue;
+      const seqName = `${schema}_${table}_id_seq`;
+      await client.query(`DROP SEQUENCE IF EXISTS "${schema}"."${seqName}" CASCADE`);
+      await client.query(
+        `CREATE SEQUENCE "${schema}"."${seqName}" OWNED BY "${schema}"."${table}".id`
+      );
+      await client.query(
+        `ALTER TABLE "${schema}"."${table}" ALTER COLUMN id SET DEFAULT nextval('${schema}.${seqName}'::regclass)`
+      );
+      await client.query(
+        `SELECT setval('${schema}.${seqName}'::regclass, COALESCE((SELECT MAX(id) FROM "${schema}"."${table}"), 1), true)`
+      );
+      console.log(`[HEAL] ${schema}.${table}.id default restored`);
+      fixed++;
+    } catch (e) {
+      console.error(`[HEAL] ${schema}.${table}.id FAILED:`, (e as Error).message);
+    }
+  }
+  return fixed;
+}
+
 async function healVoiceOtpAudioIndex(client: any, schema: string): Promise<number> {
   // The upload route upserts with ON CONFLICT (config_id, language, digit) which
   // REQUIRES the unique index. Old schemas lack it, and pre-existing duplicate
@@ -147,6 +184,35 @@ async function main() {
         if (table === "voice_otp_audio") {
           indexFailures += await healVoiceOtpAudioIndex(client, schema);
         }
+      }
+      // Repair any voice_otp_* tables whose id column lost its sequence default
+      try {
+        await healIdDefaults(client, schema);
+      } catch (e) {
+        console.error(`[HEAL] ${schema} id-default repair FAILED:`, (e as Error).message);
+      }
+      // Public defaults table must have a working id sequence + wide digit column
+      try {
+        const { rows: pubDef } = await client.query(
+          `SELECT column_default, character_maximum_length FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'voice_otp_default_audio' AND column_name = 'digit'`
+        );
+        const def = pubDef[0] as { column_default: string | null; character_maximum_length: number | null } | undefined;
+        if (def && (def.character_maximum_length ?? 0) < 20) {
+          await client.query(`ALTER TABLE public.voice_otp_default_audio ALTER COLUMN digit TYPE varchar(20)`);
+          console.log(`[HEAL] public.voice_otp_default_audio.digit widened to varchar(20)`);
+        }
+        if (def && !def.column_default) {
+          await client.query(
+            `DROP SEQUENCE IF EXISTS voice_otp_default_audio_id_seq CASCADE;
+             CREATE SEQUENCE voice_otp_default_audio_id_seq OWNED BY voice_otp_default_audio.id;
+             ALTER TABLE voice_otp_default_audio ALTER COLUMN id SET DEFAULT nextval('voice_otp_default_audio_id_seq'::regclass);
+             SELECT setval('voice_otp_default_audio_id_seq'::regclass, COALESCE((SELECT MAX(id) FROM voice_otp_default_audio), 1), true)`
+          );
+          console.log(`[HEAL] public.voice_otp_default_audio.id default restored`);
+        }
+      } catch (e) {
+        console.error(`[HEAL] public.voice_otp_default_audio heal FAILED:`, (e as Error).message);
       }
     }
 
