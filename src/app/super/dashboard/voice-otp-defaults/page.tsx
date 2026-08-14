@@ -48,6 +48,13 @@ export default function SuperVoiceOtpDefaultsPage() {
   const [configSettings, setConfigSettings] = useState({ playCount: 3, retryCount: 1, bilingual: false, languageMode: "local" });
   const [configPushing, setConfigPushing] = useState(false);
   const [configResult, setConfigResult] = useState<{message: string} | null>(null);
+  // ── HTTP API config push state ──
+  const [showHttpDialog, setShowHttpDialog] = useState(false);
+  const [httpPushMode, setHttpPushMode] = useState<"all" | "selected">("all");
+  const [httpSelectedIds, setHttpSelectedIds] = useState<number[]>([]);
+  const [httpSettings, setHttpSettings] = useState({ enableHttpApi: true, maxTps: 0, webhookUrl: "", httpApiKey: "" });
+  const [httpPushing, setHttpPushing] = useState(false);
+  const [httpResult, setHttpResult] = useState<{message: string} | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingUploadRef = useRef<{ lang: string; digit: string } | null>(null);
 
@@ -203,6 +210,49 @@ export default function SuperVoiceOtpDefaultsPage() {
     }
   };
 
+  const toggleHttpTenant = (id: number) => {
+    setHttpSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]
+    );
+  };
+
+  const handleHttpPush = async () => {
+    if (httpPushMode === "selected" && httpSelectedIds.length === 0) {
+      flash("Select at least one tenant.", true);
+      return;
+    }
+    setHttpPushing(true);
+    setHttpResult(null);
+    try {
+      // Only send fields the super admin actually filled in
+      const settings: Record<string, unknown> = { enableHttpApi: httpSettings.enableHttpApi };
+      if (httpSettings.maxTps > 0) settings.maxTps = httpSettings.maxTps;
+      if (httpSettings.webhookUrl.trim()) settings.webhookUrl = httpSettings.webhookUrl.trim();
+      if (httpSettings.httpApiKey.trim()) settings.httpApiKey = httpSettings.httpApiKey.trim();
+
+      const res = await fetch("/api/super/http-api-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: httpPushMode === "selected" ? "seed-selected" : "seed-all",
+          tenantIds: httpPushMode === "selected" ? httpSelectedIds : [],
+          settings,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setHttpResult(data);
+        flash(data.message);
+      } else {
+        flash(`${data.error || "HTTP config push failed"}`, true);
+      }
+    } catch {
+      flash("HTTP config push error", true);
+    } finally {
+      setHttpPushing(false);
+    }
+  };
+
   const selectAllTenants = () => {
     setSelectedTenantIds(tenants.map(t => t.id));
   };
@@ -217,7 +267,13 @@ export default function SuperVoiceOtpDefaultsPage() {
             Tenants can override from their own Voice OTP panel.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setShowHttpDialog(true)}
+            className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition flex items-center gap-2"
+          >
+            <><span>🌐</span> Push HTTP API</>
+          </button>
           <button
             onClick={() => setShowConfigDialog(true)}
             className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition flex items-center gap-2"
@@ -448,6 +504,134 @@ export default function SuperVoiceOtpDefaultsPage() {
                   )}
                 </button>
                 <button onClick={() => { setShowConfigDialog(false); setConfigResult(null); }} className="px-6 py-2.5 border rounded-lg text-sm hover:bg-slate-50 transition">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HTTP API Config Push Dialog */}
+      {showHttpDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-lg">🌐 Push HTTP API Settings to Tenants</h3>
+                <button onClick={() => { setShowHttpDialog(false); setHttpResult(null); }} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+              </div>
+
+              <p className="text-sm text-slate-500 mb-4">
+                Push HTTP API settings (enable/disable, rate limit, DLR webhook, API key) to all or selected tenants.
+                Applies to every active client in each tenant. Blank fields are left untouched — tenant overrides are preserved.
+              </p>
+
+              {/* Mode selector */}
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() => setHttpPushMode("all")}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition ${
+                    httpPushMode === "all" ? "border-sky-500 bg-sky-50 text-sky-700" : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  🌍 All Tenants ({tenants.length})
+                </button>
+                <button
+                  onClick={() => setHttpPushMode("selected")}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition ${
+                    httpPushMode === "selected" ? "border-sky-500 bg-sky-50 text-sky-700" : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  🎯 Select Tenants {httpSelectedIds.length > 0 ? `(${httpSelectedIds.length})` : ""}
+                </button>
+              </div>
+
+              {/* Settings */}
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <label className="flex items-end gap-2 pb-2">
+                  <input
+                    type="checkbox"
+                    checked={httpSettings.enableHttpApi}
+                    onChange={e => setHttpSettings({ ...httpSettings, enableHttpApi: e.target.checked })}
+                    className="accent-sky-600 w-4 h-4"
+                  />
+                  <span className="text-xs text-slate-500 font-medium">Enable HTTP API (on all clients)</span>
+                </label>
+                <label className="block">
+                  <span className="text-xs text-slate-500 font-medium">Max TPS (rate limit / sec)</span>
+                  <input
+                    type="number" min={0}
+                    value={httpSettings.maxTps || ""}
+                    onChange={e => setHttpSettings({ ...httpSettings, maxTps: parseInt(e.target.value) || 0 })}
+                    placeholder="e.g. 100 (blank = keep)"
+                    className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                  />
+                </label>
+                <label className="block col-span-2">
+                  <span className="text-xs text-slate-500 font-medium">DLR Webhook URL (endpoint)</span>
+                  <input
+                    type="text"
+                    value={httpSettings.webhookUrl}
+                    onChange={e => setHttpSettings({ ...httpSettings, webhookUrl: e.target.value })}
+                    placeholder="https://client.com/dlr-callback (blank = keep)"
+                    className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                  />
+                </label>
+                <label className="block col-span-2">
+                  <span className="text-xs text-slate-500 font-medium">HTTP API Key (credential)</span>
+                  <input
+                    type="text"
+                    value={httpSettings.httpApiKey}
+                    onChange={e => setHttpSettings({ ...httpSettings, httpApiKey: e.target.value })}
+                    placeholder="Leave blank to keep each client's own key"
+                    className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                  />
+                </label>
+              </div>
+
+              {/* Tenant List */}
+              {httpPushMode === "selected" && (
+                <div className="border rounded-xl max-h-[260px] overflow-y-auto mb-4">
+                  <div className="sticky top-0 bg-slate-50 border-b px-3 py-2 flex items-center justify-between">
+                    <span className="text-xs text-slate-500 font-medium">{httpSelectedIds.length} selected</span>
+                    <button onClick={() => setHttpSelectedIds(tenants.map(t => t.id))} className="text-xs text-sky-600 hover:text-sky-800 font-medium">Select All</button>
+                  </div>
+                  {tenants.map(t => (
+                    <label key={t.id} className={`flex items-center gap-3 px-3 py-2.5 border-b last:border-0 cursor-pointer hover:bg-slate-50 transition ${httpSelectedIds.includes(t.id) ? "bg-sky-50" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={httpSelectedIds.includes(t.id)}
+                        onChange={() => toggleHttpTenant(t.id)}
+                        className="accent-sky-600 rounded"
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-slate-800">{t.companyName}</p>
+                        <p className="text-[10px] text-slate-400 font-mono">{t.schemaName}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {/* Result */}
+              {httpResult && (
+                <div className="mb-4 p-4 rounded-xl bg-sky-50 border border-sky-200">
+                  <p className="font-semibold text-sky-800">✅ {httpResult.message}</p>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleHttpPush}
+                  disabled={httpPushing || (httpPushMode === "selected" && httpSelectedIds.length === 0)}
+                  className="flex-1 bg-sky-600 hover:bg-sky-700 disabled:bg-sky-300 text-white py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2"
+                >
+                  {httpPushing ? (
+                    <><span className="animate-spin">⏳</span> Pushing...</>
+                  ) : (
+                    <><span>🌐</span> Push HTTP API to {httpPushMode === "all" ? `All (${tenants.length})` : `${httpSelectedIds.length} Selected`} Tenant(s)</>
+                  )}
+                </button>
+                <button onClick={() => { setShowHttpDialog(false); setHttpResult(null); }} className="px-6 py-2.5 border rounded-lg text-sm hover:bg-slate-50 transition">Cancel</button>
               </div>
             </div>
           </div>
