@@ -72,16 +72,15 @@ export async function POST(request: Request) {
     audioType = body.audioType || "wav";
   }
 
-  // Dedup-safe upsert: older versions had no unique index on
-  // (config_id, language, digit), so re-uploads could leave duplicate rows
-  // with stale file_urls. Delete ALL rows for this key, then insert the new
-  // one — idempotent and always converges to a single row.
+  // Dedup-safe upsert using the unique index voice_otp_audio_uniq(config_id,
+  // language, digit) — a single atomic statement, so concurrent uploads of the
+  // same key converge instead of throwing "duplicate key value violates unique
+  // constraint" or leaving stale rows behind.
   await tenantQuery(tenant.schemaName,
-    "DELETE FROM voice_otp_audio WHERE config_id = $1 AND language = $2 AND digit = $3",
-    [configId, language, digit]);
-
-  await tenantQuery(tenant.schemaName,
-    "INSERT INTO voice_otp_audio (config_id, language, digit, file_name, file_url, audio_type) VALUES ($1,$2,$3,$4,$5,$6)",
+    `INSERT INTO voice_otp_audio (config_id, language, digit, file_name, file_url, audio_type)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (config_id, language, digit)
+     DO UPDATE SET file_name = EXCLUDED.file_name, file_url = EXCLUDED.file_url, audio_type = EXCLUDED.audio_type`,
     [configId, language, digit, fileName, fileUrl, audioType]);
 
   // Update audio count

@@ -184,7 +184,8 @@ export const TENANT_TABLE_DEFS: { table: string; sql: string }[] = [
   { table: "voice_otp_audio", sql: `CREATE TABLE IF NOT EXISTS voice_otp_audio (
       id SERIAL PRIMARY KEY, config_id INTEGER NOT NULL, language VARCHAR(50) NOT NULL,
       digit VARCHAR(20) NOT NULL, file_name VARCHAR(255), file_url TEXT,
-      audio_type VARCHAR(10) DEFAULT 'wav', created_at TIMESTAMP DEFAULT NOW())` },
+      audio_type VARCHAR(10) DEFAULT 'wav', created_at TIMESTAMP DEFAULT NOW(),
+      CONSTRAINT voice_otp_audio_uniq UNIQUE (config_id, language, digit))` },
   { table: "voice_otp_sip_config", sql: `CREATE TABLE IF NOT EXISTS voice_otp_sip_config (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, sip_host VARCHAR(255),
       sip_port INTEGER DEFAULT 5060, sip_username VARCHAR(255), sip_password VARCHAR(255),

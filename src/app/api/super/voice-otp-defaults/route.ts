@@ -136,8 +136,15 @@ async function seedDefaultsToTenants(targetTenants: { id: number; schemaName: st
       try {
         let tenantGotNew = false;
         for (const def of defaults) {
+          // Deterministic config lookup: prefer a config where the language is
+          // the PRIMARY language (lowest id wins), then fall back to a
+          // secondary match. Without ORDER BY, PostgreSQL may return a
+          // different config per call, scattering audio across configs.
           let configResult = await client.query(
-            `SELECT id FROM "${tenant.schemaName}".voice_otp_config WHERE primary_language = $1 OR secondary_language = $1 LIMIT 1`,
+            `SELECT id FROM "${tenant.schemaName}".voice_otp_config
+             WHERE primary_language = $1 OR secondary_language = $1
+             ORDER BY (primary_language = $1) DESC, id ASC
+             LIMIT 1`,
             [def.language]
           );
           let configId: number;
@@ -151,35 +158,22 @@ async function seedDefaultsToTenants(targetTenants: { id: number; schemaName: st
             );
             configId = newConfig.rows[0].id;
           }
-          // Dedup-safe upsert: older pushes had no unique index on
-          // (config_id, language, digit), so repeated seeds could leave
-          // duplicate rows with STALE file_urls behind (the SELECT below
-          // returned many, and only the first got updated). Fix it by
-          // deleting ALL rows for this key, then inserting the canonical
-          // default — idempotent and always converges to a single row.
+          // Atomic dedup-safe upsert using the unique index
+          // voice_otp_audio_uniq(config_id, language, digit) created by the
+          // dedupe script. INSERT ... ON CONFLICT DO UPDATE is a single
+          // statement, so concurrent seeds (e.g. the auto-seed fired after an
+          // upload racing the manual "Push to Tenants") converge instead of
+          // throwing "duplicate key value violates unique constraint".
           const existingAudio = await client.query(
-            `SELECT id, file_url FROM "${tenant.schemaName}".voice_otp_audio WHERE config_id = $1 AND language = $2 AND digit = $3`,
+            `SELECT file_url FROM "${tenant.schemaName}".voice_otp_audio WHERE config_id = $1 AND language = $2 AND digit = $3`,
             [configId, def.language, def.digit]
           );
-          if (existingAudio.rows.length > 0) {
-            const needsUpdate = existingAudio.rows.some((r) => r.file_url !== def.fileUrl)
-              || existingAudio.rows.length !== 1;
-            if (needsUpdate) {
-              await client.query(
-                `DELETE FROM "${tenant.schemaName}".voice_otp_audio WHERE config_id = $1 AND language = $2 AND digit = $3`,
-                [configId, def.language, def.digit]
-              );
-              await client.query(
-                `INSERT INTO "${tenant.schemaName}".voice_otp_audio (config_id, language, digit, file_name, file_url, audio_type)
-                 VALUES ($1, $2, $3, $4, $5, $6)`,
-                [configId, def.language, def.digit, def.fileName, def.fileUrl, def.audioType]
-              );
-              tenantGotNew = true;
-            }
-          } else {
+          if (existingAudio.rows.length !== 1 || existingAudio.rows[0].file_url !== def.fileUrl) {
             await client.query(
               `INSERT INTO "${tenant.schemaName}".voice_otp_audio (config_id, language, digit, file_name, file_url, audio_type)
-               VALUES ($1, $2, $3, $4, $5, $6)`,
+               VALUES ($1, $2, $3, $4, $5, $6)
+               ON CONFLICT (config_id, language, digit)
+               DO UPDATE SET file_name = EXCLUDED.file_name, file_url = EXCLUDED.file_url, audio_type = EXCLUDED.audio_type`,
               [configId, def.language, def.digit, def.fileName, def.fileUrl, def.audioType]
             );
             tenantGotNew = true;
@@ -240,9 +234,18 @@ export async function PUT(request: Request) {
   const result = await seedDefaultsToTenants(targetTenants);
   const defaults = await db.select().from(voiceOtpDefaultAudio);
 
+  let message: string;
+  if (result.errorCount > 0) {
+    message = `Pushed ${defaults.length} audio file(s) to ${result.seededCount}/${result.totalTenants} tenant(s) (${result.errorCount} errors)`;
+  } else if (result.seededCount === 0) {
+    message = `All ${result.totalTenants} tenant(s) already up to date (${defaults.length} audio files, no changes needed)`;
+  } else {
+    message = `Pushed ${defaults.length} audio file(s) to ${result.seededCount}/${result.totalTenants} tenant(s)`;
+  }
+
   return NextResponse.json({
     success: true,
-    message: `Pushed ${defaults.length} audio file(s) to ${result.seededCount}/${result.totalTenants} tenant(s)${result.errorCount > 0 ? ` (${result.errorCount} errors)` : ""}`,
+    message,
     seededCount: result.seededCount,
     errorCount: result.errorCount,
     totalTenants: result.totalTenants,
