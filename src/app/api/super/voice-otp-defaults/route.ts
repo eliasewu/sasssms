@@ -136,47 +136,52 @@ async function seedDefaultsToTenants(targetTenants: { id: number; schemaName: st
       try {
         let tenantGotNew = false;
         for (const def of defaults) {
-          // Deterministic config lookup: prefer a config where the language is
-          // the PRIMARY language (lowest id wins), then fall back to a
-          // secondary match. Without ORDER BY, PostgreSQL may return a
-          // different config per call, scattering audio across configs.
-          let configResult = await client.query(
+          // All configs where this language is PRIMARY or SECONDARY need the
+          // audio — a tenant can have many country configs sharing a language
+          // (e.g. UAE/Saudi/Egypt all Arabic-primary), and a call in that
+          // language resolves to the country-specific config. Seeding only the
+          // first match leaves dead URLs in the rest, which ALSO blocks the
+          // engine's builtin-audio fallback (it only falls back when no row
+          // exists). Primary-language configs are ordered first, then lowest id.
+          const configResult = await client.query(
             `SELECT id FROM "${tenant.schemaName}".voice_otp_config
              WHERE primary_language = $1 OR secondary_language = $1
-             ORDER BY (primary_language = $1) DESC, id ASC
-             LIMIT 1`,
+             ORDER BY (primary_language = $1) DESC, id ASC`,
             [def.language]
           );
-          let configId: number;
+          let configIds: number[];
           if (configResult.rows.length > 0) {
-            configId = configResult.rows[0].id;
+            configIds = configResult.rows.map((r: any) => r.id);
           } else {
+            // No config at all for this language — create one.
             const newConfig = await client.query(
               `INSERT INTO "${tenant.schemaName}".voice_otp_config (country_group, prefixes, primary_language, secondary_language, bilingual)
                VALUES ($1, $2, $1, 'English', false) RETURNING id`,
               [def.language, def.language]
             );
-            configId = newConfig.rows[0].id;
+            configIds = [newConfig.rows[0].id];
           }
-          // Atomic dedup-safe upsert using the unique index
-          // voice_otp_audio_uniq(config_id, language, digit) created by the
-          // dedupe script. INSERT ... ON CONFLICT DO UPDATE is a single
-          // statement, so concurrent seeds (e.g. the auto-seed fired after an
-          // upload racing the manual "Push to Tenants") converge instead of
-          // throwing "duplicate key value violates unique constraint".
-          const existingAudio = await client.query(
-            `SELECT file_url FROM "${tenant.schemaName}".voice_otp_audio WHERE config_id = $1 AND language = $2 AND digit = $3`,
-            [configId, def.language, def.digit]
-          );
-          if (existingAudio.rows.length !== 1 || existingAudio.rows[0].file_url !== def.fileUrl) {
-            await client.query(
-              `INSERT INTO "${tenant.schemaName}".voice_otp_audio (config_id, language, digit, file_name, file_url, audio_type)
-               VALUES ($1, $2, $3, $4, $5, $6)
-               ON CONFLICT (config_id, language, digit)
-               DO UPDATE SET file_name = EXCLUDED.file_name, file_url = EXCLUDED.file_url, audio_type = EXCLUDED.audio_type`,
-              [configId, def.language, def.digit, def.fileName, def.fileUrl, def.audioType]
+          for (const configId of configIds) {
+            // Atomic dedup-safe upsert using the unique index
+            // voice_otp_audio_uniq(config_id, language, digit). INSERT ... ON
+            // CONFLICT DO UPDATE is a single statement, so concurrent seeds
+            // (e.g. the auto-seed fired after an upload racing the manual
+            // "Push to Tenants") converge instead of throwing "duplicate key
+            // value violates unique constraint".
+            const existingAudio = await client.query(
+              `SELECT file_url FROM "${tenant.schemaName}".voice_otp_audio WHERE config_id = $1 AND language = $2 AND digit = $3`,
+              [configId, def.language, def.digit]
             );
-            tenantGotNew = true;
+            if (existingAudio.rows.length !== 1 || existingAudio.rows[0].file_url !== def.fileUrl) {
+              await client.query(
+                `INSERT INTO "${tenant.schemaName}".voice_otp_audio (config_id, language, digit, file_name, file_url, audio_type)
+                 VALUES ($1, $2, $3, $4, $5, $6)
+                 ON CONFLICT (config_id, language, digit)
+                 DO UPDATE SET file_name = EXCLUDED.file_name, file_url = EXCLUDED.file_url, audio_type = EXCLUDED.audio_type`,
+                [configId, def.language, def.digit, def.fileName, def.fileUrl, def.audioType]
+              );
+              tenantGotNew = true;
+            }
           }
         }
         if (tenantGotNew) {
