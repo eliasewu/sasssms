@@ -255,7 +255,35 @@ Client ESME                    Net2APP SMPP Server               Supplier SMSC
      │   (stat: DELIVRD)             │                              │
 ```
 
+### Android SMS Gateway (Phone-as-Supplier)
+
+Android phones running the Net2APP Gateway app act as **SMS suppliers**. A phone has **no public IP**, so it
+registers **inbound (SERVER mode)** to the platform's SMPP listener:
+
+- When a supplier is created with `connection_type = 'ANDROID_SMS'`, the platform **auto-fills**:
+  - `host` = the **server's own public IPv4** (detected via `getSelfIp()` — prefers `api.ipify.org`, IPv4 only)
+  - `port` = `2775`
+  - `connection_mode` = `SERVER` (phone binds outbound to us)
+- The Android app is configured with the supplier's **username + password** and connects to
+  `host:2775` over SMPP v3.4 (transceiver).
+- **MT flow:** platform routes a message to the supplier → sends `deliver_sm` to the bound phone →
+  the app sends it through the phone's SIM.
+- **MO flow:** SMS received on the phone are picked up by the app → forwarded to the platform
+  (`submit_sm`) → stored in the tenant's **SMS inbox** (tagged with the supplier).
+- If a phone's session goes stale (UI shows Bound but the server connection is dead), toggle the
+  gateway switch **off → on** in the app to re-register the session server-side.
+
+### Kubernetes Migration
+
+A full **K3s migration plan** (container image, manifests, single-node POC on
+Canada Dev, 4-node join, database consolidation, zero-downtime per-tenant
+cutover) lives in **[NET2APP_KUBERNETES_MIGRATION.md](./NET2APP_KUBERNETES_MIGRATION.md)**
+with ready-to-apply manifests in the `k8s/` directory. The PM2 fleet stays
+live until the POC is validated; schema-per-tenant isolation is preserved
+on the cluster.
+
 ### SMPP Configuration
+
 
 ```typescript
 // src/lib/smpp-client.ts — Supplier connection parameters

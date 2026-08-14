@@ -1,0 +1,28 @@
+# ═══════════════════════════════════════════════════════════════════════
+#  .dockerignore — keeps secrets + heavy dirs out of any docker build
+#  context. CRITICAL: .env and .server-creds contain production secrets
+#  (including SSH passwords to every fleet server) and must NEVER be baked
+#  into an image or pushed to a registry.
+# ═══════════════════════════════════════════════════════════════════════
+
+# Secrets
+.env
+.env.*
+.server-creds
+!*.example
+net2app.com(1).txt
+
+# Heavy build artifacts / VCS
+node_modules
+.next
+.git
+*.tsbuildinfo
+drizzle
+
+# Runtime data (mounted as volumes in k8s)
+android-app
+public/uploads
+
+# Local tooling
+.husky
+coverage

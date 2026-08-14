@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { superAdmins } from "@/db/schema";
 import { verifyPassword, createToken } from "@/lib/auth";
 import { eq } from "drizzle-orm";
-import { authLimiter, getClientIp } from "@/lib/rate-limit";
+import { authLimiter, superLoginGuard, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   try {
@@ -20,15 +20,52 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Email and password required" }, { status: 400 });
     }
 
-    const [admin] = await db.select().from(superAdmins).where(eq(superAdmins.email, email.toLowerCase().trim()));
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Brute-force lockout: 5 consecutive failures → 15 min block (per account)
+    const lockedMs = superLoginGuard.lockedMs(normalizedEmail);
+    if (lockedMs > 0) {
+      const retryAfter = Math.ceil(lockedMs / 1000);
+      return NextResponse.json(
+        {
+          error: `Too many failed login attempts. Account temporarily locked. Try again in ${Math.ceil(retryAfter / 60)} minute(s).`,
+        },
+        {
+          status: 429,
+          headers: { "Retry-After": String(retryAfter) },
+        }
+      );
+    }
+
+    const [admin] = await db.select().from(superAdmins).where(eq(superAdmins.email, normalizedEmail));
     if (!admin) {
+      const res = superLoginGuard.registerFailure(normalizedEmail);
+      if (res.remaining === 0) {
+        return NextResponse.json({ error: "Too many failed login attempts. Account temporarily locked. Try again in 15 minutes." }, { status: 429 });
+      }
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
     const valid = await verifyPassword(password, admin.passwordHash);
     if (!valid) {
+      const res = superLoginGuard.registerFailure(normalizedEmail);
+      if (res.remaining === 0) {
+        const retryAfter = Math.ceil(res.lockedMs / 1000);
+        return NextResponse.json(
+          {
+            error: `Too many failed login attempts. Account temporarily locked. Try again in ${Math.ceil(retryAfter / 60)} minute(s).`,
+          },
+          {
+            status: 429,
+            headers: { "Retry-After": String(retryAfter) },
+          }
+        );
+      }
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
+
+    // Successful login — clear any prior failure streak
+    superLoginGuard.reset(normalizedEmail);
 
     if (!admin.isActive) {
       return NextResponse.json({ error: "Account disabled" }, { status: 403 });

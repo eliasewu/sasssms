@@ -6,7 +6,7 @@ import { useConfirmModal } from "@/components/confirm-modal";
 interface ServerLocation {
   id: string; country: string; city: string; countryCodes: string;
   ipAddress: string; port: number; isActive: boolean;
-  sshUser?: string; lastDeployed?: string; healthStatus?: string;
+  sshUser?: string; package?: string; lastDeployed?: string; healthStatus?: string;
 }
 
 interface HealthInfo {
@@ -64,6 +64,7 @@ export default function ServersPage() {
     sshPass: "",
     suPass: "",
     port: 2775,
+    pkg: "starter",
   });
 
   const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
@@ -240,7 +241,7 @@ export default function ServersPage() {
         </div>
         <button
           onClick={() => {
-            setForm({ locationId: "canada", ipAddress: "", sshUser: "ubuntu", sshPass: "", suPass: "", port: 2775 });
+            setForm({ locationId: "canada", ipAddress: "", sshUser: "ubuntu", sshPass: "", suPass: "", port: 2775, pkg: "starter" });
             setShowForm(true);
           }}
           className="bg-orange-600 hover:bg-orange-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold shadow transition"
@@ -285,7 +286,7 @@ export default function ServersPage() {
                     );
                   })}
                 </select>
-                <p className="text-xs text-slate-400 mt-1">Choose a location. Servers with active IPs are marked — deploying will overwrite.</p>
+                <p className="text-xs text-slate-400 mt-1">Choose a location. A location can host MULTIPLE servers — deploying to one with an active IP adds another (sydney-2, sydney-3, ...).</p>
               </div>
 
               <div>
@@ -301,6 +302,20 @@ export default function ServersPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <label className="block text-sm font-medium mb-1.5">Package *</label>
+                  <select
+                    value={form.pkg}
+                    onChange={(e) => setForm({ ...form, pkg: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2.5 text-sm"
+                  >
+                    <option value="starter">Starter</option>
+                    <option value="professional">Professional</option>
+                    <option value="enterprise">Enterprise</option>
+                    <option value="development">Development</option>
+                  </select>
+                  <p className="text-xs text-slate-400 mt-1">Servers are assigned to tenants by package. Professional/Enterprise are assigned manually.</p>
+                </div>
+                <div>
                   <label className="block text-sm font-medium mb-1.5">SSH User *</label>
                   <input
                     value={form.sshUser}
@@ -310,7 +325,7 @@ export default function ServersPage() {
                     className="w-full border rounded-lg px-3 py-2.5 text-sm"
                   />
                 </div>
-                <div>
+                <div className="col-span-2">
                   <label className="block text-sm font-medium mb-1.5">SMPP Port</label>
                   <input
                     type="number"
@@ -378,7 +393,7 @@ export default function ServersPage() {
           <p className="text-sm text-slate-500 mb-6">Deploy your first server to get started. Choose a location, enter the server credentials, and we will handle the rest.</p>
           <button
             onClick={() => {
-              setForm({ locationId: "canada", ipAddress: "", sshUser: "ubuntu", sshPass: "", suPass: "", port: 2775 });
+              setForm({ locationId: "canada", ipAddress: "", sshUser: "ubuntu", sshPass: "", suPass: "", port: 2775, pkg: "starter" });
               setShowForm(true);
             }}
             className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2.5 rounded-lg text-sm font-semibold shadow transition"
@@ -407,7 +422,17 @@ export default function ServersPage() {
                       <p className="text-xs text-slate-400">{loc.city || "No city"}</p>
                     </div>
                   </div>
-                  {getStatusBadge(loc)}
+                  <div className="flex items-center gap-1.5">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border capitalize ${
+                      loc.package === "professional" ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                      : loc.package === "enterprise" ? "bg-purple-50 text-purple-700 border-purple-200"
+                      : loc.package === "development" ? "bg-slate-100 text-slate-500 border-slate-200"
+                      : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    }`}>
+                      {loc.package || "starter"}
+                    </span>
+                    {getStatusBadge(loc)}
+                  </div>
                 </div>
 
                 {/* Server Info */}
@@ -526,7 +551,7 @@ export default function ServersPage() {
                   {!loc.ipAddress && (
                     <button
                       onClick={() => {
-                        setForm({ locationId: loc.id, ipAddress: "", sshUser: "ubuntu", sshPass: "", suPass: "", port: 2775 });
+                        setForm({ locationId: loc.id, ipAddress: "", sshUser: "ubuntu", sshPass: "", suPass: "", port: 2775, pkg: loc.package || "starter" });
                         setShowForm(true);
                       }}
                       className="flex-1 bg-orange-50 hover:bg-orange-100 text-orange-700 px-3 py-2 rounded-lg text-xs font-medium transition"

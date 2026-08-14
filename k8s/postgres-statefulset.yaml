@@ -1,0 +1,81 @@
+# ═══════════════════════════════════════════════════════════════════════
+#  Net2APP — PostgreSQL (central) StatefulSet — POC option
+#
+#  Production recommendation: use a managed Postgres (or a dedicated VM with
+#  PITR backups) rather than in-cluster storage. This StatefulSet exists so
+#  the K3s POC on Canada Dev can run a self-contained stack. The platform's
+#  schema-per-tenant isolation is PRESERVED — all tenant_* schemas live in
+#  this one database (see NET2APP_KUBERNETES_MIGRATION.md §Database).
+#
+#  Apply:  kubectl apply -f k8s/postgres-statefulset.yaml
+#  ═══════════════════════════════════════════════════════════════════════
+apiVersion: v1
+kind: Service
+metadata:
+  name: net2app-postgres
+  namespace: net2app
+spec:
+  selector:
+    app: net2app-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+      name: pg
+  clusterIP: None   # headless — pods reach it at net2app-postgres:5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: net2app-postgres
+  namespace: net2app
+spec:
+  serviceName: net2app-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: net2app-postgres
+  template:
+    metadata:
+      labels:
+        app: net2app-postgres
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports:
+            - containerPort: 5432
+              name: pg
+          env:
+            - name: POSTGRES_DB
+              value: app_db
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: net2app-secrets
+                  key: POSTGRES_PASSWORD
+          resources:
+            requests: { cpu: 500m, memory: 1Gi }
+            limits:   { cpu: 4000m, memory: 8Gi }
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "app_db"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: net2app-pgdata
+              mountPath: /var/lib/postgresql/data
+              subPath: pgdata
+  volumeClaimTemplates:
+    - metadata:
+        name: net2app-pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # Local-path storage class ships with k3s; swap for a real StorageClass
+        # (Longhorn, Rook, managed EBS/PD) before going to production.
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 50Gi

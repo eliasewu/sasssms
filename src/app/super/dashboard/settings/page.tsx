@@ -11,6 +11,7 @@ interface PaymentGateway {
 }
 interface ServerLocation {
   id: string; country: string; city: string; countryCodes: string; ipAddress: string; port: number; isActive: boolean;
+  package?: string;
 }
 
 const PAYMENT_METHODS = [
@@ -89,11 +90,11 @@ export default function SuperSettingsPage() {
   const [toggleAuditLoading, setToggleAuditLoading] = useState(false);
   // Server locations
   const [serverLocations, setServerLocations] = useState<ServerLocation[]>([
-    { id: "canada", country: "Canada", city: "Toronto", countryCodes: "US,CA,MX", ipAddress: "", port: 2775, isActive: true },
-    { id: "france", country: "France", city: "Paris", countryCodes: "FR,DE,GB,ES,IT,NL,BE,CH,AT,LU,IE,PT,DK,NO,SE,FI", ipAddress: "", port: 2775, isActive: true },
-    { id: "germany", country: "Germany", city: "Frankfurt", countryCodes: "DE,AT,CH,CZ,SK,HU", ipAddress: "", port: 2775, isActive: false },
-    { id: "uk", country: "United Kingdom", city: "London", countryCodes: "GB,IE,PT,ES,FR,NL,BE", ipAddress: "", port: 2775, isActive: false },
-    { id: "singapore", country: "Singapore", city: "Singapore", countryCodes: "SG,MY,ID,TH,VN,PH,IN,BD,PK", ipAddress: "", port: 2775, isActive: false },
+    { id: "canada", country: "Canada", city: "Toronto", countryCodes: "US,CA,MX", ipAddress: "", port: 2775, isActive: true, package: "development" },
+    { id: "france", country: "France", city: "Paris", countryCodes: "FR,DE,GB,ES,IT,NL,BE,CH,AT,LU,IE,PT,DK,NO,SE,FI", ipAddress: "", port: 2775, isActive: true, package: "professional" },
+    { id: "germany", country: "Germany", city: "Frankfurt", countryCodes: "DE,AT,CH,CZ,SK,HU", ipAddress: "", port: 2775, isActive: false, package: "starter" },
+    { id: "uk", country: "United Kingdom", city: "London", countryCodes: "GB,IE,PT,ES,FR,NL,BE", ipAddress: "", port: 2775, isActive: false, package: "starter" },
+    { id: "singapore", country: "Singapore", city: "Singapore", countryCodes: "SG,MY,ID,TH,VN,PH,IN,BD,PK", ipAddress: "", port: 2775, isActive: false, package: "starter" },
   ]);
 
   const detectIp = async () => {
@@ -840,7 +841,7 @@ export default function SuperSettingsPage() {
             if (!newId) return;
             const country = prompt("Country name (e.g. Singapore):");
             if (!country) return;
-            setServerLocations([...serverLocations, { id: newId.toLowerCase().replace(/[^a-z0-9]/g,'_'), country, city: "", countryCodes: "", ipAddress: "", port: 2775, isActive: true }]);
+            setServerLocations([...serverLocations, { id: newId.toLowerCase().replace(/[^a-z0-9]/g,'_'), country, city: "", countryCodes: "", ipAddress: "", port: 2775, isActive: true, package: "starter" }]);
           }} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700">+ Add Location</button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -899,16 +900,33 @@ export default function SuperSettingsPage() {
                     className="w-full border rounded-lg px-2 py-1.5 text-sm" />
                 </div>
               </div>
-              <div className="mb-2">
-                <label className="block text-xs text-slate-500 mb-0.5">Country Codes (comma-separated, e.g. DE,AT,CH)</label>
-                <input value={loc.countryCodes}
-                  onChange={e => {
-                    const updated = [...serverLocations];
-                    updated[idx] = { ...loc, countryCodes: e.target.value };
-                    setServerLocations(updated);
-                  }}
-                  placeholder="DE,AT,CH"
-                  className="w-full border rounded-lg px-2 py-1.5 text-sm font-mono" />
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <div>
+                  <label className="block text-xs text-slate-500 mb-0.5">Package</label>
+                  <select value={loc.package || "starter"}
+                    onChange={e => {
+                      const updated = [...serverLocations];
+                      updated[idx] = { ...loc, package: e.target.value };
+                      setServerLocations(updated);
+                    }}
+                    className="w-full border rounded-lg px-2 py-1.5 text-sm">
+                    <option value="starter">Starter</option>
+                    <option value="professional">Professional</option>
+                    <option value="enterprise">Enterprise</option>
+                    <option value="development">Development</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-0.5">Country Codes (comma-separated, e.g. DE,AT,CH)</label>
+                  <input value={loc.countryCodes}
+                    onChange={e => {
+                      const updated = [...serverLocations];
+                      updated[idx] = { ...loc, countryCodes: e.target.value };
+                      setServerLocations(updated);
+                    }}
+                    placeholder="DE,AT,CH"
+                    className="w-full border rounded-lg px-2 py-1.5 text-sm font-mono" />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -937,7 +955,7 @@ export default function SuperSettingsPage() {
           )})}
         </div>
         <div className="mt-4 bg-blue-50 rounded-lg p-3 text-xs text-blue-700">
-          <strong>🌍 How it works:</strong> Tenants choose a server during signup. Country codes (e.g. DE,AT,CH) enable GeoIP auto-detection — users from those countries get this server auto-selected. Active locations with IPs appear in the registration form.
+          <strong>🌍 How it works:</strong> Servers are categorized by package — Starter clients are auto-assigned by region/latency (Europe/Africa → European &amp; USA servers; Asia/Australia → Sydney/Singapore), while Professional and Enterprise servers are assigned manually by a super admin. Country codes (e.g. DE,AT,CH) drive the latency-based starter routing.
         </div>
       </div>
 

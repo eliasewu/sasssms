@@ -13,6 +13,7 @@ import { pool } from "@/db";
 import { lookupSupplierCost } from "@/lib/rates";
 import { enqueueRestMt, isRestGatewayOnline } from "@/lib/gateway-rest-registry";
 import { pushDlrWebhook } from "@/lib/dlr-webhook-log";
+import { enqueueDlrPersist } from "@/lib/dlr-queue-persist";
 
 const smppLib: any = smpp;
 type SmppSession = any;
@@ -220,10 +221,77 @@ async function processSupplierDlr(
   }
 
   const supplierMessageId = parsed.messageId;
-  const delivery = pendingDeliveries.get(supplierMessageId);
+
+  // Resolve the pending delivery, with a grace wait for late registration:
+  // a relayed SMSC (cross-server interconnect) can push the DLR before our own
+  // deliverSmsWithFallback finishes registering the pending delivery (the
+  // gateway DLR races the slower post-delivery DB work that precedes the submit
+  // response). Without the wait, perfectly good DLRs are dropped as "unknown".
+  const matchDelivery = (): { delivery: PendingDelivery | undefined; via: string } => {
+    let d = pendingDeliveries.get(supplierMessageId);
+    if (d) return { delivery: d, via: "direct" };
+    // Fallback (mirrors smpp-server's deliver_sm handler): a relayed SMSC may
+    // re-assign its own message id before pushing the DLR back, so the upstream
+    // id won't match our pending key. Match by supplier + destination instead
+    // (destination is preserved across the relay, and the DLR's source_addr is
+    // the original MT destination).
+    const dlrDest = (pdu.source_addr as string) || "";
+    for (const [key, cand] of pendingDeliveries) {
+      if (cand.supplierId === supplierId && cand.tenantId === tenantId
+          && (cand.destination === dlrDest || !dlrDest)) {
+        return { delivery: cand, via: "fallback" };
+      }
+    }
+    return { delivery: undefined, via: "none" };
+  };
+
+  let matched = matchDelivery();
+  let delivery = matched.delivery;
 
   if (!delivery) {
-    // Might be for a different tenant or already cleaned up
+    // The relayed SMSC can push its DLR before our own deliverSmsWithFallback
+    // finishes registering the pending delivery (the gateway DLR races the
+    // slower post-delivery DB work that precedes the submit response), and
+    // under pool contention the submit INSERT can lag past a single grace
+    // wait. Retry-poll BOTH the in-memory pending map AND the idempotent DB
+    // recovery (guarded by dlr_status='SENT') for a few seconds before
+    // dropping the receipt.
+    const RETRY_DEADLINE_MS = 4000;
+    const RETRY_INTERVAL_MS = 800;
+    const retryDeadline = Date.now() + RETRY_DEADLINE_MS;
+    while (!delivery && Date.now() < retryDeadline) {
+      await new Promise((r) => setTimeout(r, RETRY_INTERVAL_MS));
+      matched = matchDelivery();
+      delivery = matched.delivery;
+      if (delivery) {
+        console.log(`[SMPP-CLIENT] DLR ${supplierMessageId} matched after grace wait (late registration)`);
+        break;
+      }
+      // Restart-survival / late-INSERT recovery: rebuild the pending delivery
+      // from the tenant messages table (supplier_message_id is persisted at
+      // submit time). Idempotent — once the row is resolved, later calls
+      // return null, so retrying is safe.
+      const recoveredDelivery = await recoverDeliveryFromDb(schemaName, supplierId, supplierMessageId, tenantId);
+      if (recoveredDelivery) {
+        delivery = recoveredDelivery;
+        console.log(`[SMPP-CLIENT] DLR ${supplierMessageId} recovered from DB (restart / late INSERT survivor)`);
+        pendingDeliveries.set(supplierMessageId, delivery);
+        break;
+      }
+    }
+  }
+
+  if (!delivery) {
+    // Diagnostic: dump the matching candidates so a cross-server DLR drop
+    // is traceable without guesswork.
+    const candidates: string[] = [];
+    for (const [key, d] of pendingDeliveries) {
+      if (d.supplierId === supplierId && d.tenantId === tenantId) {
+        candidates.push(`${key}->dest:${d.destination}`);
+      }
+    }
+    console.log(`[SMPP-CLIENT] DLR fallback miss: id=${supplierMessageId} supplier=${supplierId} tenant=${tenantId} dlrDest=${JSON.stringify((pdu.source_addr as string) || "")} candidates=[${candidates.join(", ")}]`);
+    // Might be for a different tenant, already cleaned up, or never ours
     console.log(`[SMPP-CLIENT] DLR for unknown message ${supplierMessageId} from supplier ${supplierId}`);
     return;
   }
@@ -304,6 +372,13 @@ async function processSupplierDlr(
       console.error(`[SMPP-CLIENT] DLR callback error:`, err);
     }
     dlrCallbacks.delete(delivery.ourMessageId);
+  } else {
+    // Restart survivor (no live callback) — the ESME client that originally
+    // submitted this message may still be connected. Queue the DLR (memory +
+    // DB) so flushPendingDlrs delivers it on the client's next bind/reconnect,
+    // exactly like a DLR that arrived while the client was offline.
+    const { depth } = enqueueDlrPersist(tenantId, delivery.clientId, delivery.schemaName, dlrPayload);
+    console.log(`[SMPP-CLIENT] DLR ${dlrPayload.messageId} queued for client ${delivery.clientId} (restart survivor, no live callback; queue depth ${depth})`);
   }
 
   // Also push HTTP DLR if client has callback URL
@@ -311,8 +386,112 @@ async function processSupplierDlr(
     pushHttpDlr(delivery.dlrCallbackUrl, dlrPayload, delivery.schemaName);
   }
 
-  // Clean up
-  pendingDeliveries.delete(supplierMessageId);
+  // Clean up (delete by the actual key we matched — may differ from the parsed
+  // id when the fallback supplier+destination match was used)
+  for (const [key, d] of pendingDeliveries) {
+    if (d === delivery) { pendingDeliveries.delete(key); break; }
+  }
+}
+
+/**
+ * DB-backed DLR recovery: reconstruct a PendingDelivery from the tenant
+ * messages table when the in-memory map was lost (process restart).
+ * Matches by supplier_message_id (or our message_id) + supplier + SENT state.
+ * Returns null when the message isn't found or is no longer pending.
+ */
+async function recoverDeliveryFromDb(
+  schemaName: string,
+  supplierId: number,
+  supplierMessageId: string,
+  tenantId: number
+): Promise<PendingDelivery | null> {
+  const client = await pool.connect();
+  try {
+    await client.query(`SET search_path TO "${schemaName}"`);
+    const { rows } = await client.query(
+      `SELECT message_id, client_id, destination, sender, dlr_callback_url, dlr_status
+       FROM messages
+       WHERE (supplier_message_id = $1 OR message_id = $1)
+         AND supplier_id = $2
+         AND dlr_status = 'SENT'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [supplierMessageId, supplierId]
+    );
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      ourMessageId: r.message_id,
+      supplierId,
+      tenantId,
+      schemaName,
+      clientId: r.client_id,
+      dlrCallbackUrl: r.dlr_callback_url || undefined,
+      source: r.sender,
+      destination: r.destination,
+      createdAt: new Date(), // fresh so the 10-min cleanup doesn't purge it instantly
+    };
+  } catch (err) {
+    console.error(`[SMPP-CLIENT] DLR DB recovery error:`, err);
+    return null;
+  } finally {
+    await client.query(`SET search_path TO public`);
+    client.release();
+  }
+}
+
+/**
+ * Rebuild the in-memory pendingDeliveries map from the DB after a restart.
+ * Scans recent SENT messages (with supplier_message_id) across all active
+ * tenants so DLRs arriving after a process restart can be matched directly.
+ * Returns the number of deliveries re-hydrated.
+ */
+export async function recoverPendingDeliveriesFromDb(): Promise<number> {
+  const client = await pool.connect();
+  let total = 0;
+  try {
+    const { rows: tenants } = await client.query(
+      "SELECT id, schema_name FROM tenants WHERE is_active = true"
+    );
+    for (const t of tenants) {
+      try {
+        await client.query(`SET search_path TO "${t.schema_name}"`);
+        const { rows } = await client.query(
+          `SELECT message_id, supplier_message_id, supplier_id, client_id, destination, sender, dlr_callback_url
+           FROM messages
+           WHERE dlr_status = 'SENT' AND supplier_message_id IS NOT NULL
+             AND created_at > NOW() - INTERVAL '24 hours'
+           ORDER BY created_at DESC
+           LIMIT 2000`
+        );
+        for (const r of rows) {
+          const key = r.supplier_message_id;
+          if (!key || pendingDeliveries.has(key)) continue;
+          pendingDeliveries.set(key, {
+            ourMessageId: r.message_id,
+            supplierId: r.supplier_id,
+            tenantId: t.id,
+            schemaName: t.schema_name,
+            clientId: r.client_id,
+            dlrCallbackUrl: r.dlr_callback_url || undefined,
+            source: r.sender,
+            destination: r.destination,
+            createdAt: new Date(), // fresh so the 10-min cleanup keeps it alive
+          });
+          total++;
+        }
+      } catch (err) {
+        console.warn(`[SMPP-CLIENT] Hydrate skip tenant ${t.schema_name}: ${(err as Error).message}`);
+      }
+    }
+    if (total > 0) {
+      console.log(`[SMPP-CLIENT] Re-hydrated ${total} pending deliveries from DB (restart survivor)`);
+    }
+    return total;
+  } finally {
+    await client.query(`SET search_path TO public`);
+    client.release();
+  }
 }
 
 /**
@@ -361,6 +540,11 @@ function attemptBind(
   tenantId: number,
   schemaName: string
 ): Promise<number> {
+  // Strip any embedded ":port" from the host before the socket is created
+  const norm = normalizeSmpHost(host, port);
+  host = norm.host;
+  port = norm.port;
+
   return new Promise((resolve, reject) => {
     const sess = smppLib.connect({ host, port, auto_enquire_link_period: ENQUIRE_LINK_PERIOD });
 
@@ -453,6 +637,22 @@ function hexToVersionLabel(hex: number): string {
 }
 
 /**
+ * Normalize an SMPP host string: strip an embedded ":port" suffix that users
+ * sometimes paste into the Host field (e.g. "1.2.3.4:2775"). The explicit
+ * port argument always wins. Without this, the client would attempt DNS on
+ * "1.2.3.4:2775:2775" and churn reconnect loops with getaddrinfo ENOTFOUND.
+ * Exported for unit tests.
+ */
+export function normalizeSmpHost(host: string, port: number): { host: string; port: number } {
+  const h = String(host || "").trim();
+  const m = h.match(/^(.*?):(\d{1,5})$/);
+  if (m && !m[1].includes(":")) {
+    return { host: m[1], port: port || parseInt(m[2], 10) };
+  }
+  return { host: h, port };
+}
+
+/**
  * Connect to a supplier's SMPP server in client mode.
  * Auto-detects the SMPP version: tries configured version → 3.4 → 3.3.
  */
@@ -468,6 +668,12 @@ export async function connectToSupplier(
   systemType: string = "ESME",
   smppVersion: string = "3.4"
 ): Promise<boolean> {
+  // Normalize an embedded ":port" suffix (e.g. "1.2.3.4:2775") so the null-guard
+  // and the socket layer always see a clean host with an explicit port.
+  const norm = normalizeSmpHost(host, port);
+  host = norm.host;
+  port = norm.port;
+
   // Null-guard: reject suppliers with missing host/port before passing to smpp library
   if (!host || !port) {
     console.error(`[SMPP-CLIENT] Skipping supplier ${supplierId}: missing host ("${host}") or port (${port})`);

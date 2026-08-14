@@ -1,0 +1,163 @@
+# ═══════════════════════════════════════════════════════════════════════
+#  Net2APP — web Deployment + services + HPA
+#
+#  IMPORTANT — read before changing `replicas`:
+#  • The Android REST-gateway registry (register/poll MT queue) and the SMPP
+#    supplier/ESME session maps live in PROCESS MEMORY (globalThis). With a
+#    single replica everything is shared; with >1 replica a phone registered
+#    to pod A is invisible to pod B until the registry is moved to Redis/PG.
+#    ⇒ Keep replicas at 1 for the POC. Scale out only after externalizing
+#      the in-memory state (see NET2APP_KUBERNETES_MIGRATION.md §Scaling).
+#  • SMPP sessions are also in-memory: a pod restart drops every bound phone;
+#    the Android app auto-reconnects (toggle re-register), so this is a brief
+#    blip, not data loss. Prefer `maxUnavailable: 0` rolling updates below.
+#  ═══════════════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: net2app-web
+  namespace: net2app
+  labels:
+    app: net2app
+    tier: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: net2app
+      tier: web
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: net2app
+        tier: web
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: net2app
+          image: localhost:5000/net2app:2.4.6   # change to your registry path
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5556
+              name: http
+            - containerPort: 2775
+              name: smpp
+          envFrom:
+            - configMapRef:
+                name: net2app-config
+            - secretRef:
+                name: net2app-secrets
+          readinessProbe:
+            httpGet:
+              path: /api/public/health
+              port: 5556
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/public/health
+              port: 5556
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 3Gi
+          volumeMounts:
+            # User uploads (QR codes, payment proofs) — must be shared across
+            # replicas once you scale out (replace with a RWX PVC then).
+            - name: uploads
+              mountPath: /app/public/uploads
+            # APK download endpoint reads /opt/net2app/android-app/*.apk —
+            # the POC reuses the node's existing APK dir via hostPath; a
+            # dedicated PVC is cleaner for production.
+            - name: android-app
+              mountPath: /opt/net2app/android-app
+              readOnly: true
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: net2app-uploads
+        - name: android-app
+          hostPath:
+            path: /opt/net2app/android-app
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: net2app-uploads
+  namespace: net2app
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+---
+# ── Internal HTTP service (fronted by the Ingress) ──
+apiVersion: v1
+kind: Service
+metadata:
+  name: net2app-web
+  namespace: net2app
+spec:
+  selector:
+    app: net2app
+    tier: web
+  ports:
+    - port: 5556
+      targetPort: 5556
+      name: http
+---
+# ── SMPP NodePort 2775 — Android phones / GSM gateways / ESMEs connect to
+#    ANY node's public IP:2775 (same numbers the fleet uses today), kube-proxy
+#    forwards to the pod. externalTrafficPolicy: Cluster (default) is fine for
+#    long-lived SMPP TCP. ──
+apiVersion: v1
+kind: Service
+metadata:
+  name: net2app-smpp
+  namespace: net2app
+spec:
+  selector:
+    app: net2app
+    tier: web
+  type: NodePort
+  ports:
+    - port: 2775
+      targetPort: 2775
+      nodePort: 2775
+      name: smpp
+---
+# ── HPA (safe only at min=max=1 until in-memory registry is externalized) ──
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: net2app-web
+  namespace: net2app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: net2app-web
+  minReplicas: 1
+  maxReplicas: 1
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

@@ -74,12 +74,33 @@ else
   fi
 fi
 
+# ── 1b. Detect whether sudo needs a password ──
+# Fresh cloud images (OVH, etc.) often ship with passwordless sudo (NOPASSWD).
+# Feeding a password line into `sudo -S bash -s` on such hosts leaks that line
+# into the script as its first command -> "command not found" -> `set -e` aborts
+# provisioning (exactly what happened on 139.99.148.177). Only send the
+# password when sudo actually requires one.
+SUDO_NEEDS_PASSWORD=true
+if ssh_cmd "sudo -n true" 2>/dev/null; then
+  SUDO_NEEDS_PASSWORD=false
+  log "Passwordless sudo detected (NOPASSWD) — skipping sudo password"
+fi
+
+# Emits the sudo password ONLY when sudo requires one. Pipe this before a
+# heredoc into `sudo -S bash -s`.
+sudo_stdin() {
+  if [ "$SUDO_NEEDS_PASSWORD" = "true" ]; then
+    echo "$SU_PASS"
+  fi
+}
+
 # ── 2. Lightweight provisioning (Node.js, PM2, PostgreSQL, nginx, redis) ──
 log "Provisioning server (Node.js, PM2, PostgreSQL, nginx, redis)..."
 
 # Run provisioning as root via sudo — installs only what's needed (no Asterisk)
-# Pattern: password first line (for sudo -S), then heredoc script (for bash -s)
-{ echo "$SU_PASS"; cat << 'PROVISION_EOF'; } | ssh_cmd "sudo -S bash -s" 2>&1 | tail -20
+# Pattern: sudo password first line (only when sudo needs one), then heredoc
+# script (for bash -s)
+{ sudo_stdin; cat << 'PROVISION_EOF'; } | ssh_cmd "sudo -S bash -s" 2>&1 | tail -20
 set -e
 export DEBIAN_FRONTEND=noninteractive
 
@@ -121,7 +142,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOCAL_APP_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Ensure /opt/net2app exists on remote
-echo "$SU_PASS" | ssh_cmd "sudo -S mkdir -p $APP_DIR && sudo chown $SSH_USER:$SSH_USER $APP_DIR" 2>/dev/null
+sudo_stdin | ssh_cmd "sudo -S mkdir -p $APP_DIR && sudo chown $SSH_USER:$SSH_USER $APP_DIR" 2>/dev/null
 
 # rsync app files (excluding heavy dirs) — this is the key fix!
 # The old approach ran install.sh from /tmp where there was no package.json.
@@ -133,8 +154,9 @@ log "Application files synced"
 log "Installing dependencies and building on remote server..."
 
 # Generate .env with a unique JWT secret, then npm install + build + start
-# Pattern: password first line (for sudo -S), then heredoc script (for bash -s)
-{ echo "$SU_PASS"; cat << 'BUILD_EOF'; } | ssh_cmd "sudo -S bash -s" 2>&1 | tail -30
+# Pattern: sudo password first line (only when sudo needs one), then heredoc
+# script (for bash -s)
+{ sudo_stdin; cat << 'BUILD_EOF'; } | ssh_cmd "sudo -S bash -s" 2>&1 | tail -30
 set -e
 APP_DIR="/opt/net2app"
 cd "$APP_DIR"
@@ -178,7 +200,7 @@ log "Build complete"
 # ── 5. Configure nginx ──
 log "Configuring nginx..."
 
-{ echo "$SU_PASS"; cat << 'NGINX_EOF'; } | ssh_cmd "sudo -S bash -s" 2>&1 | tail -10
+{ sudo_stdin; cat << 'NGINX_EOF'; } | ssh_cmd "sudo -S bash -s" 2>&1 | tail -10
 set -e
 
 # Generate self-signed cert if missing
@@ -309,7 +331,7 @@ log "Nginx configured"
 
 # ── 6. Install PM2 watchdog ──
 log "Installing watchdog..."
-{ echo "$SU_PASS"; cat << 'WATCHDOG_EOF'; } | ssh_cmd "sudo -S bash -s" 2>/dev/null || true
+{ sudo_stdin; cat << 'WATCHDOG_EOF'; } | ssh_cmd "sudo -S bash -s" 2>/dev/null || true
 if [ -f /opt/net2app/scripts/net2app-watchdog.sh ]; then
   sudo cp /opt/net2app/scripts/net2app-watchdog.sh /usr/local/bin/net2app-watchdog 2>/dev/null
   sudo chmod +x /usr/local/bin/net2app-watchdog 2>/dev/null
@@ -320,7 +342,7 @@ WATCHDOG_EOF
 
 # ── 7. Setup PM2 auto-start on boot ──
 log "Setting up PM2 auto-start..."
-{ echo "$SU_PASS"; cat << 'STARTUP_EOF'; } | ssh_cmd "sudo -S bash -s" 2>&1 | tail -5
+{ sudo_stdin; cat << 'STARTUP_EOF'; } | ssh_cmd "sudo -S bash -s" 2>&1 | tail -5
 STARTUP_CMD=$(PM2_HOME=/root/.pm2 pm2 startup systemd -u root --hp /root 2>/dev/null | grep 'sudo' | head -1)
 if [ -n "$STARTUP_CMD" ]; then
   eval "$STARTUP_CMD" 2>/dev/null || true

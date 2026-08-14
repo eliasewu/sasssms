@@ -17,7 +17,7 @@
  * uploads were rejected with HTTP 400 because raw control chars in logcat
  * broke JSON.parse). Artifact: /opt/net2app/android-app/net2app-v2.4.1.apk.
  */
-export const APK_VERSION = "2.4.5";
+export const APK_VERSION = "2.4.6";
 export const APK_FILENAME = `net2app-v${APK_VERSION}.apk`;
 export const APK_PATH = `/opt/net2app/android-app/${APK_FILENAME}`;
-export const APK_SIZE_MB = 63;
+export const APK_SIZE_MB = 62;

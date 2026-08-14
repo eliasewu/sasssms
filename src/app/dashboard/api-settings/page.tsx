@@ -475,6 +475,26 @@ address-npi = 0`}
                 and <code className="bg-purple-100 px-1 rounded">connection_type = 'SMPP'</code>. The gateway connects to the shared SMSC and
                 delivers inbound MOs (mobile-originated) via DELIVER_SM.
               </p>
+              <div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <h4 className="font-medium text-emerald-800 text-sm mb-2">📱 Android SMS Gateway (Net2APP App) — Auto-Configured</h4>
+                <p className="text-xs text-emerald-700 mb-2">
+                  When you create a supplier with <strong>connection_type = 'ANDROID_SMS'</strong> (the Android app on a phone/SIM),
+                  the phone has <strong>no public IP</strong> — it registers <strong>inbound</strong> to this server, so the platform
+                  <strong> auto-fills the SMPP host with this server's public IP</strong> and locks the mode to <strong>SERVER</strong>:
+                </p>
+                <div className="bg-white/50 border border-emerald-200 rounded-lg p-3 text-xs font-mono text-emerald-800">
+                  <strong>Host (auto-filled):</strong> this server's public IP (e.g. net2app.com)<br />
+                  <strong>Port (auto-filled):</strong> 2775<br />
+                  <strong>Mode (locked):</strong> SERVER — the Android app connects outbound to us<br />
+                  <strong>Auth:</strong> supplier username + password (entered in the app)<br />
+                  <strong>MT:</strong> we deliver SMS to the phone via DELIVER_SM → sent through the SIM<br />
+                  <strong>MO:</strong> SMS received on the phone are forwarded to the tenant's SMS inbox automatically
+                </div>
+                <p className="text-xs text-emerald-600 mt-2">
+                  No host/mode needed from you — the dashboard form and the API both auto-fill host = the server's public IPv4,
+                  port 2775, and SERVER mode whenever ANDROID_SMS is selected.
+                </p>
+              </div>
             </div>
           </div>
         </div>

@@ -9,6 +9,7 @@ export const ALL_SERVER_IPS = [
   "54.37.252.5",     // France — Paris
   "145.239.1.7",     // Germany — Frankfurt (Primary Mail Server)
   "139.99.148.65",   // Australia — Sydney
+  "139.99.148.177",  // Australia — Sydney (2nd box)
 ] as const;
 
 /**
@@ -28,6 +29,7 @@ export const KNOWN_LABELS: Record<string, string> = {
   "54.37.252.5": "France — Paris",
   "145.239.1.7": "Germany — Frankfurt (Mail Server)",
   "139.99.148.65": "Australia — Sydney",
+  "139.99.148.177": "Australia — Sydney (2nd box)",
 };
 
 export function serverLabel(ip: string): string {
@@ -36,17 +38,42 @@ export function serverLabel(ip: string): string {
 
 let _selfIp: string | null = null;
 
-/** Detect our own public IP via ifconfig.me (cached, retries on failure). */
-export async function getSelfIp(): Promise<string> {
-  if (_selfIp) return _selfIp;
+/** Detect our own public IP, preferring IPv4 (phones bind via IPv4 only).
+ *  Tries api.ipify.org (IPv4-only) first, then 4.ifconfig.me, then ifconfig.me,
+ *  and only accepts a valid IPv4 address. Cached, retries on failure. */
+async function fetchIp(url: string, timeoutMs: number): Promise<string | null> {
   try {
     const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 2000);
-    const r = await fetch("http://ifconfig.me/ip", { signal: ctl.signal });
+    const t = setTimeout(() => ctl.abort(), timeoutMs);
+    const r = await fetch(url, { signal: ctl.signal });
     clearTimeout(t);
-    _selfIp = (await r.text()).trim();
+    return (await r.text()).trim();
   } catch {
-    _selfIp = null; // retry next request
+    return null;
   }
-  return _selfIp || "127.0.0.1";
+}
+
+function isIPv4(v: string): boolean {
+  if (!v) return false;
+  const parts = v.split(".");
+  if (parts.length !== 4) return false;
+  return parts.every(p => /^\d{1,3}$/.test(p) && Number(p) >= 0 && Number(p) <= 255);
+}
+
+export async function getSelfIp(): Promise<string> {
+  if (_selfIp) return _selfIp;
+  const candidates = [
+    "https://api.ipify.org",
+    "http://4.ifconfig.me/ip",
+    "http://ifconfig.me/ip",
+  ];
+  for (const url of candidates) {
+    const v = await fetchIp(url, 2500);
+    if (v && isIPv4(v)) {
+      _selfIp = v;
+      return v;
+    }
+  }
+  _selfIp = null;
+  return "127.0.0.1";
 }

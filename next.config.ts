@@ -28,6 +28,9 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   typescript: { ignoreBuildErrors: true },
+  // Standalone output — required for the Kubernetes container build (k8s/Dockerfile).
+  // `next start` on the PM2 fleet is unaffected; standalone adds .next/standalone.
+  output: "standalone",
   serverExternalPackages: ["pg", "drizzle-orm", "bcryptjs", "smpp"],
   experimental: {
     serverActions: { bodySizeLimit: "10mb" },

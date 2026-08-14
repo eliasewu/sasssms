@@ -5,6 +5,7 @@ import { createToken, hashPassword } from "@/lib/auth";
 import { createTenantSchema, seedMccMncRates } from "@/lib/tenant-schema";
 import { safeText, safeDecimal } from "@/lib/validation";
 import { ALL_SERVER_IPS, getSelfIp, isDevServer } from "@/lib/server-ips";
+import { countryCodeFromPhone, pickServerForPackage } from "@/lib/server-assignment";
 import { notifyAdminNewTenant } from "@/lib/email-service";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
@@ -80,23 +81,31 @@ export async function POST(request: Request) {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
-    // Auto-assign server — PRODUCTION locations only. Dev servers
-    // (role "development" or in DEV_SERVER_IPS) are never assignable.
+    // Auto-assign server by package + region. Dev servers (role "development"
+    // or in DEV_SERVER_IPS) are never assignable — tenants only land on
+    // production boxes. Starter clients are routed by region/latency with
+    // ascending-order (least-loaded) selection; Professional/Enterprise are
+    // assigned manually by a super admin.
     let resolvedLocation = "auto";
     let assignedServerIp = "0.0.0.0";
     try {
       const locResult = await pool.query("SELECT value FROM platform_settings WHERE key = 'server_locations'");
       if (locResult.rows.length > 0) {
-        const locations: Array<{ id: string; ipAddress: string; isActive: boolean; role?: string }> = JSON.parse(locResult.rows[0].value || "[]");
-        const active = locations.filter((l) =>
-          l.isActive &&
-          l.ipAddress &&
-          l.ipAddress !== "0.0.0.0" &&
-          l.role !== "development" &&
-          !isDevServer(l.ipAddress)
+        const locations = JSON.parse(locResult.rows[0].value || "[]");
+        const loadResult = await pool.query(
+          `SELECT smpp_server_ip, COUNT(*)::int AS c FROM tenants
+           WHERE smpp_server_ip IS NOT NULL AND smpp_server_ip <> '0.0.0.0' AND is_active = true
+           GROUP BY smpp_server_ip`
         );
-        if (active.length > 0) {
-          const pick = active[Math.floor(Math.random() * active.length)];
+        const loads: Record<string, number> = {};
+        for (const row of loadResult.rows) loads[row.smpp_server_ip] = row.c;
+
+        const pick = pickServerForPackage(locations, {
+          package: "starter",
+          countryCode: countryCodeFromPhone(safeText(phone, 50)),
+          loads,
+        });
+        if (pick) {
           resolvedLocation = pick.id;
           assignedServerIp = pick.ipAddress;
         }

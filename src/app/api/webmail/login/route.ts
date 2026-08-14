@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyCredentials, encryptCredentials } from "@/lib/webmail";
-
-const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
-const MAX_ATTEMPTS = 5;
-const LOCKOUT_MS = 60000; // 1 minute lockout after 5 failures
+import { webmailLoginGuard } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   try {
@@ -18,28 +15,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Only @net2app.com email accounts are supported" }, { status: 403 });
     }
 
-    // Rate limiting
+    // Brute-force lockout: 5 consecutive failures → 1 minute block (per account)
     const key = email.toLowerCase();
-    const now = Date.now();
-    const attempt = loginAttempts.get(key);
-    if (attempt && attempt.count >= MAX_ATTEMPTS && now - attempt.lastAttempt < LOCKOUT_MS) {
+    const lockedMs = webmailLoginGuard.lockedMs(key);
+    if (lockedMs > 0) {
       return NextResponse.json({ error: "Too many login attempts. Try again in 1 minute." }, { status: 429 });
     }
 
     const valid = await verifyCredentials(email, password);
     if (!valid) {
-      // Track failed attempt
-      if (!attempt || now - attempt.lastAttempt > LOCKOUT_MS) {
-        loginAttempts.set(key, { count: 1, lastAttempt: now });
-      } else {
-        attempt.count++;
-        attempt.lastAttempt = now;
-      }
+      webmailLoginGuard.registerFailure(key);
       return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
     }
 
     // Clear failed attempts on success
-    loginAttempts.delete(key);
+    webmailLoginGuard.reset(key);
 
     // Encrypt credentials for the session token (AES-256-GCM)
     const token = encryptCredentials(email, password);

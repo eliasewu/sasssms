@@ -43,7 +43,8 @@ while IFS='|' read -r id email schema assignedIp currentLoc; do
     149.56.22.232) TARGET_LOC="canada-origin" ;;
     54.37.252.5)   TARGET_LOC="france" ;;
     145.239.1.7)   TARGET_LOC="germany" ;;
-    139.99.148.65) TARGET_LOC="sydney" ;;
+    139.99.148.65)  TARGET_LOC="sydney" ;;
+    139.99.148.177) TARGET_LOC="sydney-2" ;;
     *) log "  ⏭️  #$id $schema -> unknown IP $assignedIp — skipping"; continue ;;
   esac
 

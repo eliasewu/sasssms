@@ -1,0 +1,58 @@
+# ═══════════════════════════════════════════════════════════════════════
+#  Net2APP — Ingress (HTTP/HTTPS front door)
+#
+#  k3s ships Traefik by default (ingressClassName: traefik). This manifest
+#  targets the NGINX ingress controller — install it if you prefer:
+#    kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/baremetal/deploy.yaml
+#  then set `ingressClassName: nginx` below.
+#
+#  Per-tenant domains: today each tenant's domain (A record) points at their
+#  assigned server's IP. After cutover it points at the cluster (any node or
+#  the kube-vip/LB VIP). Because the app authenticates per-request (JWT
+#  cookie / API key) and all schemas live in the central DB, ONE ingress
+#  default rule serves every tenant — add `host:` rules per tenant domain
+#  only when you need distinct TLS certs or rate limits.
+#  ═══════════════════════════════════════════════════════════════════════
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: net2app
+  namespace: net2app
+  annotations:
+    # Long-lived SMPP-adjacent requests + large uploads
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    # Uploaded files are served directly by nginx from the pod's disk
+    nginx.ingress.kubernetes.io/proxy-buffering: "on"
+spec:
+  ingressClassName: nginx
+  tls:
+    # One cert for the platform domain; per-tenant certs can be added later
+    # (cert-manager + Let's Encrypt, or Cloudflare origin certs as today).
+    - hosts:
+        - net2app.com
+        - "*.net2app.com"
+      secretName: net2app-tls
+  rules:
+    - host: net2app.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: net2app-web
+                port:
+                  number: 5556
+    # Example per-tenant rule (repeat per tenant domain after DNS cutover):
+    # - host: tenant1.com
+    #   http:
+    #     paths:
+    #       - path: /
+    #         pathType: Prefix
+    #         backend:
+    #           service:
+    #             name: net2app-web
+    #             port:
+    #               number: 5556

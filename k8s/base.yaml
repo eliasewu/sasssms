@@ -1,0 +1,44 @@
+# ═══════════════════════════════════════════════════════════════════════
+#  Net2APP — k8s base objects (namespace / config / secrets template)
+#  Apply order: namespace → configmap → secret → postgres → services → deploy
+#  ═══════════════════════════════════════════════════════════════════════
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: net2app
+  labels:
+    app.kubernetes.io/name: net2app
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: net2app-config
+  namespace: net2app
+data:
+  NODE_ENV: "production"
+  PORT: "5556"
+  SMPP_PORT: "2775"
+  # Public app URL — used for OAuth callbacks, share-links, APK download links.
+  NEXT_PUBLIC_APP_URL: "https://net2app.com"
+  NEXT_PUBLIC_TAWKTO_ID: ""
+  # Asterisk AMI — used by Voice OTP. Leave as-is unless the cluster runs
+  # Asterisk on a dedicated node; then point these at that node's address.
+  ASTERISK_AMI_HOST: "127.0.0.1"
+  ASTERISK_AMI_PORT: "5038"
+  ASTERISK_AMI_USER: ""
+  ASTERISK_AMI_SECRET: ""
+---
+# ⚠️  TEMPLATE ONLY — never commit real secrets.
+#     Create with:
+#       kubectl -n net2app create secret generic net2app-secrets \
+#         --from-literal=DATABASE_URL='postgresql://postgres:CHANGE_ME@net2app-postgres:5432/app_db' \
+#         --from-literal=JWT_SECRET='CHANGE_ME_openssl_rand_hex_32'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: net2app-secrets
+  namespace: net2app
+type: Opaque
+stringData:
+  DATABASE_URL: "postgresql://postgres:CHANGE_ME@net2app-postgres:5432/app_db"
+  JWT_SECRET: "CHANGE_ME"

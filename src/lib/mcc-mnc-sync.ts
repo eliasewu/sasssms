@@ -57,8 +57,14 @@ export async function syncMccMncToTenants(
   const stats: MccMncSyncStats = { tenants: 0, failed: 0, inserted: 0, updated: 0, deleted: 0 };
   try {
     await client.query("SET search_path TO public");
+    // Only sync to schemas that physically exist on THIS server — the tenants
+    // table is replicated across the fleet, but each server hosts only a subset
+    // of tenant schemas. Writing into a non-local schema would fail (and the
+    // nightly cron would error-spam for every entry on every foreign tenant).
     const { rows: tenants } = await client.query(
-      "SELECT schema_name FROM tenants WHERE is_active = true"
+      `SELECT t.schema_name FROM tenants t
+       WHERE t.is_active = true
+         AND EXISTS (SELECT 1 FROM pg_namespace n WHERE n.nspname = t.schema_name)`
     );
     if (tenants.length === 0) return stats;
 

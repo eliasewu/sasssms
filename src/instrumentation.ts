@@ -29,7 +29,7 @@ export async function register() {
     // ── Dynamic imports — all Node.js-only modules loaded lazily ──
     const [
       { startSmppServer },
-      { initSupplierConnections },
+      { initSupplierConnections, recoverPendingDeliveriesFromDb },
       { syncAllBindStatus },
       { startDlrPolling },
       { startDlrTimeoutSweeper },
@@ -67,6 +67,12 @@ export async function register() {
       console.log("  Outbound connections initialized");
     }).catch((err: Error) => {
       console.error("  Failed to initialize outbound connections:", err.message);
+    });
+
+    // Re-hydrate in-flight pending deliveries from the DB so DLRs that arrive
+    // after a restart are still matched (no message/DLR loss on process restart).
+    recoverPendingDeliveriesFromDb().catch((err: Error) => {
+      console.error("  Pending delivery re-hydration failed:", err.message);
     });
 
     // Sync bind_status across ALL tenants every 30 seconds.

@@ -4,6 +4,7 @@ import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 import { auditLog } from "@/lib/db-helpers";
 import { VALID_BIND_TYPES } from "@/lib/validation";
+import { getSelfIp } from "@/lib/server-ips";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `Invalid bind_type: "${body.bindType}". Must be one of: ${VALID_BIND_TYPES.join(", ")}` }, { status: 400 });
   }
 
+  // ANDROID_SMS suppliers: the phone app has no public IP — it binds
+  // inbound to OUR SMPP server. Auto-fill the SMPP host with our own
+  // public IP and force SERVER (inbound) mode.
+  const isAndroidSms = body.connectionType === "ANDROID_SMS";
+  const host = isAndroidSms ? (body.host || (await getSelfIp())) : (body.host ?? null);
+  const connectionMode = isAndroidSms ? "SERVER" : (body.connectionMode || "CLIENT");
+
   try {
     const result = await tenantQuery(
       tenant.schemaName,
@@ -38,14 +46,14 @@ export async function POST(request: Request) {
       [
         body.supplierCode || null, body.name, body.companyName || null, body.contactPerson || null,
         body.email || null, body.phone || null, body.connectionType ?? null,
-        body.host ?? null, parseInt(body.port ?? '0') || 2775, body.username ?? null, body.password ?? null,
+        host, parseInt(body.port ?? '0') || 2775, body.username ?? null, body.password ?? null,
         body.systemId || null, body.systemType || null, body.smppVersion || "3.4",
         body.bindType || "TRX", parseInt(body.addressTon) || 0, parseInt(body.addressNpi) || 0,
         body.addressRange || null, body.inboundMode || false,
         body.apiUrl || null, body.apiKey || null, body.currency || "USD",
         body.forceDlr || false,
         body.chargingMode || "on_submit", body.dlrTimeout || null,
-        body.connectionMode || "CLIENT", body.config || null, "UNBOUND",
+        connectionMode, body.config || null, "UNBOUND",
         body.connectorId || null
       ]
     );

@@ -6,6 +6,7 @@ import { createTenantSchema, seedMccMncRates } from "@/lib/tenant-schema";
 import { eq } from "drizzle-orm";
 import { safeInt, safeDecimal, safeText } from "@/lib/validation";
 import { ALL_SERVER_IPS, getSelfIp, isDevServer } from "@/lib/server-ips";
+import { countryCodeFromPhone, pickServerForPackage } from "@/lib/server-assignment";
 import { registerLimiter, getClientIp } from "@/lib/rate-limit";
 import { sendTenantWelcomeEmail, notifyAdminNewTenant } from "@/lib/email-service";
 
@@ -26,7 +27,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "You must accept the Terms & Conditions to create an account." }, { status: 400 });
     }
 
-    // Auto-assign a random active server — server IPs are never exposed to users
+    // Auto-assign a server — server IPs are never exposed to users.
+    // Starter clients are routed by region/latency (phone dialing code →
+    // Europe/Africa → European & USA servers; Asia/Australia → Sydney/
+    // Singapore) with ascending-order (least-loaded) selection. Professional
+    // and Enterprise clients are assigned manually by a super admin, so they
+    // stay unassigned until then.
     let resolvedLocation = "";
     let assignedServerIp = "0.0.0.0";
 
@@ -74,29 +80,34 @@ export async function POST(request: Request) {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
-    // ── Auto-assign server: pick a random active PRODUCTION location from
-    //    platform_settings. Dev servers (role "development" or in DEV_SERVER_IPS)
-    //    are never assignable — tenants only land on production boxes. ──
+    // ── Auto-assign server by package + region ──
+    // Dev servers (role "development" or in DEV_SERVER_IPS) are never
+    // assignable — tenants only land on production boxes.
     try {
       const locResult = await pool.query("SELECT value FROM platform_settings WHERE key = 'server_locations'");
       if (locResult.rows.length > 0) {
-        const locations: Array<{ id: string; ipAddress: string; isActive: boolean; role?: string }> = JSON.parse(locResult.rows[0].value || "[]");
-        const active = locations.filter(l =>
-          l.isActive &&
-          l.ipAddress &&
-          l.ipAddress !== "0.0.0.0" &&
-          l.role !== "development" &&
-          !isDevServer(l.ipAddress)
+        const locations = JSON.parse(locResult.rows[0].value || "[]");
+        // Tenant load per server for ascending-order (least-loaded) selection
+        const loadResult = await pool.query(
+          `SELECT smpp_server_ip, COUNT(*)::int AS c FROM tenants
+           WHERE smpp_server_ip IS NOT NULL AND smpp_server_ip <> '0.0.0.0' AND is_active = true
+           GROUP BY smpp_server_ip`
         );
-        if (active.length > 0) {
-          const pick = active[Math.floor(Math.random() * active.length)];
+        const loads: Record<string, number> = {};
+        for (const row of loadResult.rows) loads[row.smpp_server_ip] = row.c;
+
+        const pick = pickServerForPackage(locations, {
+          package: "starter", // new signups are always starter until an admin upgrades
+          countryCode: countryCodeFromPhone(safeText(phone, 50)),
+          loads,
+        });
+        if (pick) {
           resolvedLocation = pick.id;
           assignedServerIp = pick.ipAddress;
         }
       }
     } catch (e) { console.error("Server location lookup failed:", e); }
-    // Fall back to global smppServerIp if no active PRODUCTION locations found
-    // (skip dev IPs here too)
+    // Fall back to global smppServerIp if no matching server found (skip dev IPs too)
     if (!assignedServerIp || assignedServerIp === "0.0.0.0" || isDevServer(assignedServerIp)) {
       try {
         const globalIpResult = await pool.query("SELECT value FROM platform_settings WHERE key = 'smppServerIp'");

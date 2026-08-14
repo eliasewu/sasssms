@@ -31,7 +31,8 @@ import {
   requeueDlrsPersist,
   loadAllDlrsFromDb,
   startDlrCleanupPersist,
-} from "@/lib/dlr-queue-persist";import { validateBind,
+} from "@/lib/dlr-queue-persist";
+import { pushDlrWebhook } from "@/lib/dlr-webhook-log";import { validateBind,
   extractRemoteAddress,
 } from "@/lib/smpp-bind-validator";
 import { isMmsForwardEnabled, isMmsPlaceholder } from "@/lib/mms-forward";
@@ -307,7 +308,7 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
       });
 
       // ── Handle DELIVER_SM from SERVER-mode suppliers (DLR receipts from modems/gateways) ──
-      session.on("deliver_sm", (pdu: smpp.PDU) => {
+      session.on("deliver_sm", async (pdu: smpp.PDU) => {
         if (!currentSession || currentSession.type !== "supplier_server") {
           // ESME clients shouldn't send deliver_sm to us; silently ack
           try { session.send(pdu.response({ message_id: "" })); } catch {}
@@ -376,25 +377,78 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
         const deliveries = _g.__pendingDeliveries;
 
         // First: try direct match by the modem's DLR message ID
-        let ourMessageId: string | null = null;
-        let callback = callbacks?.get(parsed.messageId);
+        const findMatch = (): { ourId: string | null; cb: ((dlr: DlrPayload) => void) | undefined } => {
+          let ourId: string | null = null;
+          let cb = callbacks?.get(parsed.messageId);
+          if (cb) {
+            ourId = parsed.messageId;
+          } else if (deliveries) {
+            // Second: the modem likely uses its own internal ID (not ours).
+            // Search pendingDeliveries for this supplier to find our message.
+            // Also match by destination to avoid wrong delivery when multiple SMS are in-flight.
+            const dlrDest = (pdu.source_addr as string) || "";
+            for (const [key, delivery] of deliveries) {
+              if (delivery.supplierId === ss.supplierId && delivery.tenantId === ss.tenantId
+                  && (delivery.destination === dlrDest || !dlrDest)) {
+                ourId = delivery.ourMessageId;
+                cb = callbacks?.get(ourId);
+                if (cb) break;
+              }
+            }
+          }
+          return { ourId, cb };
+        };
 
-        if (callback) {
-          ourMessageId = parsed.messageId;
-        } else if (deliveries) {
-          // Second: the modem likely uses its own internal ID (not ours).
-          // Search pendingDeliveries for this supplier to find our message.
-          // Also match by destination to avoid wrong delivery when multiple SMS are in-flight.
-          const dlrDest = (pdu.source_addr as string) || "";
-          for (const [key, delivery] of deliveries) {
-            if (delivery.supplierId === ss.supplierId && delivery.tenantId === ss.tenantId
-                && (delivery.destination === dlrDest || !dlrDest)) {
-              ourMessageId = delivery.ourMessageId;
-              callback = callbacks?.get(ourMessageId);
-              if (callback) break;
+        let matched = findMatch();
+        let recoveredOurId: string | null = null;
+        if (!matched.cb) {
+          // The gateway can push its DLR before processSubmitSm finishes
+          // registering the DLR callback (post-delivery DB insert, tenant
+          // counter, etc.) — especially under load or across a cross-server
+          // relay. Under pool contention the submit flow's INSERT can lag
+          // longer than a single grace wait.
+          //
+          // Phase 1 — prefer the in-memory callback for the whole window:
+          // the callback path performs on_dlr charging (cost / supplier_cost /
+          // profit stamping + tenant sms_counter), which DB recovery does
+          // NOT — so a DLR that lands while the callback registration is
+          // still in flight must be handled by the callback, not recovery.
+          const RETRY_DEADLINE_MS = 4000;
+          const RETRY_INTERVAL_MS = 800;
+          const retryDeadline = Date.now() + RETRY_DEADLINE_MS;
+          while (!matched.cb && Date.now() < retryDeadline) {
+            await new Promise((r) => setTimeout(r, RETRY_INTERVAL_MS));
+            matched = findMatch();
+            if (matched.cb) {
+              console.log(`[SMPP-SRV] DLR ${parsed.messageId} matched after grace wait (late callback registration)`);
+            }
+          }
+          // Phase 2 — DB recovery is the restart-survival fallback (no live
+          // callback will ever arrive) or a row that committed but whose
+          // callback never registered. Idempotent: guarded by
+          // dlr_status='SENT', returns the our-message-id once handled.
+          if (!matched.cb) {
+            recoveredOurId = await recoverServerDlrFromDb(ss, parsed, pdu);
+            if (recoveredOurId) {
+              console.log(`[SMPP-SRV] DLR ${parsed.messageId} recovered from DB (restart / late INSERT survivor)`);
+              // Clean up any callback/pending delivery that the submit flow
+              // may register AFTER recovery handled the DLR — otherwise a
+              // retransmitted deliver_sm could fire it later, causing a
+              // duplicate DLR push and duplicate on_dlr counter increment.
+              callbacks?.delete(recoveredOurId);
+              if (deliveries) {
+                for (const [key, d] of deliveries) {
+                  if (d.ourMessageId === recoveredOurId) {
+                    deliveries.delete(key);
+                    break;
+                  }
+                }
+              }
             }
           }
         }
+        const ourMessageId = matched.ourId;
+        const callback = matched.cb;
 
         if (callback && ourMessageId) {
           try {
@@ -486,7 +540,7 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
 
                 await dbClient.query(
                   `UPDATE messages SET dlr_status = $1, dlr_timestamp = NOW(), status = $2,
-                   cost = $4, supplier_cost = $5, profit = $4 - $5
+                   cost = $4::numeric, supplier_cost = $5::numeric, profit = $4::numeric - $5::numeric
                    WHERE message_id = $3`,
                   [dlrStatus, dlrStatus, ourMessageId, finalCost, finalSuppCost]
                 );
@@ -511,7 +565,9 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
           } catch (err) {
             console.error(`[SMPP-SRV] DLR callback error:`, err);
           }
-        } else {
+        } else if (!recoveredOurId) {
+          // No in-memory callback and no DB recovery succeeded within the
+          // retry window — the DLR genuinely has no matching pending message.
           console.log(`[SMPP-SRV] No DLR match found — modem=${parsed.messageId}, supplier=${ss.supplierId}, tenant=${ss.tenantId}`);
         }
 
@@ -1387,7 +1443,7 @@ async function processSubmitSm(
                     try {
                       await dbc.query(`SET search_path TO "${es.schemaName}"`);
                       await dbc.query(
-                        `UPDATE messages SET cost = $1, supplier_cost = $2, profit = $1 - $2 WHERE message_id = $3`,
+                        `UPDATE messages SET cost = $1::numeric, supplier_cost = $2::numeric, profit = $1::numeric - $2::numeric WHERE message_id = $3`,
                         [ratePerSms, androidSuppCost, messageId]
                       );
                       await dbc.query(`SET search_path TO public`);
@@ -1528,7 +1584,7 @@ async function processSubmitSm(
                   try {
                     await dbc.query(`SET search_path TO "${es.schemaName}"`);
                     await dbc.query(
-                      `UPDATE messages SET cost = $1, supplier_cost = $2, profit = $1 - $2 WHERE message_id = $3`,
+                      `UPDATE messages SET cost = $1::numeric, supplier_cost = $2::numeric, profit = $1::numeric - $2::numeric WHERE message_id = $3`,
                       [ratePerSms, suppCost, messageId]
                     );
                     await dbc.query(`SET search_path TO public`);
@@ -1590,7 +1646,12 @@ async function processSubmitSm(
               source_addr: dlr.dest,
               destination_addr: dlr.src,
               short_message: {
-                message: `id:${dlr.supplierMessageId} sub:001 dlvrd:001 submit date:${dlr.submitDate} done date:${dlr.doneDate} stat:${dlrStatus} err:${dlr.errorCode} text:${dlrStatus}`,
+                // Re-stamp the DLR with OUR message id (the one we returned in
+                // submit_sm_resp). When this SMSC relays to an upstream ESME —
+                // e.g. a CLIENT-mode supplier link from another Net2APP server
+                // — the upstream keyed its pending delivery by OUR id, so the
+                // DLR must carry OUR id, not the downstream modem's id.
+                message: `id:${dlr.messageId} sub:001 dlvrd:001 submit date:${dlr.submitDate} done date:${dlr.doneDate} stat:${dlrStatus} err:${dlr.errorCode} text:${dlrStatus}`,
               },
               esm_class: 4,
               registered_delivery: 0,
@@ -1725,7 +1786,7 @@ async function processSubmitSm(
 
                     await checkClient.query(
                       `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW(), dlr_source = 'FORCE_TIMEOUT',
-                       cost = $2, supplier_cost = $3, profit = $2 - $3 WHERE message_id = $1`,
+                       cost = $2::numeric, supplier_cost = $3::numeric, profit = $2::numeric - $3::numeric WHERE message_id = $1`,
                       [messageId, updateCost, updateSuppCost]
                     );
                     console.log(`[SMPP] force_dlr_timeout: no real DLR in ${effectiveTimeout}s → ${messageId} marked DELIVERED`);
@@ -1911,7 +1972,8 @@ async function flushPendingDlrs(es: EsmeSession) {
           source_addr: dlr.dest,
           destination_addr: dlr.src,
           short_message: {
-            message: `id:${dlr.supplierMessageId} sub:001 dlvrd:001 submit date:${dlr.submitDate} done date:${dlr.doneDate} stat:${dlrStatus} err:${dlr.errorCode} text:${dlrStatus}`,
+            // Re-stamp with OUR message id (see note in the live DLR push path).
+            message: `id:${dlr.messageId} sub:001 dlvrd:001 submit date:${dlr.submitDate} done date:${dlr.doneDate} stat:${dlrStatus} err:${dlr.errorCode} text:${dlrStatus}`,
           },
           esm_class: 4,
           registered_delivery: 0,
@@ -2027,6 +2089,129 @@ function removeSession(sess: ActiveSession): boolean {
       return true;
     }
     return false;
+  }
+}
+
+/**
+ * DB-backed DLR recovery for SERVER-mode supplier DLRs (gateways / link SMSCs).
+ *
+ * When the process restarts between a submit_sm and the supplier's DLR, the
+ * in-memory dlrCallbacks / pendingDeliveries maps are gone — a DLR that would
+ * normally be matched instantly would be dropped as "unknown". Every submit
+ * persists supplier_message_id + message_id into the tenant messages table, so
+ * the mapping is fully reconstructible:
+ *   1. Look up the message by supplier_message_id (or our message_id) + supplier.
+ *   2. Update its DLR status / charging in the DB.
+ *   3. Push the DLR to the ESME client (live session, or persisted queue if
+ *      disconnected) and fire the HTTP webhook if one is configured.
+ */
+async function recoverServerDlrFromDb(
+  ss: SupplierServerSession,
+  parsed: { messageId: string; status: string; submitDate?: string; doneDate?: string; errorCode?: string },
+  pdu: smpp.PDU
+): Promise<string | null> {
+  const dbClient = await pool.connect();
+  try {
+    await dbClient.query(`SET search_path TO "${ss.schemaName}"`);
+    const { rows } = await dbClient.query(
+      `SELECT message_id, client_id, destination, sender, dlr_status, dlr_callback_url
+       FROM messages
+       WHERE (supplier_message_id = $1 OR message_id = $1)
+         AND supplier_id = $2
+         AND dlr_status = 'SENT'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [parsed.messageId, ss.supplierId]
+    );
+    if (rows.length === 0) return null;
+    const m = rows[0];
+    console.log(`[SMPP-SRV] DLR recovered from DB (restart survivor): modem=${parsed.messageId} → our=${m.message_id} status=${parsed.status}`);
+
+    // Map supplier status → our DLR status + push the DLR to the client
+    const statusMap: Record<string, string> = {
+      DELIVRD: "DELIVERED", DELIVERED: "DELIVERED",
+      EXPIRED: "FAILED", UNDELIV: "FAILED",
+      REJECTD: "FAILED", DELETED: "FAILED",
+      UNKNOWN: "FAILED", FAILED: "FAILED",
+    };
+    const dlrStatus = statusMap[parsed.status.toUpperCase()] || parsed.status;
+
+    // Update message DLR status in DB
+    await dbClient.query(
+      `UPDATE messages SET dlr_status = $1, dlr_timestamp = NOW(), status = $2
+       WHERE message_id = $3 AND dlr_status = 'SENT'`,
+      [dlrStatus, dlrStatus, m.message_id]
+    );
+    await dbClient.query(`SET search_path TO public`);
+
+    const dlrPayload: DlrPayload = {
+      messageId: m.message_id,
+      supplierMessageId: parsed.messageId,
+      status: parsed.status,
+      submitDate: parsed.submitDate || "",
+      doneDate: parsed.doneDate || "",
+      errorCode: parsed.errorCode || "000",
+      dest: (pdu.source_addr as string) || m.destination || "",
+      src: (pdu.destination_addr as string) || m.sender || "",
+    };
+
+    // Find the live ESME session (client may still be connected)
+    let liveSession: EsmeSession | null = null;
+    for (const [, s] of activeSessions) {
+      if (s.clientId === m.client_id && s.schemaName === ss.schemaName) {
+        liveSession = s;
+        break;
+      }
+    }
+    if (liveSession) {
+      const dlrStatusOut = mapDlrStatus(dlrPayload.status);
+      liveSession.session.send(
+        new smpp.PDU("deliver_sm", {
+          source_addr: dlrPayload.dest,
+          destination_addr: dlrPayload.src,
+          short_message: {
+            message: `id:${dlrPayload.messageId} sub:001 dlvrd:001 submit date:${dlrPayload.submitDate} done date:${dlrPayload.doneDate} stat:${dlrStatusOut} err:${dlrPayload.errorCode} text:${dlrStatusOut}`,
+          },
+          esm_class: 4,
+          registered_delivery: 0,
+          data_coding: 0,
+        })
+      );
+      console.log(`[SMPP-SRV] Recovered DLR pushed to ESME client: ${dlrPayload.messageId} → ${dlrPayload.status}`);
+    } else {
+      // Client disconnected — persist the DLR so it's delivered on reconnect
+      const { depth } = enqueueDlrPersist(ss.tenantId, m.client_id, ss.schemaName, dlrPayload);
+      console.log(`[SMPP-SRV] Recovered DLR queued for client ${m.client_id} (disconnected; queue depth ${depth})`);
+    }
+
+    // Fire the HTTP webhook if configured
+    if (m.dlr_callback_url) {
+      pushDlrWebhook(
+        m.dlr_callback_url,
+        {
+          message_id: dlrPayload.messageId,
+          supplier_message_id: dlrPayload.supplierMessageId,
+          status: dlrPayload.status,
+          destination: dlrPayload.dest,
+          source: dlrPayload.src,
+          submit_date: dlrPayload.submitDate,
+          done_date: dlrPayload.doneDate,
+          error_code: dlrPayload.errorCode,
+          timestamp: new Date().toISOString(),
+        },
+        ss.schemaName,
+        dlrPayload.messageId,
+        dlrPayload.status
+      ).catch((err) => console.error(`[SMPP-SRV] Recovered DLR webhook push failed:`, err));
+    }
+
+    return m.message_id;
+  } catch (err) {
+    console.error(`[SMPP-SRV] DLR DB recovery error:`, err);
+    return null;
+  } finally {
+    await dbClient.query(`SET search_path TO public`).catch(() => {});
+    dbClient.release();
   }
 }
 

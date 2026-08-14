@@ -1,0 +1,69 @@
+# ═══════════════════════════════════════════════════════════════════════
+#  Net2APP — OTT worker (WhatsApp Baileys / Telegram MTProto)
+#
+#  Mirrors the pm2 `ott-worker` process. Single replica: OTT device
+#  sessions (Baileys/gramjs) are per-process state; do NOT scale this
+#  deployment horizontally without moving device state to shared storage.
+#
+#  Build:  docker build --target worker -t localhost:5000/net2app-worker:2.4.6 -f k8s/Dockerfile .
+#  ═══════════════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: net2app-ott-worker
+  namespace: net2app
+  labels:
+    app: net2app
+    tier: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: net2app
+      tier: worker
+  template:
+    metadata:
+      labels:
+        app: net2app
+        tier: worker
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: ott-worker
+          image: localhost:5000/net2app-worker:2.4.6
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: net2app-config
+            - secretRef:
+                name: net2app-secrets
+          # OTT device state lives under the app dir — keep it on a volume
+          # so a pod restart doesn't force re-pairing of every WhatsApp/Telegram.
+          volumeMounts:
+            - name: ott-state
+              mountPath: /app/.ott
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits:   { cpu: 1000m, memory: 2Gi }
+          # No HTTP probe (pure worker). Liveness = process alive.
+          livenessProbe:
+            exec:
+              command: ["node", "-e", "process.exit(0)"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: ott-state
+          persistentVolumeClaim:
+            claimName: net2app-ott-state
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: net2app-ott-state
+  namespace: net2app
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi

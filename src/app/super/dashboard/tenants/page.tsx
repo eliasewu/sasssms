@@ -53,6 +53,7 @@ interface MccStat {
 
 interface ServerLocation {
   id: string; country: string; city: string; ipAddress: string; role?: string; isActive: boolean;
+  package?: string;
 }
 
 interface AutoConnectAuditEntry {
@@ -64,12 +65,20 @@ interface AutoConnectAuditEntry {
   at: string;
 }
 
-/** Production locations the super admin may assign a tenant to. */
-function assignableServers(locations: ServerLocation[]): ServerLocation[] {
-  return locations.filter(l =>
+/** Production locations the super admin may assign a tenant to, filtered by
+ *  the tenant's package: starter → starter servers, professional → professional
+ *  servers, enterprise → enterprise servers. Falls back to all production
+ *  servers when the package has no configured servers yet (e.g. enterprise
+ *  before its high-config boxes are added). */
+function assignableServers(locations: ServerLocation[], packageType?: string): ServerLocation[] {
+  const prod = locations.filter(l =>
     l.isActive && l.ipAddress && l.ipAddress !== "0.0.0.0" &&
+    (l.package || "starter") !== "development" &&
     l.role !== "development" && !isDevServer(l.ipAddress)
   );
+  if (!packageType) return prod;
+  const matched = prod.filter(l => (l.package || "starter") === packageType);
+  return matched.length > 0 ? matched : prod;
 }
 
 export default function TenantsPage() {
@@ -247,11 +256,11 @@ export default function TenantsPage() {
                 <div><label className="block text-sm font-medium mb-1">SMS Limit</label><input type="number" value={editing.smsLimit||0} onChange={e => setEditing({...editing, smsLimit: parseInt(e.target.value)||0})} className="w-full border rounded-lg px-3 py-2" /></div>
                 <div>
                   <label className="block text-sm font-medium mb-1">SMPP Server</label>
-                  {assignableServers(serverLocations).length > 0 ? (
+                  {assignableServers(serverLocations, editing.packageType).length > 0 ? (
                     <select
                       value={editing.smppServerIp || "0.0.0.0"}
                       onChange={e => {
-                        const picked = assignableServers(serverLocations).find(s => s.ipAddress === e.target.value);
+                        const picked = assignableServers(serverLocations, editing.packageType).find(s => s.ipAddress === e.target.value);
                         setEditing({
                           ...editing,
                           smppServerIp: e.target.value,
@@ -261,9 +270,9 @@ export default function TenantsPage() {
                       className="w-full border rounded-lg px-3 py-2"
                     >
                       <option value="0.0.0.0">0.0.0.0 (Not assigned)</option>
-                      {assignableServers(serverLocations).map(s => (
+                      {assignableServers(serverLocations, editing.packageType).map(s => (
                         <option key={s.id} value={s.ipAddress}>
-                          {s.country}{s.city ? ` — ${s.city}` : ""} ({s.ipAddress})
+                          {s.country}{s.city ? ` — ${s.city}` : ""} ({s.ipAddress}) · {(s.package || "starter").replace(/^./, c => c.toUpperCase())}
                         </option>
                       ))}
                       {/* Always include the tenant's current IP so existing
@@ -271,7 +280,7 @@ export default function TenantsPage() {
                           field never renders blank. */}
                       {editing.smppServerIp &&
                         editing.smppServerIp !== "0.0.0.0" &&
-                        !assignableServers(serverLocations).some(s => s.ipAddress === editing.smppServerIp) && (
+                        !assignableServers(serverLocations, editing.packageType).some(s => s.ipAddress === editing.smppServerIp) && (
                           <option value={editing.smppServerIp}>
                             {editing.smppServerIp} (current — dev server, not assignable)
                           </option>

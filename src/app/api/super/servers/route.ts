@@ -24,6 +24,7 @@ interface ServerLocation {
   port: number;
   isActive: boolean;
   sshUser?: string;
+  package?: "development" | "starter" | "professional" | "enterprise";
   lastDeployed?: string;
   healthStatus?: "online" | "offline" | "unknown" | "deploying";
 }
@@ -274,6 +275,7 @@ export async function GET(request: Request) {
     port: loc.port,
     isActive: loc.isActive,
     sshUser: loc.sshUser || null,
+    package: loc.package || "starter",
     lastDeployed: loc.lastDeployed || null,
     healthStatus: loc.healthStatus || "unknown",
   }));
@@ -295,7 +297,15 @@ export async function POST(request: Request) {
     suPass,
     port = 2775,
     deploy = false,
+    pkg = "starter",
   } = body;
+
+  const VALID_PACKAGES = ["development", "starter", "professional", "enterprise"];
+  if (!VALID_PACKAGES.includes(pkg)) {
+    return NextResponse.json({
+      error: `Invalid package "${pkg}". Must be one of: ${VALID_PACKAGES.join(", ")}`,
+    }, { status: 400 });
+  }
 
   if (!locationId || !ipAddress || !sshUser || !sshPass) {
     return NextResponse.json({
@@ -326,29 +336,49 @@ export async function POST(request: Request) {
     }, { status: 404 });
   }
 
-  // Guard: warn if location already has a server deployed
+  // ── Multiple servers per location ──
+  // If the chosen location already has a different server deployed, create a
+  // NEW entry with a suffixed id (e.g. sydney-2, sydney-3) instead of
+  // overwriting the existing one — every location can host many servers.
   const existingIp = locations[locIndex].ipAddress;
+  let targetIndex = locIndex;
   if (existingIp && existingIp !== ipAddress && deploy) {
-    return NextResponse.json({
-      error: `Location "${locationId}" already has server ${existingIp}. Remove it first before deploying a new one.`,
-    }, { status: 409 });
+    let suffix = 2;
+    let newId = `${locationId}-${suffix}`;
+    while (locations.some((l) => l.id === newId)) {
+      suffix++;
+      newId = `${locationId}-${suffix}`;
+    }
+    locations.push({
+      ...locations[locIndex],
+      id: newId,
+      ipAddress: "",
+      lastDeployed: undefined as any,
+      healthStatus: undefined as any,
+    });
+    targetIndex = locations.length - 1;
   }
 
-  // Update the location with server details
-  locations[locIndex] = {
-    ...locations[locIndex],
+  // Update the location/server entry with server details. When a second+
+  // server was added to a location, targetIndex points at the new suffixed
+  // entry and the original entry is left untouched.
+  locations[targetIndex] = {
+    ...locations[targetIndex],
     ipAddress,
     port,
     sshUser,
+    package: pkg,
     isActive: true,
   };
 
-  // Store SSH credentials securely (mode 700 dir, 600 files)
+  // Store SSH credentials securely (mode 700 dir, 600 files). Keyed by the
+  // FINAL entry id (suffixed id when a second+ server was added to a location).
+  const targetId = locations[targetIndex].id;
   if (deploy || sshPass) {
     const credsDir = join(process.cwd(), ".server-creds");
     await mkdir(credsDir, { recursive: true, mode: 0o700 });
     await writeFile(
-      join(credsDir, `${locationId}.json`),
+      join(credsDir, `${targetId}.json`),
       JSON.stringify({ sshUser, sshPass, suPass: suPass || sshPass }),
       { mode: 0o600 }
     );
@@ -357,7 +387,7 @@ export async function POST(request: Request) {
   // Trigger deployment if requested
   let deployResult: { success: boolean; message: string } | null = null;
   if (deploy) {
-    locations[locIndex].healthStatus = "deploying";
+    locations[targetIndex].healthStatus = "deploying";
     await saveServerLocations(locations);
 
     try {
@@ -365,9 +395,9 @@ export async function POST(request: Request) {
       if (!existsSync(deployScript)) {
         deployResult = { success: false, message: "Deploy script not found" };
       } else {
-        console.log(`[ServerManager] Deploying to ${locationId} (${ipAddress})...`);
+        console.log(`[ServerManager] Deploying to ${targetId} (${ipAddress})...`);
         const output = execSync(
-          `bash ${deployScript} ${locationId} 2>&1`,
+          `bash ${deployScript} ${targetId} 2>&1`,
           {
             timeout: 300000,
             encoding: "utf-8",
@@ -380,21 +410,21 @@ export async function POST(request: Request) {
             },
           }
         );
-        console.log(`[ServerManager] Deploy output for ${locationId}:\n${output.substring(0, 500)}`);
+        console.log(`[ServerManager] Deploy output for ${targetId}:\n${output.substring(0, 500)}`);
         deployResult = {
           success: output.includes("Installation Complete") || output.includes("deployed successfully"),
           message: output.substring(output.length - 300),
         };
 
-        locations[locIndex].lastDeployed = new Date().toISOString();
-        locations[locIndex].healthStatus = deployResult.success ? "online" : "offline";
+        locations[targetIndex].lastDeployed = new Date().toISOString();
+        locations[targetIndex].healthStatus = deployResult.success ? "online" : "offline";
       }
     } catch (err: any) {
       deployResult = {
         success: false,
         message: err?.stderr?.substring(0, 500) || err?.message?.substring(0, 500) || String(err).substring(0, 500),
       };
-      locations[locIndex].healthStatus = "offline";
+      locations[targetIndex].healthStatus = "offline";
     }
   }
 
@@ -403,13 +433,13 @@ export async function POST(request: Request) {
   return NextResponse.json({
     success: true,
     location: {
-      ...locations[locIndex],
+      ...locations[targetIndex],
       sshPass: undefined, // Never return password
     },
     deployResult,
     message: deploy
-      ? `Server ${ipAddress} deployed to ${locationId}`
-      : `Server ${ipAddress} added to ${locationId}`,
+      ? `Server ${ipAddress} deployed to ${targetId}`
+      : `Server ${ipAddress} added to ${targetId}`,
   });
 }
 

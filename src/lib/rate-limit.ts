@@ -59,10 +59,103 @@ class RateLimiter {
   }
 }
 
+// ── Consecutive-failure login guard (brute-force lockout) ──
+
+interface FailureEntry {
+  count: number;
+  lockedUntil: number;
+}
+
+/**
+ * Login brute-force guard: blocks a key (account / account+IP) after N
+ * CONSECUTIVE failed attempts, then unlocks after a lockout window. A single
+ * successful login resets the counter.
+ *
+ * Unlike RateLimiter (fixed window per IP), this is a per-account consecutive
+ * failure lockout — it protects a specific login from password guessing even
+ * when the attacker rotates IPs.
+ */
+export class LoginGuard {
+  private failures = new Map<string, FailureEntry>();
+  private maxAttempts: number;
+  private lockoutMs: number;
+
+  constructor(maxAttempts: number, lockoutMs: number) {
+    this.maxAttempts = maxAttempts;
+    this.lockoutMs = lockoutMs;
+  }
+
+  /** Sweep expired entries so the map never grows unboundedly. */
+  private gc(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.failures) {
+      if (now > entry.lockedUntil + this.lockoutMs) {
+        this.failures.delete(key);
+      }
+    }
+  }
+
+  /**
+   * Register a failed attempt. Returns the remaining attempts before lockout
+   * (0 = locked) plus the lockout duration in ms if this attempt triggered it.
+   * Attempts made while already locked do NOT extend the lockout.
+   */
+  registerFailure(key: string): { remaining: number; lockedMs: number } {
+    this.gc();
+    const now = Date.now();
+    const entry = this.failures.get(key);
+
+    // Already locked out — report it without extending the window.
+    if (entry && now <= entry.lockedUntil) {
+      return { remaining: 0, lockedMs: entry.lockedUntil - now };
+    }
+
+    // Fresh failure streak (or lockout expired) — start/restart the counter.
+    if (!entry) {
+      this.failures.set(key, { count: 1, lockedUntil: now });
+      return { remaining: this.maxAttempts - 1, lockedMs: 0 };
+    }
+
+    entry.count++;
+    if (entry.count >= this.maxAttempts) {
+      // Locked out
+      entry.lockedUntil = now + this.lockoutMs;
+      return { remaining: 0, lockedMs: this.lockoutMs };
+    }
+
+    return { remaining: this.maxAttempts - entry.count, lockedMs: 0 };
+  }
+
+  /**
+   * Check whether a key is currently locked out. Returns ms until unlock
+   * (0 = not locked).
+   */
+  lockedMs(key: string): number {
+    this.gc();
+    const entry = this.failures.get(key);
+    if (!entry) return 0;
+    return Math.max(0, entry.lockedUntil - Date.now());
+  }
+
+  /** Clear the failure streak on a successful login. */
+  reset(key: string): void {
+    this.failures.delete(key);
+  }
+}
+
 // ── Specific limiters ──
 
 /** Auth endpoints: 10 attempts per IP per minute */
 export const authLimiter = new RateLimiter(10, 60_000);
+
+/** Login brute-force: 5 consecutive failures per account → 15 min lockout */
+export const loginGuard = new LoginGuard(5, 15 * 60_000);
+
+/** Super-admin login brute-force: 5 consecutive failures → 15 min lockout */
+export const superLoginGuard = new LoginGuard(5, 15 * 60_000);
+
+/** Webmail login: 5 consecutive failures → 1 minute lockout (kept at prior config) */
+export const webmailLoginGuard = new LoginGuard(5, 60_000);
 
 /** Registration: 3 per IP per hour (prevent mass account creation) */
 export const registerLimiter = new RateLimiter(3, 3_600_000);

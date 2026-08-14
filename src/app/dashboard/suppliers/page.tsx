@@ -106,6 +106,21 @@ export default function SupplierPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, loading]);
 
+  // ── ANDROID_SMS: the phone app has no public IP — it registers inbound to OUR
+  // SMPP server. Auto-fill SERVER mode + port 2775. The host is deliberately left
+  // empty so the API fills in this server's public IPv4 (getSelfIp) — the phone
+  // connects to a raw IP:2775, which a proxied/Cloudflare domain would break. ──
+  useEffect(() => {
+    if (form.connectionType === "ANDROID_SMS") {
+      setForm(prev => ({
+        ...prev,
+        connectionMode: "SERVER",
+        inboundMode: true,
+        port: "2775",
+      }));
+    }
+  }, [form.connectionType]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true); setError("");
@@ -333,7 +348,7 @@ export default function SupplierPage() {
               <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
                 {CONNECTION_TYPES.map(t => (
                   <label key={t} className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs ${form.connectionType === t ? "border-blue-500 bg-blue-50" : "border-slate-200"}`}>
-                    <input type="radio" name="stype" checked={form.connectionType === t} onChange={() => setForm({...form, connectionType: t, ...(t === "ANDROID_SMS" ? { connectionMode: "SERVER" } : {})})} className="accent-blue-600" />
+                    <input type="radio" name="stype" checked={form.connectionType === t} onChange={() => setForm({...form, connectionType: t, ...(t === "ANDROID_SMS" ? { connectionMode: "SERVER", host: "" } : {})})} className="accent-blue-600" />
                     <span>{t}</span>
                   </label>
                 ))}

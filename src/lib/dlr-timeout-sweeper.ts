@@ -316,7 +316,7 @@ export async function sweepTenantStaleDlrs(
 
       const upd = await client.query(
         `UPDATE messages SET dlr_status = 'DELIVERED', status = 'DELIVERED', dlr_timestamp = NOW(),
-         dlr_source = 'FORCE_TIMEOUT', cost = $2, supplier_cost = $3, profit = $2 - $3
+         dlr_source = 'FORCE_TIMEOUT', cost = $2::numeric, supplier_cost = $3::numeric, profit = $2::numeric - $3::numeric
          WHERE message_id = $1 AND dlr_status IN ('SENT', 'PENDING')`,
         [msg.message_id, updateCost, updateSuppCost]
       );
