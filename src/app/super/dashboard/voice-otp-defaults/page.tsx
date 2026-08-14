@@ -41,6 +41,13 @@ export default function SuperVoiceOtpDefaultsPage() {
   const [selectedTenantIds, setSelectedTenantIds] = useState<number[]>([]);
   const [showSeedDialog, setShowSeedDialog] = useState(false);
   const [seedResult, setSeedResult] = useState<{message: string; seededCount: number; totalTenants: number} | null>(null);
+  // ── Voice OTP config push state ──
+  const [showConfigDialog, setShowConfigDialog] = useState(false);
+  const [configPushMode, setConfigPushMode] = useState<"all" | "selected">("all");
+  const [configSelectedIds, setConfigSelectedIds] = useState<number[]>([]);
+  const [configSettings, setConfigSettings] = useState({ playCount: 3, retryCount: 1, bilingual: false, languageMode: "local" });
+  const [configPushing, setConfigPushing] = useState(false);
+  const [configResult, setConfigResult] = useState<{message: string} | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingUploadRef = useRef<{ lang: string; digit: string } | null>(null);
 
@@ -159,6 +166,43 @@ export default function SuperVoiceOtpDefaultsPage() {
     );
   };
 
+  const toggleConfigTenant = (id: number) => {
+    setConfigSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]
+    );
+  };
+
+  const handleConfigPush = async () => {
+    if (configPushMode === "selected" && configSelectedIds.length === 0) {
+      flash("Select at least one tenant.", true);
+      return;
+    }
+    setConfigPushing(true);
+    setConfigResult(null);
+    try {
+      const res = await fetch("/api/super/voice-otp-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: configPushMode === "selected" ? "seed-selected" : "seed-all",
+          tenantIds: configPushMode === "selected" ? configSelectedIds : [],
+          settings: configSettings,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setConfigResult(data);
+        flash(data.message);
+      } else {
+        flash(`${data.error || "Config push failed"}`, true);
+      }
+    } catch {
+      flash("Config push error", true);
+    } finally {
+      setConfigPushing(false);
+    }
+  };
+
   const selectAllTenants = () => {
     setSelectedTenantIds(tenants.map(t => t.id));
   };
@@ -173,17 +217,25 @@ export default function SuperVoiceOtpDefaultsPage() {
             Tenants can override from their own Voice OTP panel.
           </p>
         </div>
-        <button
-          onClick={() => setShowSeedDialog(true)}
-          disabled={audioFiles.length === 0}
-          className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition flex items-center gap-2"
-        >
-          {seeding ? (
-            <><span className="animate-spin">⏳</span> Seeding...</>
-          ) : (
-            <><span>📤</span> Push to Tenants</>
-          )}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowConfigDialog(true)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition flex items-center gap-2"
+          >
+            <><span>⚙️</span> Push Config</>
+          </button>
+          <button
+            onClick={() => setShowSeedDialog(true)}
+            disabled={audioFiles.length === 0}
+            className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition flex items-center gap-2"
+          >
+            {seeding ? (
+              <><span className="animate-spin">⏳</span> Seeding...</>
+            ) : (
+              <><span>📤</span> Push to Tenants</>
+            )}
+          </button>
+        </div>
       </div>
 
       {msg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">{msg}</div>}
@@ -269,6 +321,133 @@ export default function SuperVoiceOtpDefaultsPage() {
                   )}
                 </button>
                 <button onClick={() => { setShowSeedDialog(false); setSeedResult(null); }} className="px-6 py-2.5 border rounded-lg text-sm hover:bg-slate-50 transition">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Config Push Dialog */}
+      {showConfigDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-lg">⚙️ Push Voice OTP Config to Tenants</h3>
+                <button onClick={() => { setShowConfigDialog(false); setConfigResult(null); }} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+              </div>
+
+              <p className="text-sm text-slate-500 mb-4">
+                Push call settings (play count, retries, language mode) to all or selected tenants.
+                Only the fields you set are applied — tenant-specific overrides are preserved for unset fields.
+              </p>
+
+              {/* Mode selector */}
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() => setConfigPushMode("all")}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition ${
+                    configPushMode === "all" ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  🌍 All Tenants ({tenants.length})
+                </button>
+                <button
+                  onClick={() => setConfigPushMode("selected")}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition ${
+                    configPushMode === "selected" ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  🎯 Select Tenants {configSelectedIds.length > 0 ? `(${configSelectedIds.length})` : ""}
+                </button>
+              </div>
+
+              {/* Settings */}
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <label className="block">
+                  <span className="text-xs text-slate-500 font-medium">Play Count (digit repeats)</span>
+                  <input
+                    type="number" min={1} max={10}
+                    value={configSettings.playCount}
+                    onChange={e => setConfigSettings({ ...configSettings, playCount: parseInt(e.target.value) || 3 })}
+                    className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs text-slate-500 font-medium">Retry Count</span>
+                  <input
+                    type="number" min={0} max={10}
+                    value={configSettings.retryCount}
+                    onChange={e => setConfigSettings({ ...configSettings, retryCount: parseInt(e.target.value) || 1 })}
+                    className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs text-slate-500 font-medium">Language Mode</span>
+                  <select
+                    value={configSettings.languageMode}
+                    onChange={e => setConfigSettings({ ...configSettings, languageMode: e.target.value })}
+                    className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  >
+                    <option value="local">local</option>
+                    <option value="global">global</option>
+                  </select>
+                </label>
+                <label className="flex items-end gap-2 pb-2">
+                  <input
+                    type="checkbox"
+                    checked={configSettings.bilingual}
+                    onChange={e => setConfigSettings({ ...configSettings, bilingual: e.target.checked })}
+                    className="accent-emerald-600 w-4 h-4"
+                  />
+                  <span className="text-xs text-slate-500 font-medium">Bilingual (both languages)</span>
+                </label>
+              </div>
+
+              {/* Tenant List */}
+              {configPushMode === "selected" && (
+                <div className="border rounded-xl max-h-[260px] overflow-y-auto mb-4">
+                  <div className="sticky top-0 bg-slate-50 border-b px-3 py-2 flex items-center justify-between">
+                    <span className="text-xs text-slate-500 font-medium">{configSelectedIds.length} selected</span>
+                    <button onClick={() => setConfigSelectedIds(tenants.map(t => t.id))} className="text-xs text-emerald-600 hover:text-emerald-800 font-medium">Select All</button>
+                  </div>
+                  {tenants.map(t => (
+                    <label key={t.id} className={`flex items-center gap-3 px-3 py-2.5 border-b last:border-0 cursor-pointer hover:bg-slate-50 transition ${configSelectedIds.includes(t.id) ? "bg-emerald-50" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={configSelectedIds.includes(t.id)}
+                        onChange={() => toggleConfigTenant(t.id)}
+                        className="accent-emerald-600 rounded"
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-slate-800">{t.companyName}</p>
+                        <p className="text-[10px] text-slate-400 font-mono">{t.schemaName}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {/* Result */}
+              {configResult && (
+                <div className="mb-4 p-4 rounded-xl bg-emerald-50 border border-emerald-200">
+                  <p className="font-semibold text-emerald-800">✅ {configResult.message}</p>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleConfigPush}
+                  disabled={configPushing || (configPushMode === "selected" && configSelectedIds.length === 0)}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2"
+                >
+                  {configPushing ? (
+                    <><span className="animate-spin">⏳</span> Pushing...</>
+                  ) : (
+                    <><span>⚙️</span> Push Config to {configPushMode === "all" ? `All (${tenants.length})` : `${configSelectedIds.length} Selected`} Tenant(s)</>
+                  )}
+                </button>
+                <button onClick={() => { setShowConfigDialog(false); setConfigResult(null); }} className="px-6 py-2.5 border rounded-lg text-sm hover:bg-slate-50 transition">Cancel</button>
               </div>
             </div>
           </div>
