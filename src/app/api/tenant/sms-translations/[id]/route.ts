@@ -67,28 +67,29 @@ export async function PUT(
     [...vals, id]
   );
 
-  // Update assignment scope if provided
+  // Update assignment scope if provided (supports multi-select entityIds)
   if (body.scope !== undefined) {
     const scope: string = body.scope || "both";
-    const entityId: number | null = body.entityId || null;
+    const rawIds: number[] = Array.isArray(body.entityIds)
+      ? body.entityIds.map((n: unknown) => parseInt(String(n), 10)).filter((n: number) => !isNaN(n))
+      : body.entityId ? [parseInt(String(body.entityId), 10)] : [];
 
-    // Validate: client/supplier scope requires entityId
-    if ((scope === "client" || scope === "supplier") && !entityId) {
-      // Skip assignment update — entity must be selected
-    } else {
-      // Deactivate existing assignments, then create new one
-      await tenantQuery(tenant.schemaName,
-        "UPDATE translation_assignments SET is_active = false WHERE profile_id = $1", [id]);
+    // Deactivate existing assignments, then recreate from entity list
+    await tenantQuery(tenant.schemaName,
+      "UPDATE translation_assignments SET is_active = false WHERE profile_id = $1", [id]);
 
-      let clientId: number | null = null;
-      let supplierId: number | null = null;
-      if (scope === "client" && entityId) clientId = entityId;
-      else if (scope === "supplier" && entityId) supplierId = entityId;
-
+    if (scope === "both" || rawIds.length === 0) {
       await tenantQuery(tenant.schemaName,
         `INSERT INTO translation_assignments (profile_id, client_id, supplier_id, priority, is_active)
-         VALUES ($1, $2, $3, $4, true)`,
-        [id, clientId, supplierId, body.priority || 1]);
+         VALUES ($1, NULL, NULL, $2, true)`,
+        [id, body.priority || 1]);
+    } else {
+      for (const eid of rawIds) {
+        await tenantQuery(tenant.schemaName,
+          `INSERT INTO translation_assignments (profile_id, client_id, supplier_id, priority, is_active)
+           VALUES ($1, $2, $3, $4, true)`,
+          [id, scope === "client" ? eid : null, scope === "supplier" ? eid : null, body.priority || 1]);
+      }
     }
   }
 

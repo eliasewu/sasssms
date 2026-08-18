@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { superAdmins } from "@/db/schema";
-import { verifyPassword, createToken } from "@/lib/auth";
+import { verifyPassword, createToken, generateRefreshToken, ACCESS_COOKIE_MAX_AGE } from "@/lib/auth";
+import { createAuthSession, setSessionCookies } from "@/lib/session-store";
 import { eq } from "drizzle-orm";
 import { authLimiter, superLoginGuard, getClientIp } from "@/lib/rate-limit";
 
@@ -76,20 +77,25 @@ export async function POST(request: Request) {
       email: admin.email,
       isSuper: true,
     });
+    const refreshToken = generateRefreshToken();
+
+    await createAuthSession({
+      userType: "super",
+      userId: admin.id,
+      email: admin.email,
+      accessToken: token,
+      refreshToken,
+    });
 
     const response = NextResponse.json({
       success: true,
       admin: { id: admin.id, name: admin.name, email: admin.email },
       token,
+      refreshToken,
+      expiresIn: ACCESS_COOKIE_MAX_AGE,
     });
 
-    response.cookies.set("super_admin_token", token, {
-      httpOnly: true,
-      secure: true, // HTTPS is now enabled via SSL
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 30, // 30 days (matches JWT expiry)
-      path: "/",
-    });
+    setSessionCookies(response, "super", token, refreshToken);
 
     return response;
   } catch (error: unknown) {

@@ -36,6 +36,11 @@ export interface ServerLocation {
   role?: string;
   sshUser?: string;
   package?: ServerPackage;
+  /** Max number of tenants this server can host. Unset/0 = unlimited. */
+  capacity?: number;
+  /** Descriptive hardware specs (display only — not used for assignment). */
+  cores?: number;
+  ramGb?: number;
 }
 
 /** Default package for legacy entries that predate the package field. */
@@ -46,6 +51,23 @@ export function defaultPackageFor(loc: Pick<ServerLocation, "role" | "ipAddress"
 
 /** Packages that are always assigned manually by a super admin (never auto). */
 export const MANUAL_PACKAGES: ServerPackage[] = ["professional", "enterprise"];
+
+// ── Server capacity ──
+
+/**
+ * Remaining tenant capacity of a server, given its current load (tenant count).
+ * Returns Infinity when the server has no capacity configured (unlimited).
+ */
+export function remainingCapacity(loc: Pick<ServerLocation, "capacity">, load: number): number {
+  const cap = loc.capacity;
+  if (!cap || cap <= 0) return Number.POSITIVE_INFINITY;
+  return Math.max(0, cap - load);
+}
+
+/** True when a server has a capacity configured and is already full. */
+export function isServerFull(loc: Pick<ServerLocation, "capacity">, load: number): boolean {
+  return remainingCapacity(loc, load) <= 0;
+}
 
 // ── Country detection from phone dialing code ──
 
@@ -142,12 +164,18 @@ export function pickServerForPackage(
   // Professional/Enterprise are always assigned manually by a super admin.
   if (MANUAL_PACKAGES.includes(pkg)) return null;
 
+  const loads = opts.loads || {};
+
+  // ── Capacity-aware: drop servers that are already full (load >= capacity)
+  //    BEFORE region scoring, so a full best-region server falls through to
+  //    the next available server instead of blocking assignment entirely. ──
   const pool = servers.filter(
     (s) =>
       s.isActive &&
       s.ipAddress &&
       s.ipAddress !== "0.0.0.0" &&
-      (s.package || defaultPackageFor(s)) === pkg
+      (s.package || defaultPackageFor(s)) === pkg &&
+      !isServerFull(s, loads[s.ipAddress] || 0)
   );
   if (pool.length === 0) return null;
 
@@ -165,7 +193,6 @@ export function pickServerForPackage(
 
   // Ascending order: least-loaded first (fewest tenants), ties broken by the
   // order servers were configured in.
-  const loads = opts.loads || {};
   return [...eligible].sort((a, b) => {
     const la = loads[a.ipAddress] || 0;
     const lb = loads[b.ipAddress] || 0;

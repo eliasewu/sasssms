@@ -1,29 +1,25 @@
 import { NextResponse } from "next/server";
 import { trackLogout } from "@/lib/db-helpers";
-import crypto from "crypto";
+import { hashToken, TENANT_ACCESS_COOKIE, TENANT_REFRESH_COOKIE } from "@/lib/auth";
+import { revokeByAccessToken, revokeByRefreshToken, clearSessionCookies } from "@/lib/session-store";
 
 export async function POST(request: Request) {
-  const cookie = request.headers.get("cookie");
-  let tokenHash = "";
-  
-  if (cookie) {
-    const tokenMatch = cookie.match(/tenant_token=([^;]+)/);
-    if (tokenMatch) {
-      tokenHash = crypto.createHash("sha256").update(tokenMatch[1]).digest("hex");
-      await trackLogout(tokenHash).catch(() => {});
-    }
+  const cookie = request.headers.get("cookie") || "";
+
+  // Revoke the live session so the access token is rejected on the next
+  // request (immediate invalidation) and the refresh token can't mint new ones.
+  const accessMatch = cookie.match(new RegExp(`${TENANT_ACCESS_COOKIE}=([^;]+)`));
+  if (accessMatch) {
+    await trackLogout(hashToken(accessMatch[1])).catch(() => {});
+    await revokeByAccessToken(accessMatch[1]);
+  }
+
+  const refreshMatch = cookie.match(new RegExp(`${TENANT_REFRESH_COOKIE}=([^;]+)`));
+  if (refreshMatch) {
+    await revokeByRefreshToken(refreshMatch[1]);
   }
 
   const response = NextResponse.json({ success: true, message: "Logged out" });
-  
-  // Clear tenant cookie properly
-  response.cookies.set("tenant_token", "", {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    maxAge: 0,
-    path: "/",
-  });
-
+  clearSessionCookies(response, "tenant");
   return response;
 }

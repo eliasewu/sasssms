@@ -7,7 +7,7 @@
  * phone may start polling /api/public/gateway/poll for MT messages.
  */
 import { registerRestGateway } from "@/lib/gateway-rest-registry";
-import { setSupplierOnline } from "@/lib/gateway-rest-auth";
+import { setSupplierOnline, ensureGatewayApiKey } from "@/lib/gateway-rest-auth";
 import {
   authenticateGatewayRequest,
   gatewayJson,
@@ -36,6 +36,10 @@ export async function POST(request: Request) {
     });
     await setSupplierOnline(auth!.schemaName, auth!.supplierId);
 
+    // Issue/return the device's long-lived API key so it can authenticate
+    // without sending the supplier password on every subsequent call.
+    const apiKey = await ensureGatewayApiKey(auth!.schemaName, auth!.supplierId);
+
     console.log(
       `[GATEWAY-REST] ✅ Registered supplier #${auth!.supplierId} (tenant ${auth!.tenantId}, ${auth!.schemaName}) via HTTP`
     );
@@ -44,6 +48,7 @@ export async function POST(request: Request) {
       ok: true,
       supplierId: auth!.supplierId,
       tenantId: auth!.tenantId,
+      apiKey,
       pollIntervalMs: 3000,
       heartbeatIntervalMs: 15000,
     });

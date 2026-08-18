@@ -3,6 +3,7 @@ import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 import { auditLog } from "@/lib/db-helpers";
 import { padMnc, formatMccMnc } from "@/lib/mcc-lookup-client";
+import { recordRateChange } from "@/lib/billing-service";
 
 export async function GET(request: Request) {
   const tenant = getTenantFromRequest(request);
@@ -18,6 +19,14 @@ export async function POST(request: Request) {
 
   const body = await request.json();
   const { supplierId, countryCode, mcc, mnc, operatorName, cost } = body;
+
+  const oldRow = await tenantQuery(
+    tenant.schemaName,
+    "SELECT id, cost FROM supplier_rates WHERE supplier_id = $1 AND country_code = $2 AND is_active = true ORDER BY id DESC LIMIT 1",
+    [supplierId, countryCode]
+  );
+  const oldRate = oldRow.rows[0]?.cost ? String(oldRow.rows[0].cost) : "";
+  const oldRateId = oldRow.rows[0]?.id ?? null;
 
   // ── Deactivate any existing active rate for the same destination ──
   // Only one active rate per (supplier_id, country_code, mcc, mnc) combo.
@@ -48,6 +57,19 @@ export async function POST(request: Request) {
   );
 
   await auditLog("supplier_rates", result.rows[0].id, "CREATE", tenant.email, undefined, result.rows[0] as Record<string, unknown>, tenant.tenantId);
+
+  await recordRateChange(tenant.schemaName, "supplier", supplierId, {
+    rateId: result.rows[0].id,
+    oldRateId,
+    countryCode,
+    mcc,
+    mnc,
+    operatorName,
+    oldRate,
+    newRate: String(cost),
+    action: "CREATE",
+    changedBy: tenant.email,
+  });
 
   return NextResponse.json({ rate: result.rows[0] }, { status: 201 });
 }

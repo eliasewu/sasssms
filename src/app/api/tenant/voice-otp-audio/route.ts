@@ -3,6 +3,7 @@ import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { convertToWav } from "@/lib/audio-convert";
 
 const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "voice");
 const ALLOWED_EXTENSIONS = ["mp3", "wav", "ogg"];
@@ -51,14 +52,19 @@ export async function POST(request: Request) {
     }
 
     audioType = ext === "mp3" ? "mp3" : "wav";
+
+    // Auto-convert mp3/ogg/etc to a telephony WAV (8 kHz mono) via ffmpeg.
+    const rawBuffer = Buffer.from(await file.arrayBuffer());
+    const { buffer, ext: finalExt } = await convertToWav(rawBuffer, ext);
+    if (finalExt !== ext) audioType = "wav";
+
     // Add random suffix to prevent filename collisions
     const randSuffix = Math.random().toString(36).slice(2, 6);
-    fileName = `voice_${tenant.tenantId}_${configId}_${language}_${digit}_${Date.now()}_${randSuffix}.${ext}`;
-    
+    fileName = `voice_${tenant.tenantId}_${configId}_${language}_${digit}_${Date.now()}_${randSuffix}.${finalExt}`;
+
     // Ensure upload directory exists
     await mkdir(UPLOAD_DIR, { recursive: true });
-    
-    const buffer = Buffer.from(await file.arrayBuffer());
+
     await writeFile(path.join(UPLOAD_DIR, fileName), buffer);
     fileUrl = `/uploads/voice/${fileName}`;
   } else {

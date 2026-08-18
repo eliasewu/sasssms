@@ -785,10 +785,12 @@ export async function autoRenewSubscriptions(): Promise<{ renewed: number; faile
       const packageExpiry = new Date();
       packageExpiry.setMonth(packageExpiry.getMonth() + 1);
 
-      // ── Dedup: check if already auto-renewed today ──
+      // ── Dedup: skip only if already auto-renewed in THIS billing cycle ──
+      // (marker is time-scoped to the 3-day renewal window so next month's
+      // renewal is not blocked by a stale marker from a previous cycle).
       try {
         const existing = await db.execute(
-          sql`SELECT 1 FROM subscription_reminders WHERE tenant_id = ${t.id} AND days_before = 0`
+          sql`SELECT 1 FROM subscription_reminders WHERE tenant_id = ${t.id} AND days_before = 0 AND sent_at > NOW() - INTERVAL '3 days'`
         );
         if (existing.rows && existing.rows.length > 0) continue;
       } catch { /* proceed */ }
@@ -798,7 +800,7 @@ export async function autoRenewSubscriptions(): Promise<{ renewed: number; faile
         // Insufficient balance — send failure notification (once)
         try {
           const alreadyNotified = await db.execute(
-            sql`SELECT 1 FROM subscription_reminders WHERE tenant_id = ${t.id} AND days_before = -1`
+            sql`SELECT 1 FROM subscription_reminders WHERE tenant_id = ${t.id} AND days_before = -1 AND sent_at > NOW() - INTERVAL '3 days'`
           );
           if (!alreadyNotified.rows || alreadyNotified.rows.length === 0) {
             // ── Send email ──
@@ -825,15 +827,17 @@ export async function autoRenewSubscriptions(): Promise<{ renewed: number; faile
         continue;
       }
 
-      // ── Deduct balance + extend expiry + add SMS credits in ONE update ──
+      // ── Deduct balance + extend expiry + reset monthly SMS allowance in ONE update ──
+      // Monthly packages reset each billing cycle: Professional gets a fresh 10M and the
+      // usage counter resets to 0; Enterprise stays unlimited (smsLimit 0).
       const newBalance = (currentBalance - feeAmount).toFixed(4);
-      const currentLimit = parseInt(String(t.smsLimit || "0")) || 0;
-      const newLimit = smsCredits > 0 ? currentLimit + smsCredits : 0;
+      const newLimit = smsCredits; // 10M (Professional) or 0 = unlimited (Enterprise)
 
       await db.update(tenants).set({
         balance: newBalance,
         packageExpiresAt: packageExpiry,
         smsLimit: newLimit,
+        smsCounter: 0,
         lastRechargeAt: new Date(),
         lastRechargeAmount: monthlyFee,
         updatedAt: new Date(),

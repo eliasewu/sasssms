@@ -35,9 +35,9 @@ export async function PUT(request: Request) {
   }
 
   const hasSettings = s.playCount !== undefined || s.retryCount !== undefined ||
-    s.bilingual !== undefined || s.languageMode !== undefined;
+    s.bilingual !== undefined || s.languageMode !== undefined || s.playMode !== undefined;
   if (!hasSettings) {
-    return NextResponse.json({ error: "No settings provided. Send playCount, retryCount, bilingual, or languageMode." }, { status: 400 });
+    return NextResponse.json({ error: "No settings provided. Send playCount, retryCount, bilingual, languageMode, or playMode." }, { status: 400 });
   }
 
   if (action === "seed-selected" && tenantIds.length === 0) {
@@ -59,6 +59,7 @@ export async function PUT(request: Request) {
   if (s.retryCount !== undefined) { params.push(s.retryCount); sets.push(`retry_count = $${params.length}`); }
   if (s.bilingual !== undefined) { params.push(!!s.bilingual); sets.push(`bilingual = $${params.length}`); }
   if (s.languageMode !== undefined) { params.push(s.languageMode); sets.push(`language_mode = $${params.length}`); }
+  if (s.playMode !== undefined) { params.push(s.playMode); sets.push(`play_mode = $${params.length}`); }
   const setSql = sets.join(", ");
 
   let updatedConfigs = 0;

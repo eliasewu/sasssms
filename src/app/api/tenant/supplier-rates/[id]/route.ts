@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
 import { auditLog } from "@/lib/db-helpers";
+import { recordRateChange } from "@/lib/billing-service";
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const tenant = getTenantFromRequest(request);
@@ -41,6 +42,22 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 
   await auditLog("supplier_rates", parseInt(id), "UPDATE", tenant.email, oldData as Record<string, unknown> || undefined, result.rows[0] as Record<string, unknown>, tenant.tenantId);
+
+  const updated = result.rows[0];
+  if (oldData && oldData.cost !== updated.cost) {
+    await recordRateChange(tenant.schemaName, "supplier", updated.supplier_id, {
+      rateId: updated.id,
+      oldRateId: null,
+      countryCode: updated.country_code,
+      mcc: updated.mcc,
+      mnc: updated.mnc,
+      operatorName: updated.operator_name,
+      oldRate: oldData.cost != null ? String(oldData.cost) : null,
+      newRate: String(updated.cost),
+      action: "UPDATE",
+      changedBy: tenant.email,
+    });
+  }
 
   return NextResponse.json({ rate: result.rows[0] });
 }

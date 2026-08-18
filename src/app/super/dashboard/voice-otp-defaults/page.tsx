@@ -46,7 +46,7 @@ export default function SuperVoiceOtpDefaultsPage() {
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [configPushMode, setConfigPushMode] = useState<"all" | "selected">("all");
   const [configSelectedIds, setConfigSelectedIds] = useState<number[]>([]);
-  const [configSettings, setConfigSettings] = useState({ playCount: 3, retryCount: 1, bilingual: false, languageMode: "local" });
+  const [configSettings, setConfigSettings] = useState({ playCount: 3, retryCount: 1, bilingual: false, languageMode: "local", playMode: "local_single" });
   const [configPushing, setConfigPushing] = useState(false);
   const [configResult, setConfigResult] = useState<{message: string} | null>(null);
   // ── HTTP API config push state ──
@@ -480,6 +480,18 @@ export default function SuperVoiceOtpDefaultsPage() {
                   >
                     <option value="local">local</option>
                     <option value="global">global</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-xs text-slate-500 font-medium">Play Mode</span>
+                  <select
+                    value={configSettings.playMode}
+                    onChange={e => setConfigSettings({ ...configSettings, playMode: e.target.value })}
+                    className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  >
+                    <option value="local_single">Local (Single)</option>
+                    <option value="local_double">Local (Double)</option>
+                    <option value="local_international">Local + International</option>
                   </select>
                 </label>
                 <label className="flex items-end gap-2 pb-2">

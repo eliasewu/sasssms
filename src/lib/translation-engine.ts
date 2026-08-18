@@ -257,6 +257,26 @@ async function applyProfile(
     }
   }
 
+  // ── Content (BODY) JSON config: {replacement, otpMinLength, otpMaxLength, customRegex} ──
+  // The content page stores each rule's template + OTP config as JSON in
+  // replacement_fixed. Unwrap it so the real template is used (not the JSON blob).
+  let otpMinLength = 4;
+  let otpMaxLength = 8;
+  let otpCustomRegex = "";
+  if (target === "BODY") {
+    try {
+      const parsed = JSON.parse(replacement);
+      if (parsed && typeof parsed === "object" && typeof parsed.replacement === "string") {
+        replacement = parsed.replacement;
+        if (typeof parsed.otpMinLength === "number") otpMinLength = parsed.otpMinLength;
+        if (typeof parsed.otpMaxLength === "number") otpMaxLength = parsed.otpMaxLength;
+        if (typeof parsed.customRegex === "string" && parsed.customRegex) otpCustomRegex = parsed.customRegex;
+      }
+    } catch {
+      // Not JSON — treat replacement as a plain template string
+    }
+  }
+
   // Normal replacement (supports $1, $2 capture groups)
   let newValue = input.replace(regex, replacement);
 
@@ -265,10 +285,22 @@ async function applyProfile(
   // extract OTP digits from the original content and substitute
   // them into the result so the final message has the real OTP.
   if (newValue.includes("{{OTP}}") || newValue.includes("{code}")) {
-    const otpMatch = content.match(/\b(\d{4,8})\b/);
-    if (otpMatch && otpMatch[1]) {
-      newValue = newValue.replace(/\{\{OTP\}\}/g, otpMatch[1]);
-      newValue = newValue.replace(/\{code\}/g, otpMatch[1]);
+    let otp: string | null = null;
+    if (otpCustomRegex) {
+      try {
+        const m = content.match(buildRegex(otpCustomRegex));
+        if (m) otp = m[1] || m[0];
+      } catch {
+        // invalid custom regex — ignore
+      }
+    }
+    if (!otp && !otpCustomRegex) {
+      const m = content.match(buildRegex("\\b(\\d{" + otpMinLength + "," + otpMaxLength + "})\\b"));
+      if (m) otp = m[1] || null;
+    }
+    if (otp) {
+      newValue = newValue.replace(/\{\{OTP\}\}/g, otp);
+      newValue = newValue.replace(/\{code\}/g, otp);
     }
   }
 

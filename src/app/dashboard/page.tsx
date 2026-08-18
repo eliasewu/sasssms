@@ -38,7 +38,7 @@ export default function DashboardPage() {
           smsValidUntil: t.smsValidUntil || null,
           packageExpiresAt: t.packageExpiresAt || null,
           costPerSms: t.costPerSms || platformRate,
-          monthlyFee: t.monthlyFee || (t.packageType === "professional" ? "150" : t.packageType === "enterprise" ? "400" : "0"),
+          monthlyFee: t.monthlyFee || (t.packageType === "professional" ? "150" : t.packageType === "enterprise" ? "399" : "0"),
           smppServerIp: t.smppServerIp || "0.0.0.0",
           smppServerPort: t.smppServerPort || 2775,
           balance: t.balance || "0",

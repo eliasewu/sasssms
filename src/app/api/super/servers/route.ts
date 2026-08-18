@@ -60,6 +60,10 @@ interface ServerLocation {
   package?: "development" | "starter" | "professional" | "enterprise";
   lastDeployed?: string;
   healthStatus?: "online" | "offline" | "unknown" | "deploying";
+  /** Max number of tenants this server can host. Unset/0 = unlimited. */
+  capacity?: number;
+  cores?: number;
+  ramGb?: number;
 }
 
 async function getServerLocations(): Promise<ServerLocation[]> {
@@ -318,6 +322,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ location: loc, health });
   }
 
+  // ── Current tenant load per server (for the capacity / load view) ──
+  const loadResult = await pool.query(
+    `SELECT smpp_server_ip, COUNT(*)::int AS c FROM tenants
+     WHERE smpp_server_ip IS NOT NULL AND smpp_server_ip <> '0.0.0.0' AND is_active = true
+     GROUP BY smpp_server_ip`
+  );
+  const loads: Record<string, number> = {};
+  for (const r of loadResult.rows) loads[r.smpp_server_ip] = r.c;
+
   // Return all with basic info (no SSH creds exposed)
   const servers = locations.map((loc) => ({
     id: loc.id,
@@ -331,6 +344,10 @@ export async function GET(request: Request) {
     package: loc.package || "starter",
     lastDeployed: loc.lastDeployed || null,
     healthStatus: loc.healthStatus || "unknown",
+    capacity: loc.capacity ?? null,
+    cores: loc.cores ?? null,
+    ramGb: loc.ramGb ?? null,
+    tenantCount: loads[loc.ipAddress] || 0,
   }));
 
   return NextResponse.json({ servers });
@@ -351,6 +368,9 @@ export async function POST(request: Request) {
     port = 2775,
     deploy = false,
     pkg = "starter",
+    capacity,
+    cores,
+    ramGb,
   } = body;
 
   const VALID_PACKAGES = ["development", "starter", "professional", "enterprise"];
@@ -422,6 +442,9 @@ export async function POST(request: Request) {
     sshUser,
     package: pkg,
     isActive: true,
+    ...(capacity !== undefined ? { capacity: Math.max(0, Math.floor(Number(capacity) || 0)) } : {}),
+    ...(cores !== undefined ? { cores: Number(cores) || undefined } : {}),
+    ...(ramGb !== undefined ? { ramGb: Number(ramGb) || undefined } : {}),
   };
 
   // Store SSH credentials securely (mode 700 dir, 600 files). Keyed by the
@@ -523,6 +546,38 @@ export async function POST(request: Request) {
       ? `Server ${ipAddress} deployed to ${targetId}`
       : `Server ${ipAddress} added to ${targetId}`,
   });
+}
+
+// ── PUT: Update server capacity / specs / package (no SSH creds needed) ──
+export async function PUT(request: Request) {
+  const admin = getSuperAdminFromRequest(request);
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await request.json();
+  const { id, capacity, cores, ramGb, package: pkg } = body;
+  if (!id) return NextResponse.json({ error: "Server id is required" }, { status: 400 });
+
+  const locations = await getServerLocations();
+  const idx = locations.findIndex((l) => l.id === id);
+  if (idx === -1) return NextResponse.json({ error: "Location not found" }, { status: 404 });
+
+  const loc = locations[idx];
+  if (capacity !== undefined) {
+    const cap = Number(capacity);
+    loc.capacity = Number.isFinite(cap) && cap >= 0 ? Math.floor(cap) : undefined;
+  }
+  if (cores !== undefined) loc.cores = Number(cores) || undefined;
+  if (ramGb !== undefined) loc.ramGb = Number(ramGb) || undefined;
+  if (pkg !== undefined) {
+    const VALID_PACKAGES = ["development", "starter", "professional", "enterprise"];
+    if (!VALID_PACKAGES.includes(pkg)) {
+      return NextResponse.json({ error: `Invalid package "${pkg}". Must be one of: ${VALID_PACKAGES.join(", ")}` }, { status: 400 });
+    }
+    loc.package = pkg;
+  }
+
+  await saveServerLocations(locations);
+  return NextResponse.json({ success: true, location: loc });
 }
 
 // ── DELETE: Remove server from a location (keeps the location) ──

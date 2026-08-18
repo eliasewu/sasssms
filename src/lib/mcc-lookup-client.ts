@@ -89,7 +89,7 @@ export function formatMccMnc(mcc: string, mnc: string): string {
  * MNC requires server-side DB lookup.
  */
 export function lookupMccSync(destination: string): { mcc: string; mnc: string; mccmnc: string } {
-  const cleaned = destination.replace(/^\+/, "").replace(/[^0-9]/g, "");
+  const cleaned = destination.replace(/^\+/, "").replace(/^00/, "").replace(/[^0-9]/g, "");
   if (!cleaned || cleaned.length < 3) return { mcc: "", mnc: "", mccmnc: "" };
 
   const dialCodes = Object.keys(DIAL_TO_MCC).sort((a, b) => b.length - a.length);

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { db, pool } from "@/db";
 import { tenants } from "@/db/schema";
-import { hashPassword, createToken } from "@/lib/auth";
+import { hashPassword, createToken, generateRefreshToken, ACCESS_COOKIE_MAX_AGE } from "@/lib/auth";
+import { createAuthSession, setSessionCookies } from "@/lib/session-store";
 import { createTenantSchema, seedMccMncRates } from "@/lib/tenant-schema";
 import { eq } from "drizzle-orm";
 import { safeInt, safeDecimal, safeText } from "@/lib/validation";
@@ -173,11 +174,21 @@ export async function POST(request: Request) {
       schemaName: tenant.schemaName,
       companyName: tenant.companyName,
     });
+    const refreshToken = generateRefreshToken();
+    await createAuthSession({
+      userType: "tenant",
+      userId: tenant.id,
+      email: tenant.email,
+      accessToken: token,
+      refreshToken,
+    });
 
     const response = NextResponse.json({
       success: true,
       tenant: { id: tenant.id, companyName: tenant.companyName, email: tenant.email, costPerSms: platformRate },
       token,
+      refreshToken,
+      expiresIn: ACCESS_COOKIE_MAX_AGE,
     });
 
     // ── Replicate tenant to ALL other servers (fire-and-forget) ──
@@ -227,10 +238,7 @@ export async function POST(request: Request) {
     })();
     // ──────────────────────────────────────────
 
-    response.cookies.set("tenant_token", token, {
-      httpOnly: true, secure: true, sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 30, path: "/",
-    });
+    setSessionCookies(response, "tenant", token, refreshToken);
 
     return response;
   } catch (error: unknown) {

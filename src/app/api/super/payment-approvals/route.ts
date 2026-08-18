@@ -114,8 +114,6 @@ export async function PUT(request: Request) {
         if (isPackagePurchase) {
           const monthlyFee = pkgType === "professional" ? PRO_MONTHLY_FEE : ENT_MONTHLY_FEE;
           const smsCredits = pkgType === "professional" ? PRO_SMS_CREDITS : 0; // 0 = unlimited (Enterprise)
-          const currentLimit = safeInt(tenantData.smsLimit || 0);
-          const newLimit = smsCredits > 0 ? currentLimit + smsCredits : 0;
 
           // Package expires in 1 month
           const packageExpiry = new Date();
@@ -124,7 +122,8 @@ export async function PUT(request: Request) {
           await db.update(tenants).set({
             packageType: pkgType,
             monthlyFee: monthlyFee,
-            smsLimit: newLimit,
+            smsLimit: smsCredits,
+            smsCounter: 0, // fresh monthly allowance — usage resets each billing cycle
             packageExpiresAt: packageExpiry,
             lastRechargeAt: new Date(),
             lastRechargeAmount: txn.amount,

@@ -4,7 +4,11 @@
  * credential authentication (username + password on every call).
  */
 import { NextResponse } from "next/server";
-import { authenticateGateway, GatewayAuthResult } from "./gateway-rest-auth";
+import {
+  authenticateGateway,
+  authenticateGatewayByApiKey,
+  GatewayAuthResult,
+} from "./gateway-rest-auth";
 import { recordTenantApiUsage } from "./tenant-usage";
 
 const RATE_MAX = 300; // per IP per minute (a gateway polls ~25/min)
@@ -74,25 +78,42 @@ export async function authenticateGatewayRequest(
   try {
     body = await request.json();
   } catch {}
-  if (
-    !body ||
-    typeof body.username !== "string" ||
-    typeof body.password !== "string"
-  ) {
-    return {
-      auth: null,
-      response: gatewayJson({ error: "username and password required" }, 400),
-    };
-  }
 
-  const auth = await authenticateGateway(body.username, body.password);
-  if (!auth) {
-    return {
-      auth: null,
-      response: gatewayJson({ error: "Invalid supplier credentials" }, 401),
-    };
+  // Long-running gateways authenticate with a stable device API key (issued on
+  // register) so the supplier password is never sent on every poll/heartbeat.
+  // Username + password remains supported for first registration/back-compat.
+  const apiKey = body && typeof body.apiKey === "string" ? body.apiKey.trim() : "";
+
+  let auth: GatewayAuthResult | null = null;
+  if (apiKey) {
+    auth = await authenticateGatewayByApiKey(apiKey);
+    if (!auth) {
+      return {
+        auth: null,
+        response: gatewayJson({ error: "Invalid gateway API key" }, 401),
+      };
+    }
+  } else {
+    if (
+      !body ||
+      typeof body.username !== "string" ||
+      typeof body.password !== "string"
+    ) {
+      return {
+        auth: null,
+        response: gatewayJson({ error: "username and password (or apiKey) required" }, 400),
+      };
+    }
+
+    auth = await authenticateGateway(body.username, body.password);
+    if (!auth) {
+      return {
+        auth: null,
+        response: gatewayJson({ error: "Invalid supplier credentials" }, 401),
+      };
+    }
   }
-  return { auth, body };
+  return { auth, body: body ?? {} };
 }
 
 /**

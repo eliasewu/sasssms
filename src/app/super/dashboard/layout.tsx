@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { usePersistedExpandedSection } from "@/hooks/usePersistedExpandedSection";
+import { refreshAuthSession } from "@/lib/client-session";
 
 interface Admin { id: number; name: string; email: string; }
 
@@ -74,7 +75,12 @@ export default function SuperDashboardLayout({ children }: { children: React.Rea
 
   const fetchAdmin = useCallback(async () => {
     try {
-      const res = await fetch("/api/super/auth/me", { credentials: "include" });
+      let res = await fetch("/api/super/auth/me", { credentials: "include" });
+      if (res.status === 401) {
+        // Access token expired — try one silent refresh (stay logged in).
+        await refreshAuthSession("super");
+        res = await fetch("/api/super/auth/me", { credentials: "include" });
+      }
       if (!res.ok) {
         router.push("/super");
         return;
@@ -89,6 +95,15 @@ export default function SuperDashboardLayout({ children }: { children: React.Rea
   }, [router]);
 
   useEffect(() => { fetchAdmin(); }, [fetchAdmin]);
+
+  // Proactive refresh every 10 min (access TTL is 15 min) so the admin session
+  // never expires while the portal is open.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshAuthSession("super").catch(() => {});
+    }, 10 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleLogout = async () => {
     await fetch("/api/super/auth/logout", { method: "POST", credentials: "include" });

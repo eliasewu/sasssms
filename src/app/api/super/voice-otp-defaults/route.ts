@@ -5,6 +5,7 @@ import { voiceOtpDefaultAudio, tenants } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { convertToWav } from "@/lib/audio-convert";
 
 const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "voice-defaults");
 const ALLOWED_EXTENSIONS = ["mp3", "wav", "ogg"];
@@ -115,12 +116,14 @@ export async function POST(request: Request) {
         continue;
       }
 
-      const audioType = ext === "mp3" ? "mp3" : "wav";
+      // Auto-convert mp3/ogg/etc to a telephony WAV (8 kHz mono) via ffmpeg.
+      const { buffer, ext: finalExt } = await convertToWav(Buffer.from(await file.arrayBuffer()), ext);
+      const audioType = finalExt === "wav" ? "wav" : "mp3";
       const randSuffix = Math.random().toString(36).slice(2, 6);
-      const fileName = `default_${language}_${digit}_${Date.now()}_${randSuffix}.${ext}`;
+      const fileName = `default_${language}_${digit}_${Date.now()}_${randSuffix}.${finalExt}`;
 
       await mkdir(UPLOAD_DIR, { recursive: true });
-      await writeFile(path.join(UPLOAD_DIR, fileName), Buffer.from(await file.arrayBuffer()));
+      await writeFile(path.join(UPLOAD_DIR, fileName), buffer);
       const fileUrl = `/uploads/voice-defaults/${fileName}`;
       const { action, id } = await upsertDefaultAudio(language, digit, fileName, fileUrl, audioType);
       results.push({ ok: true, digit, fileName, fileUrl, action, id });

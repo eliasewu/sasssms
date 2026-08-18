@@ -4,14 +4,24 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { usePersistedExpandedSection } from "@/hooks/usePersistedExpandedSection";
+import { refreshAuthSession } from "@/lib/client-session";
 
 interface Tenant {
   id: number;
   companyName: string;
   email: string;
   balance: string;
+  packageType?: string;
   smppServerIp?: string;
   serverLocation?: string;
+}
+
+/** Maps a tenant's package_type to a display label + badge color. */
+function packageBadge(packageType?: string): { label: string; cls: string } {
+  const p = (packageType || "starter").toLowerCase();
+  if (p === "enterprise") return { label: "Enterprise", cls: "bg-purple-50 text-purple-700 border-purple-300" };
+  if (p === "professional") return { label: "Professional", cls: "bg-blue-50 text-blue-700 border-blue-300" };
+  return { label: "Starter", cls: "bg-emerald-50 text-emerald-700 border-emerald-300" };
 }
 
 interface NavItem {
@@ -83,6 +93,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { href: "/dashboard/billing", label: "Overview", icon: "💳" },
       { href: "/dashboard/invoices", label: "Invoices", icon: "📄" },
       { href: "/dashboard/payments", label: "Payments", icon: "💵" },
+      { href: "/dashboard/billing-settings", label: "Billing Settings", icon: "⚙️" },
     ],
   },
   {
@@ -147,7 +158,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const fetchTenant = useCallback(async () => {
     try {
-      const res = await fetch("/api/auth/me", { credentials: "include" });
+      let res = await fetch("/api/auth/me", { credentials: "include" });
+      if (res.status === 401) {
+        // Access token expired — try one silent refresh (stay logged in).
+        await refreshAuthSession("tenant");
+        res = await fetch("/api/auth/me", { credentials: "include" });
+      }
       if (!res.ok) {
         router.push("/");
         return;
@@ -164,6 +180,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     fetchTenant();
   }, [fetchTenant]);
+
+  // Proactive refresh every 10 min (access TTL is 15 min) so the session never
+  // expires while the dashboard is open — keeps "stay logged in" seamless.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshAuthSession("tenant").catch(() => {});
+    }, 10 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch free test SMS credits
   useEffect(() => {
@@ -261,6 +286,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="mb-3">
               <p className="text-xs text-slate-400 truncate font-medium">{tenant.companyName}</p>
               <p className="text-xs text-slate-500 truncate">{tenant.email}</p>
+              <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border mt-1 ${packageBadge(tenant.packageType).cls}`}>
+                {packageBadge(tenant.packageType).label}
+              </span>
             </div>
           )}
           <button onClick={handleLogout} className="flex items-center gap-2 text-slate-400 hover:text-white text-sm transition w-full">
@@ -305,6 +333,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 🧪 Free SMS: {freeCredits}
               </span>
             )}
+            <span className={`text-xs font-bold px-3 py-1.5 rounded-full border hidden md:inline-block ${packageBadge(tenant.packageType).cls}`}>
+              {packageBadge(tenant.packageType).label}
+            </span>
             <span className="text-sm text-slate-500 hidden md:block">{tenant.companyName}</span>
           </div>
         </header>

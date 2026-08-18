@@ -194,8 +194,17 @@ export default function LandingPage() {
   // Fetch dynamic settings from super admin
   useEffect(() => {
     fetch("/api/public/settings")
-      .then(r => r.json())
-      .then(setSettings)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        // Only apply responses that actually carry `packages`. A partial or
+        // error response (e.g. a transient 500) must never replace the
+        // fallback settings — otherwise settings.packages.find() below
+        // crashes the whole page with "TypeError: can't access property
+        // 'find', V.packages is undefined".
+        if (data && typeof data === "object" && Array.isArray(data.packages)) {
+          setSettings(data);
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -1744,7 +1753,7 @@ export default function LandingPage() {
               { q: "How is profit calculated within the Net2APP platform?", a: "Profit is the difference between the rate charged to the client (Client Rates) and the cost paid to the supplier (Supplier Rates) for each destination. Rates are set per operator using MCC/MNC (Mobile Country Code / Mobile Network Code), and only one rate can be active per destination — adding a new rate automatically deactivates the old one." },
               { q: "What does the Force DLR option do for clients?", a: "When Force DLR is enabled for a client, the system marks messages as delivered immediately without waiting for supplier delivery receipts. For real delivery verification, check the SMS Logs on the Messages page." },
               { q: "What is required for WhatsApp and Telegram OTT Connect?", a: "A proxy is mandatory for WhatsApp and Telegram OTT connections to function. Once the API and credential information is updated, the connector works automatically as part of the Advanced Connectors suite." },
-              { q: "Can I translate sender IDs, numbers, and message content?", a: "Yes. SID Translation uses regex patterns to match and replace incoming sender IDs (with a Quick Test box to preview transformations). Number Translation strips leading digits and adds prefixes — for example, stripping 2 digits from '00880' and adding prefix '77' produces '77880'. Content Translation extracts OTP codes (default 4–8 digits, or a custom regex) and fills them into templates using the {{OTP}} placeholder. Rules are assigned by dragging clients/suppliers into a rule's scope, and lower priority numbers run first." },
+              { q: "Can I translate sender IDs, numbers, and message content?", a: "Yes. SID Translation uses regex patterns to match and replace incoming sender IDs (with a Quick Test box to preview transformations). Number Translation strips leading digits and adds prefixes — for example, stripping 2 digits from '0086' and adding prefix '77' produces '7786'. Content Translation extracts OTP codes (default 4–8 digits, or a custom regex) and fills them into templates using the {{OTP}} placeholder. Rules are assigned by dragging clients/suppliers into a rule's scope, and lower priority numbers run first." },
               { q: "How do I set rates for all operators in a country at once?", a: "Use Bulk Rate Management (or Bulk Import) under Rates. Instead of entering rates operator-by-operator, Bulk Import adds all operators for an entire country at once — significantly reducing setup time for large-scale operations." },
               { q: "Where can I find help and support?", a: "The Knowledge Base for common Net2APP questions is located at net2app.com/resources. For direct assistance, create a support ticket via Settings → Support Tickets — tickets are private, and including your tenant name and relevant message IDs speeds up resolution." },
             ].map((faq, i) => (

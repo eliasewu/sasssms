@@ -27,7 +27,7 @@ export interface MccMncResult {
  */
 export async function lookupMccMnc(destination: string): Promise<MccMncResult> {
   const { mcc } = lookupMccSync(destination);
-  const cleaned = destination.replace(/^\+/, "").replace(/[^0-9]/g, "");
+  const cleaned = destination.replace(/^\+/, "").replace(/^00/, "").replace(/[^0-9]/g, "");
 
   if (!cleaned || cleaned.length < 3) {
     return { mcc: "", mnc: "", mccmnc: "", countryName: null, networkName: null };
@@ -57,18 +57,26 @@ export async function lookupMccMnc(destination: string): Promise<MccMncResult> {
     try {
       if (mcc) {
         // ── Attempt 1: Prefix map lookup (phone prefix → MNC) ──
-        // This handles countries like Bangladesh where MNC "02" != phone prefix "018"
-        const prefixResult = await client.query(
-          `SELECT mnc, network_name, country_name
-           FROM mcc_mnc_prefix_map
-           WHERE mcc = $1 AND $2 LIKE prefix || '%'
-           ORDER BY LENGTH(prefix) DESC LIMIT 1`,
-          [mcc, normalizedLocal]
-        );
-        if (prefixResult.rows.length > 0) {
-          mnc = prefixResult.rows[0].mnc as string;
-          networkName = prefixResult.rows[0].network_name as string;
-          countryName = prefixResult.rows[0].country_name as string;
+        // This handles countries like Bangladesh where MNC "02" != phone prefix "018".
+        // The table is OPTIONAL (migration 0013): if it's missing on an older
+        // deployment, swallow the error and fall through to the mcc_mnc_database
+        // fallback below instead of aborting the entire MNC lookup (which left
+        // MNC empty in the SMS logs).
+        try {
+          const prefixResult = await client.query(
+            `SELECT mnc, network_name, country_name
+             FROM mcc_mnc_prefix_map
+             WHERE mcc = $1 AND $2 LIKE prefix || '%'
+             ORDER BY LENGTH(prefix) DESC LIMIT 1`,
+            [mcc, normalizedLocal]
+          );
+          if (prefixResult.rows.length > 0) {
+            mnc = prefixResult.rows[0].mnc as string;
+            networkName = prefixResult.rows[0].network_name as string;
+            countryName = prefixResult.rows[0].country_name as string;
+          }
+        } catch {
+          // mcc_mnc_prefix_map missing — continue to the legacy lookup below
         }
 
         // ── Attempt 2: Legacy — direct prefix match from mcc_mnc_database ──

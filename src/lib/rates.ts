@@ -8,6 +8,8 @@
  */
 import { pool } from "@/db";
 import type { PoolClient } from "pg";
+import { lookupMccMnc } from "@/lib/mcc-lookup";
+import { padMnc, lookupMccSync } from "@/lib/mcc-lookup-client";
 
 const DEFAULT_CLIENT_RATE = 0.00010;
 const DEFAULT_SUPPLIER_COST = 0.00004;
@@ -78,8 +80,10 @@ export async function lookupSupplierCost(
 
 /**
  * Try to match a destination number against rate table entries.
- * Strategy: try international → +prefixed → local (strip 0, prepend country codes).
- * Uses a single query with ALL candidate variants via unnest() to avoid N+1.
+ * Strategy: resolve the destination's MCC/MNC, then prefer the exact operator
+ * rate → country-level (MCC + wildcard MNC) rate → legacy country_code prefix.
+ * Candidate variants (international / +prefixed / local) are passed as one
+ * unnest() set to avoid N+1 queries.
  */
 async function matchRate(
   dbClient: PoolClient,
@@ -115,19 +119,46 @@ async function matchRate(
     }
   }
 
-  // Run ONE query with all candidates via unnest
   const candidateArr = [...candidates];
   if (candidateArr.length === 0) return null;
 
+  // 5) Resolve the destination's operator (MCC + MNC) so operator-specific
+  //    rates are preferred over a bare country-code match. When resolution
+  //    fails we degrade to the country-code prefix match below.
+  let mcc: string | null = null;
+  let mncPadded: string | null = null; // 3-digit zero-padded, e.g. "001"
+  try {
+    const resolved = await lookupMccMnc(destination);
+    if (resolved.mcc) {
+      mcc = resolved.mcc;
+      mncPadded = resolved.mnc ? padMnc(resolved.mnc) : null;
+    }
+  } catch (err) {
+    console.error("[rates] MCC/MNC resolution error (falling back to country_code):", err);
+  }
+
+  // 6) Rate lookup — prefer the exact operator rate, then the country-level
+  //    rate (MCC with a wildcard MNC), then the legacy country_code prefix.
+  //    A row with a specific MCC/MNC must only match via its MCC/MNC (never
+  //    via another operator's shared country_code).
   const { rows } = await dbClient.query(
-    `SELECT ${rateCol}::numeric as rate FROM ${table}
+    `SELECT ${rateCol}::numeric AS rate FROM ${table}
      WHERE ${idCol} = $1 AND is_active = true
-       AND EXISTS (
-         SELECT 1 FROM unnest($2::text[]) AS cand
-         WHERE cand LIKE country_code || '%'
+       AND (
+         ($2::text IS NOT NULL AND $3::text IS NOT NULL AND mcc = $2 AND LPAD(COALESCE(mnc, ''), 3, '0') = $3::text)
+         OR ($2::text IS NOT NULL AND mcc = $2 AND (mnc IS NULL OR mnc = '' OR mnc = '*'))
+         OR ((mcc IS NULL OR mcc = '' OR mcc = '*')
+             AND EXISTS (SELECT 1 FROM unnest($4::text[]) AS cand WHERE cand LIKE country_code || '%'))
        )
-     ORDER BY LENGTH(country_code) DESC LIMIT 1`,
-    [id, candidateArr]
+     ORDER BY
+       CASE
+         WHEN $2::text IS NOT NULL AND $3::text IS NOT NULL AND mcc = $2 AND LPAD(COALESCE(mnc, ''), 3, '0') = $3::text THEN 0
+         WHEN $2::text IS NOT NULL AND mcc = $2 AND (mnc IS NULL OR mnc = '' OR mnc = '*') THEN 1
+         ELSE 2
+       END ASC,
+       LENGTH(country_code) DESC
+     LIMIT 1`,
+    [id, mcc, mncPadded, candidateArr]
   );
   return rows.length > 0 ? parseFloat(rows[0].rate) : null;
 }
@@ -166,6 +197,40 @@ export async function batchEnrichMccMnc(
   try {
     await dbClient.query("SET search_path TO public");
 
+    // ── Reliable MCC resolution via the DIAL_TO_MCC dial-code map ──
+    // mcc_mnc_database.country_code mixes ISO codes ("Fr", "Af") with dialing
+    // codes ("33", "93"), so the legacy `cand LIKE country_code || '%'` match
+    // below fails for many countries (e.g. Afghanistan "Af", Indonesia "In").
+    // Resolve MCC from the hardcoded dial-code map first, then enrich with
+    // country/network names and a representative MNC in a single query.
+    const mccByDest = new Map<string, string>();
+    for (const dest of destinations) {
+      if (!dest) continue;
+      const { mcc } = lookupMccSync(dest);
+      if (mcc) mccByDest.set(dest, mcc);
+    }
+
+    if (mccByDest.size > 0) {
+      const mccs = [...new Set(mccByDest.values())];
+      const infoRes = await dbClient.query(
+        `SELECT DISTINCT ON (mcc) mcc, mnc, country_name, network_name
+         FROM mcc_mnc_database WHERE mcc = ANY($1::text[])
+         ORDER BY mcc, LENGTH(mnc) DESC`,
+        [mccs]
+      );
+      const infoByMcc = new Map<string, any>();
+      for (const r of infoRes.rows) infoByMcc.set(r.mcc as string, r);
+      for (const [dest, mcc] of mccByDest) {
+        const info = infoByMcc.get(mcc);
+        result.set(dest, {
+          mcc,
+          mnc: info?.mnc || "",
+          countryName: info?.country_name || "",
+          networkName: info?.network_name || "",
+        });
+      }
+    }
+
     // Build candidate phone numbers per destination (as-is, strip +, strip 0s,
     // strip 2-3 digit country codes) — flattened into one array with a
     // destIndex mapping back to the original destination.
@@ -175,6 +240,7 @@ export async function batchEnrichMccMnc(
     for (let i = 0; i < destinations.length; i++) {
       const dest = destinations[i];
       if (!dest) continue;
+      if (result.has(dest)) continue; // already resolved via DIAL_TO_MCC
       const seen = new Set<string>();
 
       const add = (c: string) => {

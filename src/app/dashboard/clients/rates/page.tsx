@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useMccMncLookups } from "@/hooks/useMccMncLookups";
 import type { MccMncEntry } from "@/hooks/useMccMncLookups";
 import { padMnc } from "@/lib/mcc-lookup-client";
+import RateHistoryModal from "@/components/rate-history-modal";
 
 interface ClientRate {
   id: number;
@@ -88,28 +89,33 @@ export default function ClientRatesPage() {
   const bulkImportAll = async () => {
     if (!form.clientId || !selectedCountry || filteredOperators.length === 0) return;
     if (!form.rate) return alert("Enter a rate before bulk importing");
-    let count = 0;
-    for (const op of filteredOperators) {
-      await fetch("/api/tenant/client-rates", {
+    try {
+      const res = await fetch("/api/tenant/client-rates/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clientId: parseInt(form.clientId),
-          countryCode: op.countryCode,
-          mcc: op.mcc,
-          mnc: op.mnc,
-          operatorName: op.networkName,
+          country: selectedCountry,
           rate: form.rate,
+          operators: filteredOperators.map(op => ({
+            countryCode: op.countryCode,
+            mcc: op.mcc,
+            mnc: op.mnc,
+            operatorName: op.networkName,
+          })),
         }),
       });
-      count++;
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return alert(data.error || "Bulk import failed");
+      alert(`✅ Imported ${data.imported} operators for ${selectedCountry}`);
+    } catch {
+      alert("Bulk import failed");
     }
     setShowForm(false);
     setEditingId(null);
     setSelectedCountry("");
     setFilteredOperators([]);
     setForm({ clientId: "", countryCode: "", mcc: "", mnc: "", operatorName: "", rate: "0.0004" });
-    alert(`✅ Imported ${count} operators for ${selectedCountry}`);
     load();
   };
 
@@ -134,6 +140,30 @@ export default function ClientRatesPage() {
   const handleDelete = async () => {
     alert("Rates cannot be deleted. Use Edit to modify or toggle Active/Inactive.");
   };
+
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyEntity, setHistoryEntity] = useState<{ id?: number; name?: string }>({});
+  const [selectedClient, setSelectedClient] = useState("");
+  const [forwardingId, setForwardingId] = useState<number | null>(null);
+  const forwardRates = async (clientId: number) => {
+    setForwardingId(clientId);
+    try {
+      const res = await fetch("/api/tenant/client-rates/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) alert(data.error || "Failed to forward rates");
+      else alert(`Rate card emailed to ${data.to}`);
+    } catch { alert("Failed to forward rates"); }
+    finally { setForwardingId(null); }
+  };
+  const forwardSelected = async () => {
+    if (!selectedClient) return alert("Select a client first");
+    await forwardRates(parseInt(selectedClient));
+  };
+  const q = selectedClient ? `&clientId=${selectedClient}` : "";
 
   const [flashFailId, setFlashFailId] = useState<number | null>(null);
   const [bulkMsg, setBulkMsg] = useState("");
@@ -192,9 +222,21 @@ export default function ClientRatesPage() {
           <h2 className="text-xl font-bold text-slate-800">Client Rates</h2>
           <p className="text-sm text-slate-500">Manage per-country/MCC rates for clients using the MCC/MNC database</p>
         </div>
-        <button onClick={() => { setShowForm(true); setEditingId(null); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium">
-          + Add Rate
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <select value={selectedClient} onChange={e => setSelectedClient(e.target.value)} className="border rounded-lg px-3 py-2 text-sm bg-white" title="Filter the export by client">
+            <option value="">All Clients</option>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <a href={`/api/tenant/client-rates/export?format=xlsx${q}`} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm font-medium">
+            ⬇ {selectedClient ? "Download Client Rates" : "Download All Client Rates"} (Excel)
+          </a>
+          <a href={`/api/tenant/client-rates/export?format=pdf${q}`} className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 text-sm font-medium">📄 PDF</a>
+          <button onClick={forwardSelected} disabled={!selectedClient} className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 text-sm font-medium disabled:opacity-50" title="Email the selected client's rate card (PDF + Excel)">📧 Forward</button>
+          <button onClick={() => { setHistoryEntity({}); setHistoryOpen(true); }} className="border px-4 py-2 rounded-lg text-sm font-medium">🕘 History</button>
+          <button onClick={() => { setShowForm(true); setEditingId(null); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium">
+            + Add Rate
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -281,6 +323,8 @@ export default function ClientRatesPage() {
 
       {bulkMsg && <div className={`px-5 py-2 text-xs font-medium text-center ${bulkMsg.startsWith("❌") ? "bg-red-50 text-red-600" : bulkMsg.startsWith("✅") || bulkMsg.startsWith("☐") ? "bg-green-50 text-green-700" : "bg-blue-50 text-blue-600"}`}>{bulkMsg}</div>}
 
+      <RateHistoryModal open={historyOpen} onClose={() => setHistoryOpen(false)} type="client" entityId={historyEntity.id} entityName={historyEntity.name} onReverted={load} />
+
       <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-slate-50">
@@ -301,7 +345,24 @@ export default function ClientRatesPage() {
               const client = clients.find((c) => c.id === r.client_id);
               return (
               <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50">
-                <td className="px-5 py-3 font-medium">{client?.name || r.client_id}</td>
+                <td className="px-5 py-3">
+                  <span className="font-medium">{client?.name || r.client_id}</span>
+                  <button
+                    onClick={() => forwardRates(r.client_id)}
+                    disabled={forwardingId === r.client_id}
+                    className="ml-2 text-green-600 hover:underline text-xs disabled:opacity-50"
+                    title="Email this client's rate card (PDF + Excel)"
+                  >
+                    {forwardingId === r.client_id ? "Sending…" : "📧"}
+                  </button>
+                  <button
+                    onClick={() => { setHistoryEntity({ id: r.client_id, name: client?.name }); setHistoryOpen(true); }}
+                    className="ml-2 text-slate-500 hover:underline text-xs"
+                    title="View this client's rate history"
+                  >
+                    🕘
+                  </button>
+                </td>
                 <td className="px-5 py-3">
                   <span className="font-medium">{countryByMcc.get(r.mcc) || countryNameMap.get(r.country_code) || r.country_code}</span>
                   <span className="text-xs text-slate-400 ml-1">({r.country_code})</span>

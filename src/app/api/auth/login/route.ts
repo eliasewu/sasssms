@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { tenants } from "@/db/schema";
-import { verifyPassword, createToken } from "@/lib/auth";
+import { verifyPassword, createToken, generateRefreshToken, ACCESS_COOKIE_MAX_AGE } from "@/lib/auth";
+import { createAuthSession, setSessionCookies } from "@/lib/session-store";
 import { trackLogin } from "@/lib/db-helpers";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
@@ -82,12 +83,22 @@ export async function POST(request: Request) {
       schemaName: tenant.schemaName,
       companyName: tenant.companyName,
     });
+    const refreshToken = generateRefreshToken();
 
-    // Track login session
+    // Track login session (audit trail)
     const sessionIp = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "127.0.0.1";
     const ua = request.headers.get("user-agent") || "";
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     await trackLogin("tenant", tenant.id, tenant.email, sessionIp, ua, tokenHash);
+
+    // Persist the live session (access + refresh) for revocation/refresh
+    await createAuthSession({
+      userType: "tenant",
+      userId: tenant.id,
+      email: tenant.email,
+      accessToken: token,
+      refreshToken,
+    });
 
     const response = NextResponse.json({
       success: true,
@@ -97,16 +108,11 @@ export async function POST(request: Request) {
         email: tenant.email,
       },
       token,
+      refreshToken, // for non-browser clients (Android app) that manage their own cookies
+      expiresIn: ACCESS_COOKIE_MAX_AGE,
     });
 
-    // Set cookie with proper settings
-    response.cookies.set("tenant_token", token, {
-      httpOnly: true,
-      secure: true, // HTTPS now enabled
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 30, // 30 days (matches JWT expiry)
-      path: "/",
-    });
+    setSessionCookies(response, "tenant", token, refreshToken);
 
     return response;
   } catch (error: unknown) {

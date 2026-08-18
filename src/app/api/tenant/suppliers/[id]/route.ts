@@ -38,8 +38,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       system_type=$13, smpp_version=$14, bind_type=$15, address_ton=$16, address_npi=$17,
       address_range=$18, inbound_mode=$19, api_url=$20, api_key=COALESCE(NULLIF($21, '••••••••'), api_key),
       currency=$22, force_dlr=$23, charging_mode=$24, dlr_timeout=$25, is_active=$26,
-      connection_mode=$27, config=$28, updated_at=NOW()
-    WHERE id=$29 AND deleted_at IS NULL RETURNING *`,
+      connection_mode=$27, config=$28, billing_email=$29, updated_at=NOW()
+    WHERE id=$30 AND deleted_at IS NULL RETURNING *`,
     [
       body.supplierCode ?? null, body.name ?? '', body.companyName ?? null, body.contactPerson ?? null, body.email ?? null, body.phone ?? null,
       effectiveConnType, host, body.port ?? null, body.username ?? null, body.password ?? null, body.systemId ?? null,
@@ -47,14 +47,18 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       body.addressRange ?? null, inboundMode, body.apiUrl ?? null, body.apiKey ?? null,
       body.currency ?? 'USD',
       body.forceDlr ?? false, body.chargingMode ?? 'on_submit', body.dlrTimeout ?? null, body.isActive ?? true,
-      connectionMode, body.config ?? null, id
+      connectionMode, body.config ?? null, body.billingEmail ?? null, id
     ]
   );
 
   await auditLog("suppliers", parseInt(id), "UPDATE", tenant.email, oldResult.rows[0] || {}, body, tenant.tenantId);
 
+  // Strip credentials from the response too — the caller just submitted the
+  // update, so it never needs the stored secrets echoed back.
+  const { password, api_key, gateway_api_key, ...safeRow } = result.rows[0] as Record<string, unknown>;
+
   revalidatePath('/dashboard/suppliers');
-  return NextResponse.json({ supplier: result.rows[0] });
+  return NextResponse.json({ supplier: safeRow });
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {

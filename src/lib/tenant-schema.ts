@@ -42,6 +42,8 @@ export const TENANT_TABLE_DEFS: { table: string; sql: string }[] = [
       charging_mode VARCHAR(50) DEFAULT 'on_submit', dlr_timeout_mode VARCHAR(50),
       dlr_timeout INTEGER DEFAULT 300, dlr_callback_url TEXT, webhook_url TEXT,
       bind_status VARCHAR(20) DEFAULT 'UNBOUND', last_bind_time TIMESTAMP,
+      balance DECIMAL(12,4) DEFAULT 0, low_balance_threshold DECIMAL(12,4) DEFAULT 0,
+      billing_email VARCHAR(255), welcome_email_sent BOOLEAN DEFAULT false,
       updated_at TIMESTAMP DEFAULT NOW(), deleted_at TIMESTAMP, deleted_by VARCHAR(255),
       created_at TIMESTAMP DEFAULT NOW())` },
   { table: "client_rates", sql: `CREATE TABLE IF NOT EXISTS client_rates (
@@ -62,6 +64,8 @@ export const TENANT_TABLE_DEFS: { table: string; sql: string }[] = [
       dlr_timeout INTEGER DEFAULT 300, is_active BOOLEAN DEFAULT true, config TEXT,
       bind_status VARCHAR(20) DEFAULT 'UNBOUND', bind_error VARCHAR(255),
       last_bind_time TIMESTAMP,
+      gateway_api_key VARCHAR(255),
+      billing_email VARCHAR(255), welcome_email_sent BOOLEAN DEFAULT false,
       updated_at TIMESTAMP DEFAULT NOW(), deleted_at TIMESTAMP, deleted_by VARCHAR(255),
       gsm_device_id INTEGER, connector_id INTEGER, created_at TIMESTAMP DEFAULT NOW())` },
   { table: "supplier_rates", sql: `CREATE TABLE IF NOT EXISTS supplier_rates (
@@ -136,6 +140,8 @@ export const TENANT_TABLE_DEFS: { table: string; sql: string }[] = [
       period_start TIMESTAMP NOT NULL, period_end TIMESTAMP NOT NULL,
       due_date TIMESTAMP NOT NULL, notes TEXT, created_by VARCHAR(255),
       created_for_type VARCHAR(20), created_for_id INTEGER, created_for_name VARCHAR(255),
+      currency VARCHAR(10) DEFAULT 'USD', issue_date TIMESTAMP DEFAULT NOW(),
+      email_sent_at TIMESTAMP, schedule_id INTEGER,
       created_at TIMESTAMP DEFAULT NOW())` },
   { table: "supplier_invoices", sql: `CREATE TABLE IF NOT EXISTS supplier_invoices (
       id SERIAL PRIMARY KEY, supplier_id INTEGER, invoice_number VARCHAR(50) NOT NULL,
@@ -149,6 +155,44 @@ export const TENANT_TABLE_DEFS: { table: string; sql: string }[] = [
       amount DECIMAL(12,4) NOT NULL, payment_method VARCHAR(50),
       transaction_id VARCHAR(255), status VARCHAR(20) DEFAULT 'PENDING',
       notes TEXT, created_at TIMESTAMP DEFAULT NOW())` },
+  { table: "bank_accounts", sql: `CREATE TABLE IF NOT EXISTS bank_accounts (
+      id SERIAL PRIMARY KEY, label VARCHAR(255), account_holder_name VARCHAR(255),
+      bank_name VARCHAR(255), account_number VARCHAR(100), iban VARCHAR(100),
+      swift_bic VARCHAR(100), bank_address TEXT, currency VARCHAR(10) DEFAULT 'USD',
+      usdt_wallet VARCHAR(255), usdt_network VARCHAR(50),
+      is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())` },
+  { table: "invoice_settings", sql: `CREATE TABLE IF NOT EXISTS invoice_settings (
+      id SERIAL PRIMARY KEY, currency VARCHAR(10) DEFAULT 'USD',
+      timezone VARCHAR(50) DEFAULT 'UTC', tax_rate DECIMAL(5,2) DEFAULT 0,
+      due_days INTEGER DEFAULT 15, invoice_prefix VARCHAR(20) DEFAULT '',
+      next_invoice_number INTEGER DEFAULT 1000, default_bank_account_id INTEGER,
+      auto_email_invoice BOOLEAN DEFAULT false, notify_rate_change BOOLEAN DEFAULT true,
+      notify_low_balance BOOLEAN DEFAULT true, welcome_email_auto BOOLEAN DEFAULT true,
+      updated_at TIMESTAMP DEFAULT NOW(), created_at TIMESTAMP DEFAULT NOW())` },
+  { table: "invoice_schedules", sql: `CREATE TABLE IF NOT EXISTS invoice_schedules (
+      id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL,
+      frequency VARCHAR(20) DEFAULT 'weekly',
+      day_of_week INTEGER DEFAULT 1, day_of_month INTEGER DEFAULT 1,
+      interval_days INTEGER, scope VARCHAR(20) DEFAULT 'all',
+      entity_id INTEGER, period_days INTEGER DEFAULT 7,
+      is_active BOOLEAN DEFAULT true, last_run_at TIMESTAMP, next_run_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW())` },
+  { table: "invoice_items", sql: `CREATE TABLE IF NOT EXISTS invoice_items (
+      id SERIAL PRIMARY KEY, invoice_id INTEGER NOT NULL,
+      network VARCHAR(255), country VARCHAR(100), mcc VARCHAR(10),
+      total_sms INTEGER DEFAULT 0, rate DECIMAL(10,6) DEFAULT 0,
+      total_charge DECIMAL(12,6) DEFAULT 0, remarks VARCHAR(255),
+      created_at TIMESTAMP DEFAULT NOW())` },
+  { table: "rate_history", sql: `CREATE TABLE IF NOT EXISTS rate_history (
+      id SERIAL PRIMARY KEY, rate_type VARCHAR(20) NOT NULL,
+      entity_id INTEGER NOT NULL, entity_name VARCHAR(255),
+      rate_id INTEGER, old_rate_id INTEGER,
+      country_code VARCHAR(10), country VARCHAR(100), mcc VARCHAR(10), mnc VARCHAR(10),
+      operator_name VARCHAR(255),
+      old_rate DECIMAL(10,6), new_rate DECIMAL(10,6),
+      action VARCHAR(20) DEFAULT 'UPDATE',
+      batch_count INTEGER, rate_ids TEXT,
+      changed_by VARCHAR(255), created_at TIMESTAMP DEFAULT NOW())` },
   { table: "connectors", sql: `CREATE TABLE IF NOT EXISTS connectors (
       id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, provider VARCHAR(255),
       type VARCHAR(50) NOT NULL, region VARCHAR(50) DEFAULT 'global',
@@ -180,6 +224,7 @@ export const TENANT_TABLE_DEFS: { table: string; sql: string }[] = [
       play_count INTEGER DEFAULT 3, retry_count INTEGER DEFAULT 1,
       bilingual BOOLEAN DEFAULT false,
       language_mode VARCHAR(20) DEFAULT 'local',
+      play_mode VARCHAR(20) DEFAULT 'local_single',
       is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())` },
   { table: "voice_otp_audio", sql: `CREATE TABLE IF NOT EXISTS voice_otp_audio (
       id SERIAL PRIMARY KEY, config_id INTEGER NOT NULL, language VARCHAR(50) NOT NULL,
@@ -552,6 +597,14 @@ export async function createTenantSchema(schemaName: string): Promise<void> {
     await client.query(`INSERT INTO smtp_config (host, port, from_email, from_name)
       SELECT '', 587, '', 'Net2APP'
       WHERE NOT EXISTS (SELECT 1 FROM smtp_config LIMIT 1)`);
+
+    // Seed default invoice settings + a weekly (every Monday) recurring schedule
+    await client.query(`INSERT INTO invoice_settings (id, currency, timezone, tax_rate, due_days, invoice_prefix, next_invoice_number)
+      SELECT 1, 'USD', 'UTC', 0, 15, '', 1000
+      WHERE NOT EXISTS (SELECT 1 FROM invoice_settings LIMIT 1)`);
+    await client.query(`INSERT INTO invoice_schedules (name, frequency, day_of_week, day_of_month, interval_days, scope, period_days, is_active, next_run_at)
+      SELECT 'Weekly — Every Monday', 'weekly', 1, 1, NULL, 'all', 7, true, NOW() + INTERVAL '1 day'
+      WHERE NOT EXISTS (SELECT 1 FROM invoice_schedules LIMIT 1)`);
 
     // Seed default Voice OTP language groups — grouped by LANGUAGE (all prefixes for same language in one group)
     // Language detection is done via MCC database in voice-otp-engine.ts

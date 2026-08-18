@@ -16,6 +16,7 @@ interface Client {
   charging_mode: string; dlr_timeout: number; force_dlr: boolean;
   webhook_url: string; http_api_key: string;
   bind_status: string; last_bind_time: string;
+  balance: string; low_balance_threshold: string; billing_email: string; welcome_email_sent: boolean;
 }
 
 interface RoutePlan { id: number; name: string; }
@@ -38,6 +39,7 @@ export default function ClientPage() {
     billingMode: "prepaid", currency: "USD",
     routePlanId: "", enableHttpApi: false, httpApiKey: "",
     chargingMode: "on_submit", dlrTimeout: "300", webhookUrl: "",
+    balance: "0", lowBalanceThreshold: "0", billingEmail: "",
   });
 
   const load = useCallback(async () => {
@@ -70,6 +72,9 @@ export default function ClientPage() {
       ...(smppPassword && smppPassword !== "••••••••" ? { smppPassword } : {}),
       // Always send httpApiKey to preserve it
       httpApiKey: form.httpApiKey || undefined,
+      balance: form.balance ? parseFloat(form.balance) : 0,
+      lowBalanceThreshold: form.lowBalanceThreshold ? parseFloat(form.lowBalanceThreshold) : 0,
+      billingEmail: form.billingEmail || null,
     };
     if (editing) {
       const res = await fetch(`/api/tenant/clients/${editing.id}`, {
@@ -110,6 +115,7 @@ export default function ClientPage() {
       httpApiKey: c.http_api_key || "",
       chargingMode: c.charging_mode || (c.force_dlr ? "force_dlr" : (c.billing_mode === "dlr" ? "on_dlr" : "on_submit")),
       dlrTimeout: (c.dlr_timeout || 300).toString(), webhookUrl: c.webhook_url || "",
+      balance: c.balance ?? "0", lowBalanceThreshold: c.low_balance_threshold ?? "0", billingEmail: c.billing_email || "",
     });
     setShowForm(true);
   };
@@ -130,10 +136,41 @@ export default function ClientPage() {
 
   const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
 
+  const [toggleLoading, setToggleLoading] = useState<number | null>(null);
+  const toggleActive = async (clientId: number, currentActive: boolean) => {
+    setClients(prev => prev.map(c => c.id === clientId ? { ...c, is_active: !currentActive } : c));
+    setToggleLoading(clientId);
+    try {
+      const res = await fetch(`/api/tenant/clients/${clientId}/toggle-active`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !currentActive }),
+      });
+      if (!res.ok) throw new Error("Toggle failed");
+    } catch {
+      setClients(prev => prev.map(c => c.id === clientId ? { ...c, is_active: currentActive } : c));
+      alert("Failed to toggle Active/Inactive. Please try again.");
+    } finally {
+      setToggleLoading(null);
+    }
+  };
+
   const handleDelete = async (id: number) => {
     if (!await confirmDelete("Delete this client? It will be archived to CDR.")) return;
     await fetch(`/api/tenant/clients/${id}`, { method: "DELETE" });
     load();
+  };
+
+  const [welcomeSending, setWelcomeSending] = useState<number | null>(null);
+  const sendWelcome = async (id: number) => {
+    setWelcomeSending(id);
+    try {
+      const res = await fetch(`/api/tenant/clients/${id}/welcome-email`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { alert(data.error || "Failed to send welcome email"); }
+      else { alert(`Welcome email sent to ${data.to}`); }
+    } catch { alert("Failed to send welcome email"); }
+    finally { setWelcomeSending(null); }
   };
 
   return (
@@ -250,6 +287,17 @@ export default function ClientPage() {
                   <Input label="DLR Timeout (seconds)" type="number" value={form.dlrTimeout} onChange={e => setForm({...form, dlrTimeout: e.target.value})} />
                 )}
               </div>
+            </section>
+
+            {/* Billing balance + welcome email */}
+            <section className="bg-slate-50 rounded-xl p-5">
+              <h4 className="font-semibold text-slate-700 mb-4">💳 Balance & Low-Balance Alert</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Input label="Balance (credit)" type="number" step="0.0001" value={form.balance} onChange={e => setForm({...form, balance: e.target.value})} />
+                <Input label="Low-Balance Threshold" type="number" step="0.0001" value={form.lowBalanceThreshold} onChange={e => setForm({...form, lowBalanceThreshold: e.target.value})} />
+                <Input label="Billing Email (optional)" type="email" value={form.billingEmail} onChange={e => setForm({...form, billingEmail: e.target.value})} placeholder="invoices@client.com" />
+              </div>
+              <p className="text-xs text-slate-500 mt-2">An email alert is sent when the balance reaches the threshold.</p>
               {form.chargingMode === "force_dlr" && <p className="text-xs text-purple-600 mt-2">⚡ Client is charged immediately and receives an instant DELIVERED DLR without waiting for the supplier.</p>}
               {form.chargingMode === "force_dlr_timeout" && <p className="text-xs text-amber-600 mt-2">⏱ Client is charged immediately. If no real DLR arrives within {form.dlrTimeout}s, an automatic DELIVERED DLR is pushed.</p>}
               {form.chargingMode === "on_dlr" && <p className="text-xs text-blue-600 mt-2">🔄 Client is only charged when the supplier confirms delivery. Invoice costs are 0 until DLR arrives.</p>}
@@ -308,8 +356,13 @@ export default function ClientPage() {
                   </span>
                 </td>
                 <td className="px-4 py-3"><span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs">{c.connection_type || "SMPP"}</span>{c.enable_http_api ? <><br/><span className="text-xs text-green-600 font-mono inline-flex items-center gap-1">🌐 HTTP API {c.http_api_key && <CopyButton value={c.http_api_key} />}</span></> : null}</td>
-                <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs ${c.is_active?"bg-green-100 text-green-700":"bg-red-100 text-red-700"}`}>{c.is_active?"Active":"Inactive"}</span>{c.charging_mode && c.charging_mode !== "on_submit" ? <><br/><span className={`text-xs ${c.charging_mode === "force_dlr" || c.charging_mode === "force_dlr_timeout" ? "text-purple-600" : "text-blue-600"}`}>{c.charging_mode === "force_dlr" ? "⚡ Force DLR" : c.charging_mode === "force_dlr_timeout" ? "⏱ Force DLR Timeout" : c.charging_mode === "on_dlr" ? "🔄 On DLR" : ""}</span></> : c.force_dlr ? <><br/><span className="text-xs text-purple-600">⚡ Force DLR</span></> : null}</td>
-                <td className="px-4 py-3"><button onClick={() => handleEdit(c)} className="text-blue-600 hover:underline text-xs mr-2">Edit</button><button onClick={() => handleDelete(c.id)} className="text-red-600 hover:underline text-xs">Delete</button></td>
+                <td className="px-4 py-3"><button
+                  onClick={() => toggleActive(c.id, c.is_active)}
+                  disabled={toggleLoading === c.id}
+                  className={`px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${c.is_active?"bg-green-100 text-green-700 hover:ring-2 hover:ring-green-300":"bg-red-100 text-red-700 hover:ring-2 hover:ring-red-300"} disabled:opacity-50`}
+                  title={`Click to ${c.is_active ? "deactivate" : "activate"} this client`}
+                >{toggleLoading === c.id ? "…" : c.is_active?"Active":"Inactive"}</button>{c.charging_mode && c.charging_mode !== "on_submit" ? <><br/><span className={`text-xs ${c.charging_mode === "force_dlr" || c.charging_mode === "force_dlr_timeout" ? "text-purple-600" : "text-blue-600"}`}>{c.charging_mode === "force_dlr" ? "⚡ Force DLR" : c.charging_mode === "force_dlr_timeout" ? "⏱ Force DLR Timeout" : c.charging_mode === "on_dlr" ? "🔄 On DLR" : ""}</span></> : c.force_dlr ? <><br/><span className="text-xs text-purple-600">⚡ Force DLR</span></> : null}</td>
+                <td className="px-4 py-3 whitespace-nowrap"><button onClick={() => sendWelcome(c.id)} disabled={welcomeSending === c.id} className="text-green-600 hover:underline text-xs mr-2 disabled:opacity-50">{welcomeSending === c.id ? "Sending…" : "📧 Welcome"}</button><button onClick={() => handleEdit(c)} className="text-blue-600 hover:underline text-xs mr-2">Edit</button><button onClick={() => handleDelete(c.id)} className="text-red-600 hover:underline text-xs">Delete</button></td>
               </tr>
             ))}
             {filteredClients.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-slate-400">{hasActive ? "No clients match your filters." : "No SMPP clients configured."}</td></tr>}

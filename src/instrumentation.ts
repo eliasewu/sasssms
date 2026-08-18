@@ -21,6 +21,16 @@ export async function register() {
     const { isMainThread } = await import("node:worker_threads");
     if (!isMainThread) return;
 
+    // Log the ACTIVE JWT secret fingerprint once at startup so a drift vs .env
+    // (the cause of "no token found" / 401 after a redeploy) is immediately
+    // visible in the logs. Safe to log: SHA-256 can't be reversed to the secret.
+    try {
+      const { logJwtSecretFingerprint } = await import("@/lib/auth");
+      logJwtSecretFingerprint();
+    } catch (e) {
+      console.error("[instrumentation] JWT fingerprint check failed:", (e as Error).message);
+    }
+
     // Emergency bypass: skip all background services (SMPP, DLR, etc.)
     if (process.env.SKIP_BACKGROUND_SERVICES === "true") {
       console.log("[instrumentation] SKIP_BACKGROUND_SERVICES=true — skipping all background services");
@@ -35,6 +45,7 @@ export async function register() {
       { startDlrTimeoutSweeper },
       { startOtpForwarder },
       { checkPackageExpiry, autoRenewSubscriptions },
+      { runRecurringInvoicing, runLowBalanceAlerts },
       { startSupplierUnbindAlerts },
       { startPm2HealthMonitor },
     ] = await Promise.all([
@@ -45,6 +56,7 @@ export async function register() {
       import("@/lib/dlr-timeout-sweeper"),
       import("@/lib/otp-forwarder"),
       import("@/lib/email-service"),
+      import("@/lib/billing-service"),
       import("@/lib/supplier-unbind-alert"),
       import("@/lib/pm2-health-monitor"),
     ]);
@@ -122,13 +134,19 @@ export async function register() {
     console.log("  Package Expiry Checker: Daily reminders at 14d, 7d, and 3d before subscription expiry");
     // ── Auto-renewal: runs daily to auto-renew expired Pro/Enterprise subscriptions with sufficient balance ──
     console.log("  Auto-Renewal: Daily check for expired subscriptions with sufficient balance");
+    // ── Recurring invoicing: weekly (every Monday) by default + low-balance alerts ──
+    console.log("  Recurring Invoicing: Generates invoices on due schedules (weekly/Monday default) + low-balance alerts");
     // Run once at startup after a delay, then every 24 hours
     setTimeout(() => {
       checkPackageExpiry().catch((err: Error) => console.error("Package expiry check failed:", err.message));
       autoRenewSubscriptions().catch((err: Error) => console.error("Auto-renewal check failed:", err.message));
+      runRecurringInvoicing().catch((err: Error) => console.error("Recurring invoicing failed:", err.message));
+      runLowBalanceAlerts().catch((err: Error) => console.error("Low-balance sweep failed:", err.message));
       setInterval(() => {
         checkPackageExpiry().catch((err: Error) => console.error("Package expiry check failed:", err.message));
         autoRenewSubscriptions().catch((err: Error) => console.error("Auto-renewal check failed:", err.message));
+        runRecurringInvoicing().catch((err: Error) => console.error("Recurring invoicing failed:", err.message));
+        runLowBalanceAlerts().catch((err: Error) => console.error("Low-balance sweep failed:", err.message));
       }, 24 * 60 * 60 * 1000); // every 24 hours
     }, 30000); // 30s delay for DB connectivity
 

@@ -4,12 +4,14 @@ import { tenantQuery } from "@/lib/tenant-schema";
 import { db } from "@/db";
 import { tenants } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
-import { filterRoutesByTrunkMcc } from "@/lib/smpp-client";
+import { filterRoutesByTrunkMcc, deliverSmsWithFallback } from "@/lib/smpp-client";
 import type { RouteInfo } from "@/lib/smpp-client";
+import { isBusinessApiRoute } from "@/lib/connection-types";
 import { getOnlineOttDevices, sendOttMessage } from "@/lib/ott-pairing-engine";
 import type { OttDeviceType } from "@/lib/ott-pairing-engine";
 import { applyTranslations, applyEntityTranslations } from "@/lib/translation-engine";
 import { lookupClientRate, lookupSupplierCost } from "@/lib/rates";
+import { resolveSmsQuota } from "@/lib/package-limits";
 
 export const dynamic = "force-dynamic";
 
@@ -26,12 +28,13 @@ export async function GET(request: Request) {
     .from(tenants)
     .where(eq(tenants.id, tenant.tenantId));
 
-  const freeCredits = Math.max(0, (tenantData?.smsLimit || 0) - (tenantData?.smsCounter || 0));
+  const quota = resolveSmsQuota(tenantData?.packageType, tenantData?.smsLimit, tenantData?.smsCounter);
   return NextResponse.json({
-    freeCredits,
-    totalCredits: tenantData?.smsLimit || 0,
-    usedCredits: tenantData?.smsCounter || 0,
-    packageType: tenantData?.packageType || "starter",
+    freeCredits: quota.unlimited ? null : quota.remaining,
+    totalCredits: quota.total,
+    usedCredits: quota.used,
+    packageType: quota.packageType,
+    unlimited: quota.unlimited,
   });
 }
 
@@ -49,18 +52,15 @@ export async function POST(request: Request) {
     .from(tenants)
     .where(eq(tenants.id, tenant.tenantId));
 
-  // Check remaining free test credits
-  const freeCredits = Math.max(
-    0,
-    (tenantData?.smsLimit || 0) - (tenantData?.smsCounter || 0)
-  );
+  // Check remaining free test credits (Enterprise = unlimited)
+  const quota = resolveSmsQuota(tenantData?.packageType, tenantData?.smsLimit, tenantData?.smsCounter);
 
-  if (freeCredits <= 0) {
+  if (!quota.unlimited && quota.remaining <= 0) {
     return NextResponse.json({
       error: "No free test SMS credits remaining. Please top up your account.",
       freeCredits: 0,
-      totalCredits: tenantData?.smsLimit || 0,
-      usedCredits: tenantData?.smsCounter || 0,
+      totalCredits: quota.total,
+      usedCredits: quota.used,
     }, { status: 402 });
   }
 
@@ -187,10 +187,20 @@ export async function POST(request: Request) {
     }
   }
 
-  // Simulate delivery for non-OTT routes; OTT routes get real delivery via pairing engine
+  // Real delivery for SMPP/ANDROID/REST routes; OTT routes get real delivery
+  // via the pairing engine. Only the special non-SMPP connector types (Voice
+  // OTP / Custom API / Business API) are simulated — everything else is now
+  // sent through the supplier so a real DLR + supplier message id is recorded.
   const messageId = "TEST_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
   const isOttRoute = selectedRoute.connection_type === "WhatsApp OTT" || selectedRoute.connection_type === "Telegram OTT";
+  const connType = String(selectedRoute.connection_type || "").toUpperCase();
+  const isVoiceOtp = connType === "VOICE_OTP" || connType === "VOICE OTP";
+  const isCustomApi = connType === "CUSTOM_API";
+  const isBusinessApi = isBusinessApiRoute(selectedRoute.connection_type);
+  const isRealSmsRoute = !isVoiceOtp && !isOttRoute && !isCustomApi && !isBusinessApi && filteredRoutes.length > 0;
+
   let ottDeviceId: number | null = null;
+  let supplierMessageId: string | null = null;
   let success: boolean;
   let msgStatus: string;
   let dlrStatus: string;
@@ -222,7 +232,26 @@ export async function POST(request: Request) {
       msgStatus = success ? "SENT" : "FAILED";
       dlrStatus = success ? "PENDING" : "FAILED";
     }
+  } else if (isRealSmsRoute) {
+    // ── Real outbound delivery through the selected supplier route ──
+    const deliveryResult = await deliverSmsWithFallback(
+      tenant.tenantId,
+      tenant.schemaName,
+      clientId as number,
+      sender,
+      destination,
+      content,
+      messageId,
+      filteredRoutes,
+      undefined // test SMS: no external webhook push
+    );
+    success = deliveryResult.success;
+    msgStatus = deliveryResult.queued ? "QUEUED" : (success ? "SENT" : "FAILED");
+    dlrStatus = deliveryResult.queued ? "QUEUED" : (success ? "SENT" : "FAILED"); // pending — real DLR updates it
+    supplierMessageId = deliveryResult.supplierMessageId || null;
   } else {
+    // Special connector types (Voice OTP / Custom API / Business API) — keep
+    // the prior simulated outcome; these have no supplier SMPP DLR path.
     success = Math.random() > 0.1;
     msgStatus = success ? "DELIVERED" : "FAILED";
     dlrStatus = success ? "DELIVERED" : "FAILED";
@@ -237,9 +266,9 @@ export async function POST(request: Request) {
     tenant.schemaName,
     `INSERT INTO messages (client_id, sender, destination, content, status,
       route_plan_id, route_id, trunk_id, supplier_id, connection_type,
-      cost, supplier_cost, profit, dlr_status, dlr_timestamp, message_id, log_type, dlr_callback_url,
+      cost, supplier_cost, profit, dlr_status, dlr_timestamp, message_id, log_type, dlr_callback_url, supplier_message_id,
       original_sender, original_destination, original_content, translation_notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,$11,$12,$13,$14,$15,'test',NULL,$16,$17,$18,$19) RETURNING *`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,$11,$12,$13,$14,$15,'test',NULL,$20,$16,$17,$18,$19) RETURNING *`,
     [
       clientId,
       sender,
@@ -251,15 +280,16 @@ export async function POST(request: Request) {
       selectedRoute.trunk_id || null,
       selectedRoute.supplier_id || null,
       selectedRoute.connection_type || "SMPP",
-      msgStatus === 'FAILED' ? 0 : supplierCost,
-      msgStatus === 'FAILED' ? 0 : profit,
+      (msgStatus === 'FAILED' || msgStatus === 'QUEUED') ? 0 : supplierCost,
+      (msgStatus === 'FAILED' || msgStatus === 'QUEUED') ? 0 : profit,
       dlrStatus,
-      dlrStatus === "DELIVERED" ? new Date() : null,
+      (dlrStatus === "SENT" || dlrStatus === "PENDING" || dlrStatus === "QUEUED") ? null : new Date(),
       messageId,
       origSender,
       origDestination,
       origContent,
       appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null,
+      supplierMessageId,
     ]
   );
 
@@ -268,7 +298,7 @@ export async function POST(request: Request) {
     sql`UPDATE tenants SET sms_counter = sms_counter + 1 WHERE id = ${tenant.tenantId}`
   );
 
-  const remainingCredits = Math.max(0, freeCredits - 1);
+  const remainingCredits = quota.unlimited ? null : Math.max(0, quota.remaining - 1);
 
   return NextResponse.json({
     success: true,
@@ -282,18 +312,19 @@ export async function POST(request: Request) {
       connectionType: selectedRoute.connection_type,
     },
     cost: 0,
-    dlr: { status: dlrStatus, pushed_to: null, forwarded: false },
+    dlr: { status: dlrStatus, supplier_message_id: supplierMessageId, pushed_to: null, forwarded: false },
     ott: ottDeviceId ? {
       deviceId: ottDeviceId,
       deviceType: selectedRoute.connection_type,
       status: msgStatus,
     } : null,
     freeCredits: {
-      before: freeCredits,
+      before: quota.unlimited ? null : quota.remaining,
       after: remainingCredits,
       used: 1,
-      total: tenantData?.smsLimit || 0,
-      usedTotal: (tenantData?.smsCounter || 0) + 1,
+      total: quota.total,
+      usedTotal: quota.used + 1,
+      unlimited: quota.unlimited,
     },
   });
 }

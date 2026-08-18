@@ -196,7 +196,9 @@ function smppBindCheck(
         return;
       }
 
-      const sentHex = buildBindPdu(systemId, password, systemType, interfaceVersion, bindTypeToCommand(bindType)).toString("hex");
+      // Mask the password in the "sent" hex dump — the real one is used for
+      // the actual bind, but the diagnostics response must not leak it.
+      const sentHex = buildBindPdu(systemId, "*".repeat(password.length), systemType, interfaceVersion, bindTypeToCommand(bindType)).toString("hex");
       finish({
         success: parsed.commandStatus === 0,
         commandStatus: parsed.commandStatus,

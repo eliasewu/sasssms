@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { SkeletonCardGrid, SkeletonStatBar, ErrorState, EmptyState } from "@/components/loading-states";
+import { resolveSmsQuota } from "@/lib/package-limits";
 
 interface TenantInfo {
   companyName: string; email: string; packageType: string; balance: string;
@@ -148,6 +149,7 @@ export default function BillingTopupPage() {
   };
 
   const isProfessionalOrEnterprise = tenant?.packageType === "professional" || tenant?.packageType === "enterprise";
+  const quota = tenant ? resolveSmsQuota(tenant.packageType, tenant.smsLimit, tenant.smsCounter) : null;
   const activeGateways = gateways.filter(g => g.is_active);
 
   // Package card config
@@ -184,7 +186,7 @@ export default function BillingTopupPage() {
             <p className="text-sm text-slate-500">Current Package</p>
             <p className="text-2xl font-bold text-slate-800 capitalize">{tenant.packageType}</p>
             {isProfessionalOrEnterprise && (
-              <p className="text-sm text-blue-600 mt-1">${tenant.monthlyFee || (tenant.packageType === "professional" ? "150" : "400")}/month - SMS included</p>
+              <p className="text-sm text-blue-600 mt-1">${tenant.monthlyFee || (tenant.packageType === "professional" ? "150" : "399")}/month - SMS included</p>
             )}
             {tenant.packageType === "starter" && (
               <p className="text-sm text-slate-500 mt-1">Pay-as-you-go • ${parseFloat(tenant.costPerSms || "0.00010").toFixed(5)}/SMS</p>
@@ -192,14 +194,24 @@ export default function BillingTopupPage() {
           </div>
           <div className="bg-white rounded-xl border p-5 shadow-sm">
             <p className="text-sm text-slate-500">SMS Credits</p>
-            <p className="text-2xl font-bold text-slate-800">{tenant.smsLimit > 0 ? `${Math.max(0, tenant.smsLimit - tenant.smsCounter).toLocaleString()}` : "Unlimited"}</p>
-            <p className="text-xs text-slate-500 mt-1">
-              {tenant.smsLimit > 0 ? `remaining of ${tenant.smsLimit.toLocaleString()} total` : "Enterprise — no credit limit"}
-            </p>
-            {tenant.smsLimit > 0 && (
-              <div className="mt-2 bg-slate-100 rounded-full h-2 overflow-hidden">
-                <div className="bg-blue-600 h-full rounded-full transition-all" style={{ width: `${Math.min(100, (tenant.smsCounter / tenant.smsLimit) * 100)}%` }}></div>
-              </div>
+            {quota?.unlimited ? (
+              <>
+                <p className="text-2xl font-bold text-slate-800">Unlimited</p>
+                <p className="text-xs text-slate-500 mt-1">Enterprise — no credit limit</p>
+              </>
+            ) : (
+              <>
+                <p className="text-2xl font-bold text-slate-800">{quota ? quota.remaining.toLocaleString() : "—"}</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  remaining of {quota ? quota.total.toLocaleString() : "0"} total
+                  {tenant.packageType === "professional" ? " • 10M included/mo" : ""}
+                </p>
+                {quota && quota.total > 0 && (
+                  <div className="mt-2 bg-slate-100 rounded-full h-2 overflow-hidden">
+                    <div className="bg-blue-600 h-full rounded-full transition-all" style={{ width: `${Math.min(100, (quota.used / quota.total) * 100)}%` }}></div>
+                  </div>
+                )}
+              </>
             )}
           </div>
           <div className="bg-white rounded-xl border p-5 shadow-sm">

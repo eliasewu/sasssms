@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getTenantFromRequest } from "@/lib/auth";
 import { tenantQuery } from "@/lib/tenant-schema";
+import {
+  getInvoiceSettings,
+  allocateInvoiceNumber,
+  buildLineItems,
+  createDashboardAlert,
+} from "@/lib/billing-service";
 
 export const dynamic = "force-dynamic";
 
@@ -19,69 +25,95 @@ export async function POST(request: Request) {
   const tenant = getTenantFromRequest(request);
   if (!tenant) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await request.json();
-  const { clientId, supplierId, periodStart, periodEnd, notes, taxRate } = body;
+  const { clientId, supplierId, periodStart, periodEnd, notes } = body;
 
-  // Determine created_for info
+  const settings = await getInvoiceSettings(tenant.schemaName);
   const createdForType: string = (body as any).createdForType || (clientId ? "client" : supplierId ? "supplier" : "unknown");
   const createdForId = clientId || supplierId;
-  
-  // Get entity name
-  let createdForName = "Unknown";
-  if (clientId) {
-    const r = await tenantQuery(tenant.schemaName, "SELECT name FROM clients WHERE id = $1", [clientId]);
-    createdForName = r.rows[0]?.name || "Client #" + clientId;
-  } else if (supplierId) {
-    const r = await tenantQuery(tenant.schemaName, "SELECT name FROM suppliers WHERE id = $1", [supplierId]);
-    createdForName = r.rows[0]?.name || "Supplier #" + supplierId;
-  }
+  const kind: "client" | "supplier" = createdForType === "supplier" ? "supplier" : "client";
 
-  // Calculate from messages — cost and supplier_cost are stamped at send-time
-  let msgResult;
-  if (clientId) {
-    msgResult = await tenantQuery(
-      tenant.schemaName,
-      `SELECT COUNT(*) as msg_count,
-              COALESCE(SUM(CAST(m.cost AS DECIMAL)), 0) as total_revenue,
-              COALESCE(SUM(CAST(COALESCE(m.supplier_cost, '0') AS DECIMAL)), 0) as total_cost
-       FROM messages m
-       WHERE m.client_id = $1 AND m.created_at >= $2 AND m.created_at <= $3`,
-      [clientId, periodStart, periodEnd]
-    );
-  } else if (supplierId) {
-    msgResult = await tenantQuery(
-      tenant.schemaName,
-      `SELECT COUNT(*) as msg_count,
-              COALESCE(SUM(CAST(COALESCE(supplier_cost, '0') AS DECIMAL)), 0) as total_revenue,
-              COALESCE(SUM(CAST(COALESCE(supplier_cost, '0') AS DECIMAL)), 0) as total_cost
-       FROM messages WHERE supplier_id = $1 AND created_at >= $2 AND created_at <= $3`,
-      [supplierId, periodStart, periodEnd]
-    );
-  } else {
+  // Resolve the "Invoice to" entity from the client/supplier page
+  let entity: Record<string, any> = {};
+  if (kind === "client" && clientId) {
+    const r = await tenantQuery(tenant.schemaName, "SELECT * FROM clients WHERE id = $1", [clientId]);
+    entity = r.rows[0] || {};
+  } else if (kind === "supplier" && supplierId) {
+    const r = await tenantQuery(tenant.schemaName, "SELECT * FROM suppliers WHERE id = $1", [supplierId]);
+    entity = r.rows[0] || {};
+  }
+  if (!createdForId) {
     return NextResponse.json({ error: "clientId or supplierId required" }, { status: 400 });
   }
 
-  const totalRevenue = parseFloat(msgResult.rows[0].total_revenue) || 0;
-  const totalCost = parseFloat(msgResult.rows[0].total_cost) || 0;
-  // For client invoices: profit = client_rate - supplier_cost
-  // For supplier invoices: profit = supplier_cost (their earnings)
-  const profit = clientId ? (totalRevenue - totalCost) : totalRevenue;
-  const amount = totalRevenue;
-  const tax = amount * ((taxRate || 0) / 100);
-  const totalAmount = amount + tax;
-  const invoiceNumber = "INV-" + Date.now() + "-" + (clientId || supplierId);
-  const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 30);
+  const taxRate = body.taxRate !== undefined ? parseFloat(body.taxRate) : settings.taxRate;
+  const currency = body.currency || settings.currency;
+
+  // Build MCC/network line items from messages
+  const { items, totalSms, totalCharge } = await buildLineItems(
+    tenant.schemaName,
+    kind,
+    createdForId,
+    periodStart,
+    periodEnd
+  );
+
+  const tax = Math.round(totalCharge * (taxRate / 100) * 1_000_000) / 1_000_000;
+  const totalAmount = Math.round((totalCharge + tax) * 1_000_000) / 1_000_000;
+  const invoiceNumber = await allocateInvoiceNumber(tenant.schemaName, settings);
+
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + settings.dueDays);
+  const issueDate = new Date();
+
+  const createdForName = (entity.company_name || entity.name || "Unknown") as string;
 
   const result = await tenantQuery(
     tenant.schemaName,
-    `INSERT INTO invoices (client_id, invoice_number, amount, tax, total_amount, status, period_start, period_end, due_date, notes, created_by, created_for_type, created_for_id, created_for_name)
-     VALUES ($1,$2,$3,$4,$5,'DRAFT',$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-    [clientId || null, invoiceNumber, amount, tax, totalAmount, periodStart, periodEnd, dueDate.toISOString(), notes || null,
-     tenant.email, createdForType, createdForId, createdForName]
+    `INSERT INTO invoices (client_id, invoice_number, amount, tax, total_amount, status, period_start, period_end, due_date, notes, created_by, created_for_type, created_for_id, created_for_name, currency, issue_date)
+     VALUES ($1,$2,$3,$4,$5,'DRAFT',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+    [
+      kind === "client" ? clientId : null,
+      invoiceNumber,
+      totalCharge,
+      tax,
+      totalAmount,
+      periodStart,
+      periodEnd,
+      dueDate.toISOString(),
+      notes || null,
+      tenant.email,
+      createdForType,
+      createdForId,
+      createdForName,
+      currency,
+      issueDate.toISOString(),
+    ]
   );
 
-  revalidatePath('/dashboard/invoices');
-  return NextResponse.json({
-    invoice: result.rows[0],
-    details: { messageCount: parseInt(msgResult.rows[0].msg_count), amount, tax, totalAmount, totalRevenue, totalCost, profit, createdForName },
-  }, { status: 201 });
+  const invoice = result.rows[0];
+  for (const it of items) {
+    await tenantQuery(
+      tenant.schemaName,
+      `INSERT INTO invoice_items (invoice_id, network, country, mcc, total_sms, rate, total_charge, remarks)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [invoice.id, it.network, it.country, it.mcc, it.totalSms, it.rate, it.totalCharge, it.remarks]
+    );
+  }
+
+  await createDashboardAlert(
+    tenant.schemaName,
+    "invoice_generated",
+    `Invoice ${invoiceNumber} generated`,
+    `Invoice ${invoiceNumber} created for ${createdForName} (${totalSms} SMS, ${totalAmount} ${currency}).`,
+    "info"
+  );
+
+  revalidatePath("/dashboard/invoices");
+  return NextResponse.json(
+    {
+      invoice,
+      details: { messageCount: totalSms, amount: totalCharge, tax, totalAmount, totalCharge, profit: totalCharge, createdForName, items, currency, invoiceNumber },
+    },
+    { status: 201 }
+  );
 }

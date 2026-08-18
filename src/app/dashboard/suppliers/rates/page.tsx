@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useMccMncLookups } from "@/hooks/useMccMncLookups";
 import type { MccMncEntry } from "@/hooks/useMccMncLookups";
 import { padMnc } from "@/lib/mcc-lookup-client";
+import RateHistoryModal from "@/components/rate-history-modal";
 
 interface SupplierRate {
   id: number;
@@ -86,28 +87,33 @@ export default function SupplierRatesPage() {
   const bulkImportAll = async () => {
     if (!form.supplierId || !selectedCountry || filteredOperators.length === 0) return;
     if (!form.cost) return alert("Enter a cost before bulk importing");
-    let count = 0;
-    for (const op of filteredOperators) {
-      await fetch("/api/tenant/supplier-rates", {
+    try {
+      const res = await fetch("/api/tenant/supplier-rates/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           supplierId: parseInt(form.supplierId),
-          countryCode: op.countryCode,
-          mcc: op.mcc,
-          mnc: op.mnc,
-          operatorName: op.networkName,
+          country: selectedCountry,
           cost: form.cost,
+          operators: filteredOperators.map(op => ({
+            countryCode: op.countryCode,
+            mcc: op.mcc,
+            mnc: op.mnc,
+            operatorName: op.networkName,
+          })),
         }),
       });
-      count++;
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return alert(data.error || "Bulk import failed");
+      alert(`✅ Imported ${data.imported} operators for ${selectedCountry}`);
+    } catch {
+      alert("Bulk import failed");
     }
     setShowForm(false);
     setEditingId(null);
     setSelectedCountry("");
     setFilteredOperators([]);
     setForm({ supplierId: "", countryCode: "", mcc: "", mnc: "", operatorName: "", cost: "0.00025" });
-    alert(`✅ Imported ${count} operators for ${selectedCountry}`);
     load();
   };
 
@@ -132,6 +138,30 @@ export default function SupplierRatesPage() {
   const handleDelete = async () => {
     alert("Rates cannot be deleted. Use Edit to modify or toggle Active/Inactive.");
   };
+
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyEntity, setHistoryEntity] = useState<{ id?: number; name?: string }>({});
+  const [selectedSupplier, setSelectedSupplier] = useState("");
+  const [forwardingId, setForwardingId] = useState<number | null>(null);
+  const forwardRates = async (supplierId: number) => {
+    setForwardingId(supplierId);
+    try {
+      const res = await fetch("/api/tenant/supplier-rates/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ supplierId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) alert(data.error || "Failed to forward rates");
+      else alert(`Rate card emailed to ${data.to}`);
+    } catch { alert("Failed to forward rates"); }
+    finally { setForwardingId(null); }
+  };
+  const forwardSelected = async () => {
+    if (!selectedSupplier) return alert("Select a supplier first");
+    await forwardRates(parseInt(selectedSupplier));
+  };
+  const q = selectedSupplier ? `&supplierId=${selectedSupplier}` : "";
 
   const [flashFailId, setFlashFailId] = useState<number | null>(null);
   const [bulkMsg, setBulkMsg] = useState("");
@@ -190,7 +220,17 @@ export default function SupplierRatesPage() {
           <h2 className="text-xl font-bold text-slate-800">Supplier Rates</h2>
           <p className="text-sm text-slate-500">Cost rates from suppliers per country/MCC using the MCC/MNC database</p>
         </div>
-        <button onClick={() => { setShowForm(true); setEditingId(null); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">+ Add Rate</button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <select value={selectedSupplier} onChange={e => setSelectedSupplier(e.target.value)} className="border rounded-lg px-3 py-2 text-sm bg-white">
+            <option value="">All Suppliers</option>
+            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <a href={`/api/tenant/supplier-rates/export?format=xlsx${q}`} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm font-medium">📊 Excel</a>
+          <a href={`/api/tenant/supplier-rates/export?format=pdf${q}`} className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 text-sm font-medium">📄 PDF</a>
+          <button onClick={forwardSelected} disabled={!selectedSupplier} className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 text-sm font-medium disabled:opacity-50" title="Email the selected supplier's rate card (PDF + Excel)">📧 Forward</button>
+          <button onClick={() => { setHistoryEntity({}); setHistoryOpen(true); }} className="border px-4 py-2 rounded-lg text-sm font-medium">🕘 History</button>
+          <button onClick={() => { setShowForm(true); setEditingId(null); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">+ Add Rate</button>
+        </div>
       </div>
 
       {showForm && (
@@ -277,6 +317,8 @@ export default function SupplierRatesPage() {
 
       {bulkMsg && <div className={`px-5 py-2 text-xs font-medium text-center ${bulkMsg.startsWith("❌") ? "bg-red-50 text-red-600" : bulkMsg.startsWith("✅") || bulkMsg.startsWith("☐") ? "bg-green-50 text-green-700" : "bg-blue-50 text-blue-600"}`}>{bulkMsg}</div>}
 
+      <RateHistoryModal open={historyOpen} onClose={() => setHistoryOpen(false)} type="supplier" entityId={historyEntity.id} entityName={historyEntity.name} onReverted={load} />
+
       <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-slate-50">
@@ -311,7 +353,24 @@ export default function SupplierRatesPage() {
               const supplier = suppliers.find((s) => s.id === r.supplier_id);
               return (
               <tr key={r.id} className="border-b hover:bg-slate-50">
-                <td className="px-5 py-3 font-medium">{supplier?.name || r.supplier_id}</td>
+                <td className="px-5 py-3">
+                  <span className="font-medium">{supplier?.name || r.supplier_id}</span>
+                  <button
+                    onClick={() => forwardRates(r.supplier_id)}
+                    disabled={forwardingId === r.supplier_id}
+                    className="ml-2 text-green-600 hover:underline text-xs disabled:opacity-50"
+                    title="Email this supplier's rate card (PDF + Excel)"
+                  >
+                    {forwardingId === r.supplier_id ? "Sending…" : "📧"}
+                  </button>
+                  <button
+                    onClick={() => { setHistoryEntity({ id: r.supplier_id, name: supplier?.name }); setHistoryOpen(true); }}
+                    className="ml-2 text-slate-500 hover:underline text-xs"
+                    title="View this supplier's rate history"
+                  >
+                    🕘
+                  </button>
+                </td>
                 <td className="px-5 py-3">
                   <span className="font-medium">{countryByMcc.get(r.mcc) || countryNameMap.get(r.country_code) || r.country_code}</span>
                   <span className="text-xs text-slate-400 ml-1">({r.country_code})</span>

@@ -15,6 +15,10 @@
  */
 
 const SERVER_MODE_GRACE_PERIOD_MS = 120_000; // 2 minutes after server start
+// A SERVER-mode gateway that re-bound within this window is still "active"
+// even if its in-memory session is momentarily absent (modems/gateways re-bind
+// on a short cycle). Prevents the 30s sync from flapping BOUND -> UNBOUND.
+const SERVER_RECENT_BIND_MS = 60_000;
 import { pool } from "@/db";
 import { isClientSessionActive, isSupplierServerSessionActive } from "@/lib/smpp-server";
 import { isSupplierConnected } from "@/lib/smpp-client";
@@ -77,7 +81,7 @@ export async function syncAllBindStatus() {
 
         // ── SMPP Suppliers ──
         const { rows: suppliers } = await client.query(
-          "SELECT id, name, supplier_code, connection_mode, bind_status FROM suppliers WHERE (connection_type = 'SMPP' OR (connection_type = 'ANDROID_SMS' AND connection_mode = 'SERVER')) AND is_active = true"
+          "SELECT id, name, supplier_code, connection_mode, bind_status, last_bind_time FROM suppliers WHERE (connection_type = 'SMPP' OR (connection_type = 'ANDROID_SMS' AND connection_mode = 'SERVER')) AND is_active = true"
         );
 
         for (const s of suppliers) {
@@ -90,10 +94,17 @@ export async function syncAllBindStatus() {
 
           let hasSession: boolean;
           if (s.connection_mode === "SERVER") {
-            // Connected via SMPP server-session OR HTTP REST registration
+            // Connected via SMPP server-session OR HTTP REST registration,
+            // OR re-bound recently (a gateway on a short re-bind cycle is
+            // still active even when its in-memory session is momentarily
+            // absent).
+            const recentlyBound =
+              !!s.last_bind_time &&
+              (Date.now() - new Date(s.last_bind_time).getTime()) < SERVER_RECENT_BIND_MS;
             hasSession =
               isSupplierServerSessionActive(t.id, s.id) ||
-              isRestGatewayOnline(t.id, s.id);
+              isRestGatewayOnline(t.id, s.id) ||
+              recentlyBound;
           } else {
             hasSession = isSupplierConnected(t.id, s.id);
           }

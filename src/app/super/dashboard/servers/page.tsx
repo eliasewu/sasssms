@@ -7,6 +7,7 @@ interface ServerLocation {
   id: string; country: string; city: string; countryCodes: string;
   ipAddress: string; port: number; isActive: boolean;
   sshUser?: string; package?: string; lastDeployed?: string; healthStatus?: string;
+  capacity?: number | null; cores?: number | null; ramGb?: number | null; tenantCount?: number;
 }
 
 interface HealthInfo {
@@ -66,7 +67,15 @@ export default function ServersPage() {
     suPass: "",
     port: 2775,
     pkg: "starter",
+    capacity: 0,
+    cores: 0,
+    ramGb: 0,
   });
+
+  // Edit-capacity modal state
+  const [editingServer, setEditingServer] = useState<ServerLocation | null>(null);
+  const [editForm, setEditForm] = useState({ capacity: "", cores: "", ramGb: "", pkg: "starter" });
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const { confirm: confirmDelete, modal: confirmModal } = useConfirmModal();
 
@@ -203,6 +212,49 @@ export default function ServersPage() {
     tick();
   }, [loadServers, checkHealth]);
 
+  const openEdit = (loc: ServerLocation) => {
+    setEditingServer(loc);
+    setEditForm({
+      capacity: loc.capacity != null ? String(loc.capacity) : "",
+      cores: loc.cores != null ? String(loc.cores) : "",
+      ramGb: loc.ramGb != null ? String(loc.ramGb) : "",
+      pkg: loc.package || "starter",
+    });
+  };
+
+  const saveServerCapacity = async () => {
+    if (!editingServer) return;
+    setSavingEdit(true);
+    try {
+      const res = await fetch("/api/super/servers", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingServer.id,
+          capacity: editForm.capacity.trim() === "" ? 0 : Math.max(0, parseInt(editForm.capacity, 10) || 0),
+          cores: editForm.cores.trim() === "" ? 0 : parseInt(editForm.cores, 10) || 0,
+          ramGb: editForm.ramGb.trim() === "" ? 0 : parseInt(editForm.ramGb, 10) || 0,
+          package: editForm.pkg,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMsg(data.error || "Failed to save server settings");
+        setTimeout(() => setMsg(""), 4000);
+        return;
+      }
+      setEditingServer(null);
+      setMsg("✅ Server capacity saved");
+      setTimeout(() => setMsg(""), 3000);
+      loadServers();
+    } catch {
+      setMsg("Network error saving server settings");
+      setTimeout(() => setMsg(""), 4000);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const handleRemove = async (locationId: string, country: string) => {
     if (!await confirmDelete(`Remove server from "${country}"? This clears the IP and credentials but keeps the location.`)) return;
     try {
@@ -274,7 +326,7 @@ export default function ServersPage() {
         </div>
         <button
           onClick={() => {
-            setForm({ locationId: "canada", ipAddress: "", sshUser: "ubuntu", sshPass: "", suPass: "", port: 2775, pkg: "starter" });
+            setForm({ locationId: "canada", ipAddress: "", sshUser: "ubuntu", sshPass: "", suPass: "", port: 2775, pkg: "starter", capacity: 0, cores: 0, ramGb: 0 });
             setShowForm(true);
           }}
           className="bg-orange-600 hover:bg-orange-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold shadow transition"
@@ -324,6 +376,57 @@ export default function ServersPage() {
               <pre className="bg-black/40 rounded-lg p-3 text-[10px] font-mono text-slate-300 max-h-56 overflow-y-auto whitespace-pre-wrap">{d.log || "Waiting for output..."}</pre>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Edit Capacity Modal */}
+      {editingServer && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-bold text-lg">⚙️ Server Settings — {editingServer.country}{editingServer.city ? ` (${editingServer.city})` : ""}</h3>
+              <button onClick={() => setEditingServer(null)} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Max Tenants (capacity)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={editForm.capacity}
+                  onChange={(e) => setEditForm({ ...editForm, capacity: e.target.value })}
+                  placeholder="0 = unlimited"
+                  className="w-full border rounded-lg px-3 py-2.5 text-sm"
+                />
+                <p className="text-xs text-slate-400 mt-1">0 = unlimited. Currently hosting {editingServer.tenantCount ?? 0} tenant{editingServer.tenantCount === 1 ? "" : "s"}.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">Cores</label>
+                  <input type="number" min={0} value={editForm.cores} onChange={(e) => setEditForm({ ...editForm, cores: e.target.value })} placeholder="e.g. 16" className="w-full border rounded-lg px-3 py-2.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">RAM (GB)</label>
+                  <input type="number" min={0} value={editForm.ramGb} onChange={(e) => setEditForm({ ...editForm, ramGb: e.target.value })} placeholder="e.g. 64" className="w-full border rounded-lg px-3 py-2.5 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Package</label>
+                <select value={editForm.pkg} onChange={(e) => setEditForm({ ...editForm, pkg: e.target.value })} className="w-full border rounded-lg px-3 py-2.5 text-sm">
+                  <option value="starter">Starter</option>
+                  <option value="professional">Professional</option>
+                  <option value="enterprise">Enterprise</option>
+                  <option value="development">Development</option>
+                </select>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={saveServerCapacity} disabled={savingEdit} className="flex-1 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-300 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition">
+                  {savingEdit ? "Saving..." : "Save"}
+                </button>
+                <button onClick={() => setEditingServer(null)} className="px-4 py-2.5 border rounded-lg text-sm text-slate-600 hover:bg-slate-50">Cancel</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -403,6 +506,43 @@ export default function ServersPage() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">Capacity (tenants)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={form.capacity}
+                    onChange={(e) => setForm({ ...form, capacity: parseInt(e.target.value) || 0 })}
+                    placeholder="0 = unlimited"
+                    className="w-full border rounded-lg px-3 py-2.5 text-sm"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">Max tenants (0 = unlimited)</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">Cores</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={form.cores}
+                    onChange={(e) => setForm({ ...form, cores: parseInt(e.target.value) || 0 })}
+                    placeholder="e.g. 16"
+                    className="w-full border rounded-lg px-3 py-2.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">RAM (GB)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={form.ramGb}
+                    onChange={(e) => setForm({ ...form, ramGb: parseInt(e.target.value) || 0 })}
+                    placeholder="e.g. 64"
+                    className="w-full border rounded-lg px-3 py-2.5 text-sm"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium mb-1.5">SSH Password *</label>
                 <input
@@ -460,7 +600,7 @@ export default function ServersPage() {
           <p className="text-sm text-slate-500 mb-6">Deploy your first server to get started. Choose a location, enter the server credentials, and we will handle the rest.</p>
           <button
             onClick={() => {
-              setForm({ locationId: "canada", ipAddress: "", sshUser: "ubuntu", sshPass: "", suPass: "", port: 2775, pkg: "starter" });
+              setForm({ locationId: "canada", ipAddress: "", sshUser: "ubuntu", sshPass: "", suPass: "", port: 2775, pkg: "starter", capacity: 0, cores: 0, ramGb: 0 });
               setShowForm(true);
             }}
             className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2.5 rounded-lg text-sm font-semibold shadow transition"
@@ -513,6 +653,18 @@ export default function ServersPage() {
                       <span className="text-slate-500">SMPP Port</span>
                       <span className="font-mono">{loc.port}</span>
                     </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Tenants</span>
+                      <span className={`font-mono ${loc.capacity && (loc.tenantCount ?? 0) >= loc.capacity ? "text-red-600 font-bold" : ""}`}>
+                        {loc.tenantCount ?? 0}{loc.capacity ? ` / ${loc.capacity}` : ""}
+                      </span>
+                    </div>
+                    {(loc.cores || loc.ramGb) ? (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Specs</span>
+                        <span>{[loc.cores ? `${loc.cores} cores` : "", loc.ramGb ? `${loc.ramGb} GB RAM` : ""].filter(Boolean).join(" · ")}</span>
+                      </div>
+                    ) : null}
                     {loc.sshUser && (
                       <div className="flex justify-between">
                         <span className="text-slate-500">SSH User</span>
@@ -608,6 +760,12 @@ export default function ServersPage() {
                         )}
                       </button>
                       <button
+                        onClick={() => openEdit(loc)}
+                        className="px-3 py-2 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 border border-slate-200 transition"
+                      >
+                        Edit
+                      </button>
+                      <button
                         onClick={() => handleRemove(loc.id, loc.country)}
                         className="px-3 py-2 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 border border-red-200 hover:border-red-300 transition"
                       >
@@ -618,7 +776,7 @@ export default function ServersPage() {
                   {!loc.ipAddress && (
                     <button
                       onClick={() => {
-                        setForm({ locationId: loc.id, ipAddress: "", sshUser: "ubuntu", sshPass: "", suPass: "", port: 2775, pkg: loc.package || "starter" });
+                        setForm({ locationId: loc.id, ipAddress: "", sshUser: "ubuntu", sshPass: "", suPass: "", port: 2775, pkg: loc.package || "starter", capacity: 0, cores: 0, ramGb: 0 });
                         setShowForm(true);
                       }}
                       className="flex-1 bg-orange-50 hover:bg-orange-100 text-orange-700 px-3 py-2 rounded-lg text-xs font-medium transition"

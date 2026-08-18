@@ -23,7 +23,13 @@ import {
   registerDlrCallback,
   filterRoutesByTrunkMcc,
   parseDlrMessage,
+  sendViaSupplierServerSession,
 } from "@/lib/smpp-client";
+import {
+  enqueueServerMt,
+  drainServerMtQueue,
+  requeueServerMt,
+} from "@/lib/server-mt-queue";
 import type { RouteInfo, DlrPayload } from "@/lib/smpp-client";
 import {
   enqueueDlrPersist,
@@ -54,6 +60,7 @@ import { applyTranslations, applyEntityTranslations } from "@/lib/translation-en
 import { buildUrl, evaluateCondition, extractFromResponse, parseHeaders } from "@/lib/api-connector-parser";
 import { isRestGatewayOnline, enqueueRestMt } from "@/lib/gateway-rest-registry";
 import { isDuplicateSmsSubmission, releaseSmsSubmission } from "@/lib/sms-dedupe";
+import { publishMt, publishDlr } from "@/lib/kafka-bus";
 // OTT engine imported dynamically in processSubmitSm to avoid pulling baileys
 // (and its ESM-only transitive deps) into consumers that never use OTT routes.
 
@@ -121,6 +128,14 @@ const _global = globalThis as typeof globalThis & {
 };
 const activeSessions: Map<string, EsmeSession> = _global.__activeSessions ??= new Map();
 const activeSupplierSessions: Map<string, SupplierServerSession> = _global.__activeSupplierSessions ??= new Map();
+
+// Grace window before a SERVER-mode supplier is marked UNBOUND after its TCP
+// session drops. Android gateways / GSM modems frequently re-bind on a short
+// cycle (some reconnect every few seconds), so an immediate UNBOUND on close
+// makes the dashboard flap BOUND->UNBOUND and spams unbind alerts even though
+// the remote is still active. The pending timer is cancelled on re-bind.
+const SERVER_UNBOUND_GRACE_MS = 60_000;
+const supplierUnbindTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 // Track which clients have had missed DLRs recovered this session (prevents duplicates)
 const dlrRecoveredClients: Set<string> = _global.__dlrRecoveredClients ??= new Set();
 
@@ -156,14 +171,14 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
       let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 
       /**
-       * Send enquire_link every 45 seconds to prevent TCP idle timeout
+       * Send enquire_link every 30 seconds to prevent TCP idle timeout
        * from firewalls, NAT gateways, and load balancers silently killing
        * the connection when there's no SMS traffic.
        */
       const startKeepAlive = () => {
         keepAliveTimer = setInterval(() => {
           try { session.send(new smpp.PDU("enquire_link", {})); } catch {}
-        }, 45000);
+        }, 30000);
       };
 
       /**
@@ -192,14 +207,25 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
               }));
           } else {
             const sess = currentSession;
-            updateSupplierBindStatus(sess.supplierId, sess.schemaName, "UNBOUND", sess.boundAt)
-              .catch((err) => console.error("[SMPP-SRV] Failed to update supplier bind status:", err))
-              .finally(() => bindEventBus.emitBindEvent({
-                type: "supplier", entityId: sess.supplierId,
-                tenantId: sess.tenantId, schemaName: sess.schemaName,
-                status: "UNBOUND", systemId: sess.systemId,
-                timestamp: new Date().toISOString(),
-              }));
+            // Debounce UNBOUND for SERVER-mode suppliers: gateways re-bind on
+            // a short cycle, so marking UNBOUND immediately on the TCP close
+            // flaps the dashboard and spams alerts while the remote is still
+            // up. Schedule UNBOUND after a grace window; a re-bind cancels it.
+            const unboundKey = `supplier:${sess.tenantId}:${sess.supplierId}`;
+            const unboundTimer = setTimeout(() => {
+              supplierUnbindTimers.delete(unboundKey);
+              if (!isSupplierServerSessionActive(sess.tenantId, sess.supplierId)) {
+                updateSupplierBindStatus(sess.supplierId, sess.schemaName, "UNBOUND", sess.boundAt)
+                  .catch((err) => console.error("[SMPP-SRV] Failed to update supplier bind status:", err))
+                  .finally(() => bindEventBus.emitBindEvent({
+                    type: "supplier", entityId: sess.supplierId,
+                    tenantId: sess.tenantId, schemaName: sess.schemaName,
+                    status: "UNBOUND", systemId: sess.systemId,
+                    timestamp: new Date().toISOString(),
+                  }));
+              }
+            }, SERVER_UNBOUND_GRACE_MS);
+            supplierUnbindTimers.set(unboundKey, unboundTimer);
           }
         }
       };
@@ -219,6 +245,7 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
               console.log(label);
               if (sess.type === "esme") { flushPendingDlrs(sess).catch(() => {}); }
               startKeepAlive();
+              if (sess.type === "supplier_server") { flushServerMtQueue(sess).catch(() => {}); }
             } else {
               session.send(pdu.response({ command_status: 14 }));
             }
@@ -239,9 +266,9 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
               }));
               const label = sess.type === "esme"
                 ? `[SMPP] BOUND transmitter: ${sess.systemId} @ tenant ${sess.tenantId} (SMPP v${versionLabel(sess.interfaceVersion)})`
-                : `[SMPP-SRV] BOUND transmitter (supplier): ${sess.systemId} @ tenant ${sess.tenantId} (SMPP v${versionLabel(sess.interfaceVersion)})`;
-              console.log(label);
+                : `[SMPP-SRV] BOUND transmitter (supplier): ${sess.systemId} @ tenant ${sess.tenantId} (SMPP v${versionLabel(sess.interfaceVersion)})`;              console.log(label);
               startKeepAlive();
+              if (sess.type === "supplier_server") { flushServerMtQueue(sess).catch(() => {}); }
             } else {
               session.send(pdu.response({ command_status: 14 }));
             }
@@ -249,7 +276,8 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
           .catch(() => session.send(pdu.response({ command_status: 14 })));
       });
 
-      session.on("bind_receiver", (pdu: smpp.PDU) => {
+      session.on("bind_receiver",
+ (pdu: smpp.PDU) => {
         handleBind(session, pdu, "receiver")
           .then((sess) => {
             if (sess) {
@@ -261,9 +289,9 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
               if (sess.type === "esme") { flushPendingDlrs(sess).catch(() => {}); }
               const label = sess.type === "esme"
                 ? `[SMPP] BOUND receiver: ${sess.systemId} @ tenant ${sess.tenantId} (SMPP v${versionLabel(sess.interfaceVersion)})`
-                : `[SMPP-SRV] BOUND receiver (supplier): ${sess.systemId} @ tenant ${sess.tenantId} (SMPP v${versionLabel(sess.interfaceVersion)})`;
-              console.log(label);
+                : `[SMPP-SRV] BOUND receiver (supplier): ${sess.systemId} @ tenant ${sess.tenantId} (SMPP v${versionLabel(sess.interfaceVersion)})`;              console.log(label);
               startKeepAlive();
+              if (sess.type === "supplier_server") { flushServerMtQueue(sess).catch(() => {}); }
             } else {
               session.send(pdu.response({ command_status: 14 }));
             }
@@ -271,7 +299,8 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
           .catch(() => session.send(pdu.response({ command_status: 14 })));
       });
 
-      session.on("submit_sm", async (pdu: smpp.PDU) => {
+      session.on("submit_sm",
+ async (pdu: smpp.PDU) => {
         if (!currentSession) {
           session.send(pdu.response({ command_status: 1, message_id: "" }));
           return;
@@ -284,6 +313,21 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
           } else {
             result = await processSupplierSubmitSm(currentSession, pdu);
           }
+
+          // ── Publish the submit_sm_resp ACK to the Kafka SMS bus ──
+          publishMt({
+            type: "ack",
+            ts: new Date().toISOString(),
+            tenantId: currentSession.tenantId,
+            schemaName: currentSession.schemaName,
+            clientId: currentSession.type === "esme" ? currentSession.clientId : undefined,
+            supplierId: currentSession.type === "supplier_server" ? currentSession.supplierId : undefined,
+            messageId: result.messageId,
+            source: (pdu.source_addr as string) || "",
+            destination: (pdu.destination_addr as string) || "",
+            status: result.success ? "SENT" : "FAILED",
+            commandStatus: result.success ? 0 : (result.errorCode || 1),
+          });
 
           if (result.success) {
             session.send(pdu.response({ message_id: result.messageId }));
@@ -463,6 +507,20 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
               src: (pdu.destination_addr as string) || "",
             });
             console.log(`[SMPP-SRV] DLR callback triggered: modem=${parsed.messageId} → our=${ourMessageId} status=${parsed.status}`);
+
+            // ── Publish the receipt to the Kafka DLR bus (fire-and-forget) ──
+            publishDlr({
+              ts: new Date().toISOString(),
+              tenantId: ss.tenantId,
+              schemaName: ss.schemaName,
+              supplierId: ss.supplierId,
+              messageId: ourMessageId,
+              supplierMessageId: parsed.messageId,
+              status: parsed.status,
+              dlrStatus: parsed.status.toUpperCase(),
+              destination: (pdu.source_addr as string) || "",
+              source: (pdu.destination_addr as string) || "",
+            });
 
             // Update message DLR status in DB with on_dlr charging
             pool.connect().then(async (dbClient) => {
@@ -736,6 +794,14 @@ async function handleBind(
 
           activeSupplierSessions.set(`supplier:${t.id}:${s.id}`, ss);
 
+          // Cancel any pending UNBOUND grace timer — the gateway re-bound.
+          const unbindKey = `supplier:${t.id}:${s.id}`;
+          const pendingUnbind = supplierUnbindTimers.get(unbindKey);
+          if (pendingUnbind) {
+            clearTimeout(pendingUnbind);
+            supplierUnbindTimers.delete(unbindKey);
+          }
+
           bindEventBus.emitBindEvent({
             type: "supplier", entityId: s.id, tenantId: t.id,
             schemaName: t.schema_name, status: "BOUND",
@@ -762,6 +828,218 @@ async function handleBind(
   } finally {
     await client.query(`SET search_path TO public`);
     client.release();
+  }
+}
+
+/**
+ * Flush queued MT for a SERVER-mode supplier (Android gateway) that just
+ * re-bound. Re-delivers each queued message through the now-active session,
+ * flips it from QUEUED → SENT (charging on_submit sides now), and registers a
+ * DLR callback so the receipt (and on_dlr charging) still flows back to the
+ * originating client.
+ */
+async function flushServerMtQueue(ss: SupplierServerSession): Promise<void> {
+  const items = drainServerMtQueue(ss.tenantId, ss.supplierId);
+  if (items.length === 0) return;
+  console.log(`[SMPP-SRV] Flushing ${items.length} queued MT for supplier #${ss.supplierId} (${ss.systemId})`);
+
+  for (const item of items) {
+    // The device may have dropped again between items — stop and re-queue the rest.
+    if (!activeSupplierSessions.has(`supplier:${ss.tenantId}:${ss.supplierId}`)) {
+      requeueServerMt(item);
+      console.warn(`[SMPP-SRV] Supplier #${ss.supplierId} dropped during flush — re-queued ${item.messageId}`);
+      return;
+    }
+
+    // Re-lookup billing context (the queue item intentionally stores no rates).
+    let clientChargingMode: ChargingMode = "on_submit";
+    let supplierChargingMode: ChargingMode = "on_submit";
+    let ratePerSms = 0;
+    let supplierCost = 0;
+    const dbc = await pool.connect();
+    try {
+      await dbc.query(`SET search_path TO "${item.schemaName}"`);
+      const { rows: cRows } = await dbc.query(
+        `SELECT charging_mode, force_dlr, dlr_timeout FROM clients WHERE id = $1`,
+        [item.clientId]
+      );
+      if (cRows.length > 0) clientChargingMode = resolveChargingMode(cRows[0]);
+      const { rows: sRows } = await dbc.query(
+        `SELECT charging_mode, force_dlr, dlr_timeout FROM suppliers WHERE id = $1`,
+        [item.supplierId]
+      );
+      if (sRows.length > 0) supplierChargingMode = resolveChargingMode(sRows[0]);
+      ratePerSms = await lookupClientRate(item.destination, item.clientId, item.schemaName, dbc);
+      supplierCost = await lookupSupplierCost(item.destination, item.supplierId, item.schemaName, dbc);
+    } catch (err) {
+      console.error(`[SMPP-SRV] Flush billing lookup error for ${item.messageId}:`, (err as Error).message);
+    } finally {
+      await dbc.query(`SET search_path TO public`).catch(() => {});
+      dbc.release();
+    }
+
+    // Deliver through the now-active SERVER-mode session.
+    const result = await sendViaSupplierServerSession(
+      item.tenantId,
+      item.supplierId,
+      item.source,
+      item.destination,
+      item.content,
+      item.messageId,
+      activeSupplierSessions as unknown as Map<string, unknown>
+    );
+
+    if (!result.success) {
+      requeueServerMt(item);
+      console.warn(`[SMPP-SRV] Flush send failed for ${item.messageId} — re-queued`);
+      continue;
+    }
+
+    // ── QUEUED → SENT; charge on_submit sides now (on_dlr deferred to DLR). ──
+    const clientCost = isDlrCharged(clientChargingMode) ? 0 : ratePerSms;
+    const suppCost = isDlrCharged(supplierChargingMode) ? 0 : supplierCost;
+    const profit = clientCost - suppCost;
+    const supplierMessageId = result.supplierMessageId || item.messageId;
+    const upd = await pool.connect();
+    try {
+      await upd.query(`SET search_path TO "${item.schemaName}"`);
+      await upd.query(
+        `UPDATE messages SET status = 'SENT', dlr_status = 'SENT', dlr_timestamp = NULL,
+         supplier_message_id = $2, cost = $3::numeric, supplier_cost = $4::numeric, profit = $5::numeric
+         WHERE message_id = $1 AND dlr_status = 'QUEUED'`,
+        [item.messageId, supplierMessageId, clientCost, suppCost, profit]
+      );
+      if (isSubmitCharged(clientChargingMode)) {
+        await upd.query(`SET search_path TO public`);
+        await upd.query(
+          `UPDATE tenants SET sms_counter = COALESCE(sms_counter, 0) + 1 WHERE id = $1`,
+          [item.tenantId]
+        );
+        await upd.query(`SET search_path TO "${item.schemaName}"`);
+      }
+      await upd.query(`SET search_path TO public`);
+    } catch (err) {
+      console.error(`[SMPP-SRV] Flush DB update error for ${item.messageId}:`, (err as Error).message);
+    } finally {
+      await upd.query(`SET search_path TO public`).catch(() => {});
+      upd.release();
+    }
+
+    console.log(`[SMPP-SRV] Flushed queued MT ${item.messageId} → supplier #${item.supplierId} (supplier_msg_id=${supplierMessageId})`);
+
+    // ── Kafka MT audit (fire-and-forget) ──
+    publishMt({
+      type: "submit",
+      ts: new Date().toISOString(),
+      tenantId: item.tenantId,
+      schemaName: item.schemaName,
+      clientId: item.clientId,
+      messageId: item.messageId,
+      supplierMessageId,
+      supplierId: item.supplierId,
+      routeId: item.routeId ?? undefined,
+      trunkId: item.trunkId ?? undefined,
+      source: item.source,
+      destination: item.destination,
+      connectionType: item.connectionType,
+      status: "SENT",
+    });
+
+    // ── Register DLR callback: on_dlr charging + push back to the client. ──
+    registerDlrCallback(item.messageId, (dlr: DlrPayload) => {
+      const isDelivered = dlr.status === "DELIVRD" || dlr.status === "DELIVERED";
+      if (isDelivered) {
+        const chargeTasks: Promise<void>[] = [];
+        if (isDlrCharged(clientChargingMode)) {
+          chargeTasks.push((async () => {
+            const dbc2 = await pool.connect();
+            try {
+              await dbc2.query(`SET search_path TO "${item.schemaName}"`);
+              await dbc2.query(
+                `UPDATE messages SET cost = $1::numeric, supplier_cost = $2::numeric, profit = $1::numeric - $2::numeric WHERE message_id = $3`,
+                [ratePerSms, suppCost, item.messageId]
+              );
+              await dbc2.query(`SET search_path TO public`);
+              await dbc2.query(
+                `UPDATE tenants SET sms_counter = COALESCE(sms_counter, 0) + 1 WHERE id = $1`,
+                [item.tenantId]
+              );
+            } finally {
+              await dbc2.query(`SET search_path TO public`).catch(() => {});
+              dbc2.release();
+            }
+          })());
+        }
+        if (isDlrCharged(supplierChargingMode)) {
+          chargeTasks.push((async () => {
+            const dbc2 = await pool.connect();
+            try {
+              await dbc2.query(`SET search_path TO "${item.schemaName}"`);
+              await dbc2.query(
+                `UPDATE messages SET supplier_cost = $1, profit = cost - $1 WHERE message_id = $2`,
+                [supplierCost, item.messageId]
+              );
+            } finally {
+              await dbc2.query(`SET search_path TO public`).catch(() => {});
+              dbc2.release();
+            }
+          })());
+        }
+        Promise.all(chargeTasks).catch(() => {});
+      }
+
+      let liveSession: EsmeSession | null = null;
+      for (const [, s] of activeSessions) {
+        if (s.clientId === item.clientId && s.schemaName === item.schemaName) {
+          liveSession = s;
+          break;
+        }
+      }
+      if (liveSession) {
+        const dlrStatusOut = mapDlrStatus(dlr.status);
+        try {
+          liveSession.session.send(
+            new smpp.PDU("deliver_sm", {
+              source_addr: dlr.dest,
+              destination_addr: dlr.src,
+              short_message: {
+                message: `id:${dlr.supplierMessageId || item.messageId} sub:001 dlvrd:001 submit date:${dlr.submitDate} done date:${dlr.doneDate} stat:${dlrStatusOut} err:${dlr.errorCode} text:${dlrStatusOut}`,
+              },
+              esm_class: 4,
+              registered_delivery: 0,
+              data_coding: 0,
+            })
+          );
+          console.log(`[SMPP-SRV] Queued-flush DLR pushed to ESME: ${dlr.messageId} → ${dlr.status}`);
+        } catch (dlrErr) {
+          console.error(`[SMPP-SRV] Queued-flush DLR push error:`, dlrErr);
+        }
+      } else {
+        enqueueDlrPersist(item.tenantId, item.clientId, item.schemaName, dlr);
+        console.log(`[SMPP-SRV] Queued-flush DLR persisted for client ${item.clientId} (disconnected)`);
+      }
+
+      // HTTP webhook push for HTTP-API clients (mirrors the non-queued path).
+      if (item.dlrCallbackUrl) {
+        pushDlrWebhook(
+          item.dlrCallbackUrl,
+          {
+            message_id: dlr.messageId,
+            supplier_message_id: dlr.supplierMessageId,
+            status: dlr.status,
+            destination: dlr.dest,
+            source: dlr.src,
+            submit_date: dlr.submitDate,
+            done_date: dlr.doneDate,
+            error_code: dlr.errorCode,
+            timestamp: new Date().toISOString(),
+          },
+          item.schemaName,
+          dlr.messageId,
+          dlr.status
+        ).catch((err) => console.error(`[SMPP-SRV] Queued-flush DLR webhook push failed:`, err));
+      }
+    });
   }
 }
 
@@ -1356,6 +1634,7 @@ async function processSubmitSm(
       // to the active supplier session, and the phone sends the SMS natively.
       if (connType === "ANDROID_SMS") {
         let androidSuccess = false;
+        let androidQueued = false;
         const supplierKey = `supplier:${es.tenantId}:${firstRouteFinal.supplierId}`;
         const androidSession = activeSupplierSessions.get(supplierKey);
 
@@ -1406,7 +1685,25 @@ async function processSubmitSm(
             console.warn(`[SMPP] Android SMS (REST): enqueue failed for supplier #${firstRouteFinal.supplierId} (offline or queue full)`);
           }
         } else {
-          console.warn(`[SMPP] No active Android gateway session or REST registration for supplier #${firstRouteFinal.supplierId} (key: ${supplierKey})`);
+          // No live SMPP session and no REST registration — queue the MT so it
+          // delivers when the phone re-binds, instead of dropping it as FAILED.
+          androidQueued = enqueueServerMt({
+            messageId,
+            tenantId: es.tenantId,
+            schemaName: es.schemaName,
+            clientId: es.clientId,
+            supplierId: firstRouteFinal.supplierId,
+            source: src,
+            destination: dest,
+            content,
+            dlrCallbackUrl: c.dlr_callback_url || c.webhook_url || undefined,
+            routeId: firstRouteFinal.routeId,
+            trunkId: firstRouteFinal.trunkId,
+            routeName: firstRouteFinal.routeName,
+            connectionType: connType,
+            enqueuedAt: Date.now(),
+          });
+          console.warn(`[SMPP] No active Android gateway session or REST registration for supplier #${firstRouteFinal.supplierId} (key: ${supplierKey})${androidQueued ? " — queued for re-delivery" : ""}`);
         }
 
         const androidClientCost = androidSuccess && !isDlrCharged(clientChargingMode) ? ratePerSms : 0;
@@ -1418,13 +1715,13 @@ async function processSubmitSm(
            original_sender, original_destination, original_content, translation_notes)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
           [es.clientId, src, dest, content,
-           androidSuccess ? 'SENT' : 'FAILED',
+           androidSuccess ? 'SENT' : (androidQueued ? 'QUEUED' : 'FAILED'),
            c.route_plan_id, firstRouteFinal.routeId, firstRouteFinal.trunkId,
            firstRouteFinal.supplierId, connType,
            androidClientCost, androidSuppCost, androidProfit,
-           androidSuccess ? 'SENT' : 'FAILED',
+           androidSuccess ? 'SENT' : (androidQueued ? 'QUEUED' : 'FAILED'),
            messageId,
-           androidSuccess ? null : new Date(),
+           (androidSuccess || androidQueued) ? null : new Date(),
            origSrc, origDest, origContent,
            appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null]
         );
@@ -1509,6 +1806,10 @@ async function processSubmitSm(
               console.log(`[SMPP] Android DLR queued for ${messageId}: ESME client ${es.clientId} disconnected`);
             }
           });
+          return { success: true, messageId };
+        }
+        if (androidQueued) {
+          console.log(`[SMPP] Android SMS queued for ${messageId} → supplier #${firstRouteFinal.supplierId} (device offline)`);
           return { success: true, messageId };
         }
         releaseSmsSubmission(dedupeInput);

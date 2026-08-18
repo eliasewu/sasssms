@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { OAuth2Client } from "google-auth-library";
 import { pool } from "@/db";
-import { createToken } from "@/lib/auth";
+import { createToken, generateRefreshToken } from "@/lib/auth";
+import { createAuthSession, setSessionCookies } from "@/lib/session-store";
 import crypto from "crypto";
 
 // Build the public-facing base URL for redirects.
@@ -80,12 +81,17 @@ export async function GET(request: Request): Promise<NextResponse> {
         schemaName: tenant.schema_name,
         companyName: tenant.company_name,
       });
+      const refreshToken = generateRefreshToken();
+      await createAuthSession({
+        userType: "tenant",
+        userId: tenant.id,
+        email: tenant.email,
+        accessToken: token,
+        refreshToken,
+      });
 
       const response = NextResponse.redirect(new URL("/dashboard", APP_BASE_URL));
-      response.cookies.set("tenant_token", token, {
-        httpOnly: true, secure: true, sameSite: "lax",
-        maxAge: 60 * 60 * 24 * 30, path: "/",
-      });
+      setSessionCookies(response, "tenant", token, refreshToken);
       return response;
     }
 
@@ -114,12 +120,17 @@ export async function GET(request: Request): Promise<NextResponse> {
         schemaName: tenant.schema_name,
         companyName: tenant.company_name,
       });
+      const refreshToken = generateRefreshToken();
+      await createAuthSession({
+        userType: "tenant",
+        userId: tenant.id,
+        email,
+        accessToken: token,
+        refreshToken,
+      });
 
       const response = NextResponse.redirect(new URL("/dashboard", APP_BASE_URL));
-      response.cookies.set("tenant_token", token, {
-        httpOnly: true, secure: true, sameSite: "lax",
-        maxAge: 60 * 60 * 24 * 30, path: "/",
-      });
+      setSessionCookies(response, "tenant", token, refreshToken);
       return response;
     }
 

@@ -176,9 +176,14 @@ ok "Residential proxy setup script deployed (public/scripts/setup-residential-pr
 
 # ===== 6. .env =====
 echo "[6/9] Environment config..."
+# Preserve any existing JWT_SECRET across redeploys — regenerating it would
+# invalidate every logged-in session (tenant/admin tokens are signed+verified
+# with it), which surfaces as "no token found" / 401 on the next request.
+EXISTING_JWT="$(grep -E '^JWT_SECRET=' "$APP_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d '[:space:]')"
+JWT_SECRET_FINAL="${JWT_SECRET:-${EXISTING_JWT:-$(openssl rand -hex 32)}}"
 cat > "$APP_DIR/.env" << EOF
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/app_db
-JWT_SECRET=net2app-sms-platform-secret-key-2024
+JWT_SECRET=${JWT_SECRET_FINAL}
 NODE_ENV=production
 PORT=$APP_PORT
 SMPP_PORT=$SMPP_PORT
@@ -279,6 +284,20 @@ fi
 if [ -f "$APP_DIR/seed-voice-otp-languages.sql" ]; then
   psql "$DB_URL" -f "$APP_DIR/seed-voice-otp-languages.sql" 2>&1 | tail -5
   ok "Voice OTP languages seeded into all tenants"
+fi
+
+# ── Heal ALL tenant schemas immediately (not just via the nightly cron) ──
+#    Reconciles every locally-hosted tenant against TENANT_TABLE_DEFS (creates
+#    missing tables/columns) and seeds billing defaults (invoice_settings +
+#    weekly invoice_schedules + smtp_config) for pre-existing tenants.
+#    Idempotent — safe to run on every deploy and on a freshly-provisioned server.
+export DATABASE_URL="$DB_URL"
+if [ -f "$APP_DIR/scripts/heal-all-tenant-schemas.ts" ]; then
+  cd "$APP_DIR"
+  node_modules/.bin/tsx scripts/heal-all-tenant-schemas.ts 2>&1 | tail -25
+  ok "Tenant schema heal completed"
+else
+  warn "heal-all-tenant-schemas.ts not found — skipping tenant schema heal"
 fi
 
 ok "Database tables ready"

@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
+import TranslationModal from "@/components/translation-modal";
+import EntityMultiSelect from "@/components/entity-multiselect";
 
 interface NumberRule {
   ruleId: number | null;
@@ -10,7 +12,7 @@ interface NumberRule {
   stripDigits: number;
   addPrefix: string;
   scope: "client" | "supplier" | "both";
-  entityId: number | null;
+  entityIds: number[];
   priority: number;
   isActive: boolean;
   mcc: string;
@@ -21,6 +23,8 @@ interface ClientSupplier {
   id: number;
   name: string;
 }
+
+const SAMPLE_NUMBER = "0086";
 
 export default function NumberTranslationPage() {
   const { selection } = useMccMnc();
@@ -33,18 +37,11 @@ export default function NumberTranslationPage() {
   const [clients, setClients] = useState<ClientSupplier[]>([]);
   const [suppliers, setSuppliers] = useState<ClientSupplier[]>([]);
 
-  // Drag state for client/supplier assignment
-  const [dragEntity, setDragEntity] = useState<{ type: "client" | "supplier"; id: number; name: string } | null>(null);
-  const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
-  const [unassignedEntities, setUnassignedEntities] = useState<{
-    clients: ClientSupplier[];
-    suppliers: ClientSupplier[];
-  }>({ clients: [], suppliers: [] });
-
-  // Preview state
-  const [sampleInput, setSampleInput] = useState("00880");
-  const [sampleStrip, setSampleStrip] = useState(2);
-  const [sampleAdd, setSampleAdd] = useState("77");
+  // Modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [draft, setDraft] = useState<NumberRule | null>(null);
+  const [previewResult, setPreviewResult] = useState<string | null>(null);
 
   // Load clients and suppliers
   useEffect(() => {
@@ -52,7 +49,7 @@ export default function NumberTranslationPage() {
     fetch("/api/tenant/suppliers").then(r => r.json()).then(d => setSuppliers(d.suppliers || [])).catch(() => {});
   }, []);
 
-  const loadRules = useCallback(async () => {
+  const loadRules = useCallback(async (loadedClients: ClientSupplier[], loadedSuppliers: ClientSupplier[]) => {
     try {
       setLoading(true);
       setError(null);
@@ -77,15 +74,19 @@ export default function NumberTranslationPage() {
             }
           }
         } catch {}
-        const a = (p.assignments || []).find((x: any) => x.isActive !== false);
+        const assignments = (p.assignments || []).filter((x: any) => x.isActive !== false);
+        const clientIds = assignments.filter((a: any) => a.clientId).map((a: any) => a.clientId as number);
+        const supplierIds = assignments.filter((a: any) => a.supplierId).map((a: any) => a.supplierId as number);
+        const scope: "client" | "supplier" | "both" = clientIds.length > 0 ? "client" : supplierIds.length > 0 ? "supplier" : "both";
+        const entityIds = scope === "client" ? clientIds : scope === "supplier" ? supplierIds : [];
         return {
           ruleId: p.id,
           name: p.name,
           stripDigits,
           addPrefix,
-          scope: a?.clientId ? "client" : a?.supplierId ? "supplier" : "both",
-          entityId: a?.clientId || a?.supplierId || null,
-          priority: a?.priority || 1,
+          scope,
+          entityIds,
+          priority: assignments[0]?.priority || 1,
           isActive: p.is_active !== false,
           mcc: p.mcc || "",
           mnc: p.mnc || "",
@@ -99,58 +100,58 @@ export default function NumberTranslationPage() {
     }
   }, [selection]);
 
-  useEffect(() => { loadRules(); }, [loadRules]);
-
-  // Compute unassigned clients/suppliers
   useEffect(() => {
-    const assignedClientIds = new Set(rules.filter(r => r.scope === "client" && r.entityId).map(r => r.entityId!));
-    const assignedSupplierIds = new Set(rules.filter(r => r.scope === "supplier" && r.entityId).map(r => r.entityId!));
-    setUnassignedEntities({
-      clients: clients.filter(c => !assignedClientIds.has(c.id)),
-      suppliers: suppliers.filter(s => !assignedSupplierIds.has(s.id)),
+    Promise.all([
+      fetch("/api/tenant/clients").then(r => r.json()).catch(() => ({ clients: [] })),
+      fetch("/api/tenant/suppliers").then(r => r.json()).catch(() => ({ suppliers: [] })),
+    ]).then(([cData, sData]) => {
+      const cls = cData.clients || [];
+      const sups = sData.suppliers || [];
+      setClients(cls);
+      setSuppliers(sups);
+      loadRules(cls, sups);
+    }).catch(() => loadRules([], []));
+  }, [loadRules]);
+
+  const newDraft = (): NumberRule => ({
+    ruleId: null, name: `Number Rule ${rules.length + 1}`,
+    stripDigits: 2, addPrefix: "77",
+    scope: "both", entityIds: [],
+    priority: rules.length + 1, isActive: true,
+    mcc: selection.mcc || "", mnc: selection.mnc || "",
+  });
+
+  const openAdd = () => {
+    setDraft(newDraft());
+    setEditingIdx(null);
+    setPreviewResult(null);
+    setModalOpen(true);
+  };
+
+  const openEdit = (idx: number) => {
+    setDraft(JSON.parse(JSON.stringify(rules[idx])));
+    setEditingIdx(idx);
+    setPreviewResult(null);
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setDraft(null);
+    setEditingIdx(null);
+    setPreviewResult(null);
+  };
+
+  const updateDraft = (field: string, value: any) => {
+    setDraft(prev => prev ? { ...prev, [field]: value } : prev);
+  };
+
+  const toggleEntity = (id: number) => {
+    setDraft(prev => {
+      if (!prev) return prev;
+      const has = prev.entityIds.includes(id);
+      return { ...prev, entityIds: has ? prev.entityIds.filter(x => x !== id) : [...prev.entityIds, id] };
     });
-  }, [rules, clients, suppliers]);
-
-  // Add new rule
-  const addRule = () => {
-    setRules(prev => [...prev, {
-      ruleId: null, name: `Number Rule ${prev.length + 1}`,
-      stripDigits: 2, addPrefix: "",
-      scope: "both", entityId: null, priority: prev.length + 1,
-      isActive: true, mcc: selection.mcc || "", mnc: selection.mnc || "",
-    }]);
-  };
-
-  // Delete rule
-  const deleteRule = async (idx: number) => {
-    const rule = rules[idx];
-    if (rule.ruleId) {
-      await fetch(`/api/tenant/sms-translations/${rule.ruleId}`, { method: "DELETE" });
-    }
-    setRules(prev => prev.filter((_, i) => i !== idx));
-    setMsg("Rule deleted");
-    setTimeout(() => setMsg(""), 2000);
-    loadRules();
-  };
-
-  // Update a field on a rule
-  const updateRule = (idx: number, field: string, value: any) => {
-    setRules(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
-  };
-
-  // Drop client/supplier onto a rule
-  const handleDrop = (idx: number, type: "client" | "supplier" | null, entityId: number | null, entityName: string | null) => {
-    if (!type || !entityId) return;
-    setRules(prev => prev.map((r, i) => i === idx ? { ...r, scope: type, entityId } : r));
-    setDropTargetIdx(null);
-    setDragEntity(null);
-    setMsg(`Assigned ${entityName} to "${rules[idx]?.name || "rule"}"`);
-    setTimeout(() => setMsg(""), 2000);
-  };
-
-  // Clear assignment
-  const clearAssignment = (idx: number) => {
-    setRules(prev => prev.map((r, i) => i === idx ? { ...r, scope: "both", entityId: null } : r));
   };
 
   // Build pipeline JSON
@@ -161,7 +162,6 @@ export default function NumberTranslationPage() {
     return JSON.stringify({ steps });
   };
 
-  // Core save logic (shared by saveRule and saveAll)
   const saveRuleToApi = async (rule: NumberRule): Promise<number | null> => {
     const jsonSteps = buildPipeline(rule);
     if (rule.ruleId) {
@@ -169,7 +169,7 @@ export default function NumberTranslationPage() {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: rule.name, matchPattern: "^.*$", replacementFixed: jsonSteps,
-          scope: rule.scope, entityId: rule.entityId, priority: rule.priority,
+          scope: rule.scope, entityIds: rule.entityIds, priority: rule.priority,
           isActive: rule.isActive,
         }),
       });
@@ -182,7 +182,7 @@ export default function NumberTranslationPage() {
           name: rule.name, targetField: "DESTINATION", category: "NUMBER", mode: "FIXED",
           matchPattern: "^.*$", replacementFixed: jsonSteps,
           mcc: rule.mcc || null, mnc: rule.mnc || null,
-          scope: rule.scope, entityId: rule.entityId, priority: rule.priority,
+          scope: rule.scope, entityIds: rule.entityIds, priority: rule.priority,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -191,39 +191,39 @@ export default function NumberTranslationPage() {
     }
   };
 
-  // Save a single rule (updates local state only, no full re-fetch)
-  const saveRule = async (idx: number) => {
-    const rule = rules[idx];
-    try {
-      const newId = await saveRuleToApi(rule);
-      if (newId && !rule.ruleId) updateRule(idx, "ruleId", newId);
-      setMsg(`"${rule.name}" saved!`);
-      setTimeout(() => setMsg(""), 2000);
-    } catch (err) {
-      setError(`Failed to save: ${(err as Error).message}`);
-    }
-  };
-
-  // Save all (then re-fetch to sync)
-  const saveAll = async () => {
+  const handleSave = async () => {
+    if (!draft) return;
+    if (!draft.name.trim()) { setError("Name is required"); return; }
     setSaving(true);
     setError(null);
-    let saved = 0;
-    let failed = 0;
-    for (const rule of rules) {
-      try { await saveRuleToApi(rule); saved++; } catch { failed++; }
+    try {
+      const newId = await saveRuleToApi(draft);
+      if (editingIdx === null) {
+        setRules(prev => [...prev, { ...draft, ruleId: newId ?? draft.ruleId }]);
+      } else {
+        setRules(prev => prev.map((r, i) => i === editingIdx ? { ...draft, ruleId: newId ?? draft.ruleId } : r));
+      }
+      setMsg(`"${draft.name}" saved!`);
+      setTimeout(() => setMsg(""), 2500);
+      closeModal();
+      loadRules(clients, suppliers);
+    } catch (err) {
+      setError(`Failed to save: ${(err as Error).message}`);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    if (failed > 0) {
-      setMsg(`Saved ${saved}/${rules.length} (${failed} failed)`);
-    } else {
-      setMsg(`All ${saved} rules saved!`);
-    }
-    setTimeout(() => setMsg(""), 3000);
-    loadRules(); // Safe here since all rules were saved
   };
 
-  // Live preview helper
+  const deleteRule = async (idx: number) => {
+    const rule = rules[idx];
+    if (rule.ruleId) {
+      await fetch(`/api/tenant/sms-translations/${rule.ruleId}`, { method: "DELETE" }).catch(() => {});
+    }
+    setRules(prev => prev.filter((_, i) => i !== idx));
+    setMsg("Rule deleted");
+    setTimeout(() => setMsg(""), 2000);
+  };
+
   const previewTransform = (input: string, strip: number, add: string): string => {
     let result = input;
     if (strip > 0 && strip < result.length) result = result.slice(strip);
@@ -231,16 +231,16 @@ export default function NumberTranslationPage() {
     return result;
   };
 
-  // Drag over for client/supplier assignment
-  const handleDragOverRule = (e: React.DragEvent, idx: number) => {
-    e.preventDefault();
-    setDropTargetIdx(idx);
+  const runPreview = () => {
+    if (!draft) return;
+    const stripped = draft.stripDigits > 0 && draft.stripDigits < SAMPLE_NUMBER.length ? SAMPLE_NUMBER.slice(draft.stripDigits) : SAMPLE_NUMBER;
+    setPreviewResult(`${SAMPLE_NUMBER} → strip ${draft.stripDigits} → ${stripped}${draft.addPrefix ? ` → + "${draft.addPrefix}" → ${draft.addPrefix + stripped}` : ""}`);
   };
 
-  const entityName = (rule: NumberRule) => {
-    if (rule.scope === "client") return clients.find(c => c.id === rule.entityId)?.name || `Client #${rule.entityId}`;
-    if (rule.scope === "supplier") return suppliers.find(s => s.id === rule.entityId)?.name || `Supplier #${rule.entityId}`;
-    return "🌐 Global";
+  const entityLabel = (rule: NumberRule) => {
+    if (rule.scope === "client") return rule.entityIds.map(id => clients.find(c => c.id === id)?.name || `Client #${id}`).join(", ");
+    if (rule.scope === "supplier") return rule.entityIds.map(id => suppliers.find(s => s.id === id)?.name || `Supplier #${id}`).join(", ");
+    return "All clients and suppliers";
   };
 
   if (loading) return <Spinner />;
@@ -258,296 +258,169 @@ export default function NumberTranslationPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-lg font-bold text-slate-800">Number Translation Rules</h2>
+          <h2 className="text-lg font-bold text-slate-800">Number Translation</h2>
           <p className="text-xs text-slate-400">Strip prefix digits, add custom prefixes — applied per client or supplier</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-slate-500">Scope: <strong>{selection.label}</strong></span>
-          <button onClick={addRule}
+          <button onClick={openAdd}
             className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-700 transition">
             + Add Rule
           </button>
         </div>
       </div>
 
-      {/* Live Preview Demo */}
-      <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-xl p-4 mb-6">
-        <h4 className="text-sm font-semibold text-indigo-800 mb-3">🔬 How Translation Works</h4>
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <input
-            value={sampleInput}
-            onChange={e => setSampleInput(e.target.value)}
-            className="w-28 border rounded-lg px-3 py-2 font-mono text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"
-            placeholder="00880"
-          />
-          <span className="text-slate-400">→</span>
-          <div className="flex items-center gap-1 bg-white border rounded-lg px-3 py-1.5">
-            <span className="text-[10px] text-slate-400">Strip</span>
-            <input
-              type="number" min={0} max={20}
-              value={sampleStrip}
-              onChange={e => setSampleStrip(parseInt(e.target.value) || 0)}
-              className="w-10 text-center font-mono text-xs border-0 focus:outline-none p-0"
-            />
-            <span className="text-[10px] text-slate-400">digits</span>
-          </div>
-          <span className="text-slate-400">→</span>
-          <code className="bg-green-100 text-green-800 px-2 py-1 rounded font-mono text-sm">
-            {sampleInput.slice(sampleStrip > sampleInput.length ? sampleInput.length : sampleStrip) || "(empty)"}
-          </code>
-          <span className="text-slate-400">+ Add</span>
-          <input
-            value={sampleAdd}
-            onChange={e => setSampleAdd(e.target.value)}
-            className="w-16 border rounded-lg px-2 py-2 font-mono text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"
-            placeholder="77"
-          />
-          <span className="text-slate-400">→</span>
-          <code className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded font-mono font-bold text-base">
-            {previewTransform(sampleInput, sampleStrip, sampleAdd)}
-          </code>
-        </div>
-      </div>
-
-      {/* Unassigned Clients/Suppliers — drag onto rules */}
-      {(unassignedEntities.clients.length > 0 || unassignedEntities.suppliers.length > 0) && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
-          <p className="text-xs font-medium text-amber-700 mb-2">Drag clients/suppliers onto rules to assign:</p>
-          <div className="flex flex-wrap gap-1.5">
-            {unassignedEntities.clients.map(c => (
-              <span
-                key={`c-${c.id}`}
-                draggable
-                onDragStart={() => setDragEntity({ type: "client", id: c.id, name: c.name })}
-                onDragEnd={() => { setDragEntity(null); setDropTargetIdx(null); }}
-                className="px-2 py-1 bg-purple-100 text-purple-700 rounded-lg text-[10px] font-medium cursor-grab active:cursor-grabbing hover:bg-purple-200 transition"
-              >
-                👤 {c.name}
-              </span>
-            ))}
-            {unassignedEntities.suppliers.map(s => (
-              <span
-                key={`s-${s.id}`}
-                draggable
-                onDragStart={() => setDragEntity({ type: "supplier", id: s.id, name: s.name })}
-                onDragEnd={() => { setDragEntity(null); setDropTargetIdx(null); }}
-                className="px-2 py-1 bg-amber-100 text-amber-700 rounded-lg text-[10px] font-medium cursor-grab active:cursor-grabbing hover:bg-amber-200 transition"
-              >
-                📦 {s.name}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Rules Table */}
       <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider">
-                <th className="text-left px-4 py-2.5 font-medium w-8">#</th>
-                <th className="text-left px-3 py-2.5 font-medium">Rule Name</th>
-                <th className="text-left px-3 py-2.5 font-medium">Strip First</th>
-                <th className="text-left px-3 py-2.5 font-medium">Add Prefix</th>
-                <th className="text-left px-3 py-2.5 font-medium w-48">Applies To</th>
-                <th className="text-left px-3 py-2.5 font-medium w-16">Priority</th>
-                <th className="text-center px-3 py-2.5 font-medium w-12">Active</th>
-                <th className="text-center px-3 py-2.5 font-medium">Preview</th>
-                <th className="text-right px-4 py-2.5 font-medium w-32">Actions</th>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider">
+              <th className="text-left px-4 py-2.5 font-medium w-8">#</th>
+              <th className="text-left px-3 py-2.5 font-medium">Name</th>
+              <th className="text-left px-3 py-2.5 font-medium">Strip</th>
+              <th className="text-left px-3 py-2.5 font-medium">Add Prefix</th>
+              <th className="text-left px-3 py-2.5 font-medium">Applies To</th>
+              <th className="text-left px-3 py-2.5 font-medium w-16">Priority</th>
+              <th className="text-center px-3 py-2.5 font-medium w-12">Active</th>
+              <th className="text-center px-3 py-2.5 font-medium">Preview</th>
+              <th className="text-right px-4 py-2.5 font-medium w-28">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {rules.length === 0 && (
+              <tr>
+                <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
+                  <p className="text-2xl mb-2">🔢</p>
+                  <p className="text-sm">No number translation rules yet</p>
+                  <p className="text-xs mt-1">Click &quot;+ Add Rule&quot; to create your first rule</p>
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {rules.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
-                    <p className="text-2xl mb-2">🔢</p>
-                    <p className="text-sm">No number translation rules yet</p>
-                    <p className="text-xs mt-1">Click "+ Add Rule" to create your first rule</p>
+            )}
+            {rules.map((rule, idx) => {
+              const preview = rule.isActive ? previewTransform(SAMPLE_NUMBER, rule.stripDigits, rule.addPrefix) : "—";
+              return (
+                <tr key={idx} className={`hover:bg-blue-50/40 transition-colors ${!rule.isActive ? "opacity-50" : ""}`}>
+                  <td className="px-4 py-2 text-slate-400 font-mono">{idx + 1}</td>
+                  <td className="px-3 py-2 font-medium text-slate-800">{rule.name}</td>
+                  <td className="px-3 py-2 text-slate-600">{rule.stripDigits} digits</td>
+                  <td className="px-3 py-2 font-mono text-slate-600">{rule.addPrefix || "—"}</td>
+                  <td className="px-3 py-2 text-slate-600">{entityLabel(rule)}</td>
+                  <td className="px-3 py-2 text-slate-500">{rule.priority}</td>
+                  <td className="px-3 py-2 text-center">
+                    {rule.isActive
+                      ? <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700">Active</span>
+                      : <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-400">Inactive</span>}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <code className="text-[10px] text-slate-400 font-mono">{SAMPLE_NUMBER}</code>
+                    <span className="text-slate-300 mx-1">→</span>
+                    <code className={`text-[10px] font-mono font-semibold ${rule.isActive ? "text-emerald-700" : "text-slate-400"}`}>{preview}</code>
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => openEdit(idx)}
+                        className="bg-slate-600 text-white px-2.5 py-1 rounded text-[10px] font-medium hover:bg-slate-700 transition">Edit</button>
+                      <button onClick={() => { if (confirm("Delete this rule?")) deleteRule(idx); }}
+                        className="text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded text-[10px] font-medium transition">Del</button>
+                    </div>
                   </td>
                 </tr>
-              )}
-              {rules.map((rule, idx) => {
-                const preview = rule.isActive
-                  ? previewTransform("00880", rule.stripDigits, rule.addPrefix)
-                  : "—";
-                return (
-                  <tr
-                    key={idx}
-                    className={`hover:bg-blue-50/40 transition-colors ${!rule.isActive ? "opacity-50" : ""} ${
-                      dropTargetIdx === idx ? "bg-indigo-50 ring-2 ring-indigo-200" : ""
-                    }`}
-                    onDragOver={(e) => handleDragOverRule(e, idx)}
-                    onDragLeave={() => setDropTargetIdx(null)}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      if (dragEntity) handleDrop(idx, dragEntity.type, dragEntity.id, dragEntity.name);
-                      setDropTargetIdx(null);
-                    }}
-                  >
-                    <td className="px-4 py-2 text-slate-400 font-mono">{idx + 1}</td>
-                    <td className="px-3 py-2">
-                      <input
-                        value={rule.name}
-                        onChange={e => updateRule(idx, "name", e.target.value)}
-                        className="w-full border-0 bg-transparent focus:bg-white focus:border focus:border-blue-300 rounded px-1 py-0.5 text-xs font-medium text-slate-800 focus:outline-none"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="number" min={0} max={20}
-                          value={rule.stripDigits}
-                          onChange={e => updateRule(idx, "stripDigits", parseInt(e.target.value) || 0)}
-                          className="w-12 border rounded px-1.5 py-1 text-center font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                        />
-                        <span className="text-[10px] text-slate-400">digits</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        value={rule.addPrefix}
-                        onChange={e => updateRule(idx, "addPrefix", e.target.value)}
-                        placeholder="e.g. 77"
-                        className="w-20 border rounded px-2 py-1 font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1">
-                        <select
-                          value={rule.scope}
-                          onChange={e => {
-                            const v = e.target.value as "client" | "supplier" | "both";
-                            updateRule(idx, "scope", v);
-                            if (v === "both") updateRule(idx, "entityId", null);
-                            else if (v === "client" && clients.length > 0) updateRule(idx, "entityId", clients[0].id);
-                            else if (v === "supplier" && suppliers.length > 0) updateRule(idx, "entityId", suppliers[0].id);
-                          }}
-                          className="border rounded px-1.5 py-1 text-[10px] focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                        >
-                          <option value="both">Global</option>
-                          <option value="client">Client</option>
-                          <option value="supplier">Supplier</option>
-                        </select>
-                        {rule.scope === "client" && (
-                          <select
-                            value={rule.entityId || ""}
-                            onChange={e => updateRule(idx, "entityId", e.target.value ? parseInt(e.target.value) : null)}
-                            className="border rounded px-1.5 py-1 text-[10px] focus:ring-2 focus:ring-blue-500 focus:outline-none min-w-[90px]"
-                          >
-                            <option value="">Select...</option>
-                            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                          </select>
-                        )}
-                        {rule.scope === "supplier" && (
-                          <select
-                            value={rule.entityId || ""}
-                            onChange={e => updateRule(idx, "entityId", e.target.value ? parseInt(e.target.value) : null)}
-                            className="border rounded px-1.5 py-1 text-[10px] focus:ring-2 focus:ring-blue-500 focus:outline-none min-w-[90px]"
-                          >
-                            <option value="">Select...</option>
-                            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                          </select>
-                        )}
-                        {rule.entityId && rule.scope !== "both" && (
-                          <button
-                            onClick={() => clearAssignment(idx)}
-                            className="text-red-400 hover:text-red-600 text-[10px] px-0.5"
-                            title="Clear assignment"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="number" min={1} max={99}
-                        value={rule.priority}
-                        onChange={e => updateRule(idx, "priority", parseInt(e.target.value) || 1)}
-                        className="w-12 border rounded px-1.5 py-1 text-center font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <input
-                        type="checkbox"
-                        checked={rule.isActive}
-                        onChange={e => updateRule(idx, "isActive", e.target.checked)}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1">
-                        <code className="text-[10px] text-slate-400 font-mono">00880</code>
-                        <span className="text-slate-300">→</span>
-                        <code className={`text-[10px] font-mono font-semibold ${rule.isActive ? "text-emerald-700" : "text-slate-400"}`}>
-                          {preview}
-                        </code>
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => {
-                            setSampleInput("00880");
-                            setSampleStrip(rule.stripDigits);
-                            setSampleAdd(rule.addPrefix);
-                          }}
-                          className="bg-slate-600 text-white px-2 py-1 rounded text-[10px] font-medium hover:bg-slate-700 transition" title="Preview this rule in the demo above">▶️ Test</button>
-                        <button
-                          onClick={() => saveRule(idx)}
-                          className="bg-green-600 text-white px-2.5 py-1 rounded text-[10px] font-medium hover:bg-green-700 transition"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => { if (confirm("Delete this rule?")) deleteRule(idx); }}
-                          className="text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded text-[10px] font-medium transition"
-                        >
-                          Del
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
 
-        {/* Bottom bar */}
-        <div className="px-4 py-2 border-t bg-slate-50 flex items-center justify-between">
-          <span className="text-[10px] text-slate-400">
-            {rules.filter(r => r.ruleId).length} saved — {rules.filter(r => !r.ruleId).length} draft
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={addRule}
-              className="text-blue-600 hover:text-blue-800 text-[10px] font-medium transition"
-            >
-              + Add Rule
-            </button>
-            <button
-              onClick={saveAll}
-              disabled={saving}
-              className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 transition"
-            >
-              {saving ? "Saving..." : "Save All"}
-            </button>
+      {/* Edit / Add Modal */}
+      {modalOpen && draft && (
+        <TranslationModal
+          title={editingIdx === null ? "Add Number Translation" : "Edit Number Translation"}
+          onClose={closeModal}
+          onPreview={runPreview}
+          onTest={runPreview}
+          onSave={handleSave}
+          saving={saving}
+          saveLabel="Update"
+        >
+          {/* Row 1 */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Name <span className="text-red-500">*</span></label>
+              <input value={draft.name} onChange={e => updateDraft("name", e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Priority</label>
+              <input type="number" min={1} max={99} value={draft.priority}
+                onChange={e => updateDraft("priority", parseInt(e.target.value) || 1)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Help box */}
-      <div className="mt-4 bg-slate-50 border rounded-xl p-4 text-xs text-slate-500">
-        <p className="font-medium text-slate-700 mb-2">💡 How it works</p>
-        <ul className="space-y-1 list-disc list-inside">
-          <li><strong>Strip First N Digits:</strong> Removes the first N characters from incoming numbers. Example: strip 2 from "00880" → "880"</li>
-          <li><strong>Add Prefix:</strong> Prepends text to the number after stripping. Example: add "77" to "880" → "77880"</li>
-          <li><strong>Scope:</strong> Global applies to all. Client/Supplier applies only to messages from that specific entity.</li>
-          <li><strong>Priority:</strong> Lower numbers run first. Drag clients/suppliers from the top bar to assign them.</li>
-        </ul>
-      </div>
+          {/* Row 2 */}
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Apply To</label>
+              <select value={draft.scope} onChange={e => {
+                const v = e.target.value as "client" | "supplier" | "both";
+                updateDraft("scope", v);
+                updateDraft("entityIds", []);
+              }} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+                <option value="both">All Clients &amp; Suppliers</option>
+                <option value="client">Client</option>
+                <option value="supplier">Supplier</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Applies to</label>
+              {draft.scope === "both" ? (
+                <input readOnly value="All clients and suppliers"
+                  className="w-full border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-sm text-slate-500" />
+              ) : (
+                <EntityMultiSelect
+                  entities={draft.scope === "client" ? clients : suppliers}
+                  selectedIds={draft.entityIds}
+                  onToggle={toggleEntity}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Strip / Add Prefix section */}
+          <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-medium text-slate-700 mb-1 block">Strip Prefix (digits to remove)</label>
+                <input type="number" min={0} max={20} value={draft.stripDigits}
+                  onChange={e => updateDraft("stripDigits", parseInt(e.target.value) || 0)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white" />
+                <p className="text-[10px] text-slate-500 mt-1">{SAMPLE_NUMBER} with strip={draft.stripDigits} → {draft.stripDigits > 0 && draft.stripDigits < SAMPLE_NUMBER.length ? SAMPLE_NUMBER.slice(draft.stripDigits) : SAMPLE_NUMBER}</p>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-700 mb-1 block">Add Prefix (text to prepend)</label>
+                <input value={draft.addPrefix} onChange={e => updateDraft("addPrefix", e.target.value)}
+                  placeholder="77"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white" />
+                <p className="text-[10px] text-slate-500 mt-1">{SAMPLE_NUMBER} + add &quot;{draft.addPrefix || ""}&quot; → {draft.addPrefix + (draft.stripDigits > 0 && draft.stripDigits < SAMPLE_NUMBER.length ? SAMPLE_NUMBER.slice(draft.stripDigits) : SAMPLE_NUMBER)}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Active */}
+          <div className="mt-4 flex items-center gap-2">
+            <input type="checkbox" checked={draft.isActive} onChange={e => updateDraft("isActive", e.target.checked)}
+              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-4 w-4" />
+            <label className="text-sm text-slate-700">Active</label>
+          </div>
+
+          {/* Preview result */}
+          {previewResult && (
+            <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+              <code className="text-xs font-mono text-emerald-800 break-all">{previewResult}</code>
+            </div>
+          )}
+        </TranslationModal>
+      )}
     </div>
   );
 }

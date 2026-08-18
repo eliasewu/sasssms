@@ -15,7 +15,7 @@ echo "[$(date)] Server unresponsive — restarting PM2" >> $LOGFILE
 if pm2 pid net2app &>/dev/null; then
   pm2 restart net2app >> $LOGFILE 2>&1
 else
-  cd /opt/net2app && pm2 start npm --name net2app -- run start >> $LOGFILE 2>&1
+  cd /home/ubuntu/saas-sms-platform-architecture && pm2 start npm --name net2app -- run start >> $LOGFILE 2>&1
 fi
 
 sleep 12

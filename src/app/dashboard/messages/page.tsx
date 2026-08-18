@@ -33,6 +33,7 @@ interface Message {
   original_destination?: string;
   original_sender?: string;
   original_content?: string;
+  translation_notes?: string;
   supplier_cost?: string;
   profit?: string;
   // Extended fields
@@ -547,6 +548,66 @@ export default function DetailedSmsLogsPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Applied Translation */}
+                {(() => {
+                  let notes: string[] = [];
+                  if (selectedMsg.translation_notes) {
+                    try {
+                      const parsed = JSON.parse(selectedMsg.translation_notes);
+                      notes = Array.isArray(parsed) ? parsed : [String(parsed)];
+                    } catch {
+                      notes = [selectedMsg.translation_notes];
+                    }
+                  }
+                  const contentChanged = !!selectedMsg.original_content && selectedMsg.original_content !== selectedMsg.content;
+                  const senderChanged = !!selectedMsg.original_sender && selectedMsg.original_sender !== selectedMsg.sender;
+                  const destChanged = !!selectedMsg.original_destination && selectedMsg.original_destination !== selectedMsg.destination;
+                  if (notes.length === 0 && !contentChanged && !senderChanged && !destChanged) return null;
+                  return (
+                    <div className="col-span-full bg-amber-50 rounded-lg p-4 border border-amber-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-lg">🔄</span>
+                        <span className="font-semibold text-amber-800">Translation Applied</span>
+                      </div>
+                      {notes.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          {notes.map((n, i) => (
+                            <span key={i} className="px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">{n}</span>
+                          ))}
+                        </div>
+                      )}
+                      {(contentChanged || senderChanged || destChanged) && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                          {contentChanged && (
+                            <div>
+                              <p className="text-amber-600 mb-1">Original content</p>
+                              <p className="font-mono bg-white rounded p-2 border text-slate-600 whitespace-pre-wrap">{selectedMsg.original_content}</p>
+                            </div>
+                          )}
+                          {contentChanged && (
+                            <div>
+                              <p className="text-amber-600 mb-1">Translated content</p>
+                              <p className="font-mono bg-white rounded p-2 border text-emerald-700 whitespace-pre-wrap">{selectedMsg.content}</p>
+                            </div>
+                          )}
+                          {senderChanged && (
+                            <div>
+                              <p className="text-amber-600 mb-1">Original sender</p>
+                              <p className="font-mono bg-white rounded p-2 border text-slate-600">{selectedMsg.original_sender}</p>
+                            </div>
+                          )}
+                          {destChanged && (
+                            <div>
+                              <p className="text-amber-600 mb-1">Original destination</p>
+                              <p className="font-mono bg-white rounded p-2 border text-slate-600">{selectedMsg.original_destination}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* IDs and IP */}
                 <div className="col-span-full grid grid-cols-3 gap-4 bg-slate-50 rounded-lg p-4">

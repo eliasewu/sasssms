@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { liveChatRooms, liveChatMessages } from "@/db/schema";
 import { getTenantFromRequest } from "@/lib/auth";
+import { findFaqAnswer } from "@/lib/live-chat-faq";
 import { eq, asc, desc, and, sql } from "drizzle-orm";
 
 // GET /api/tenant/live-chat — get the tenant's chat room and messages
@@ -103,7 +104,22 @@ export async function POST(request: NextRequest) {
       // Update last message time + increment unread for super
       await db.execute(sql`UPDATE live_chat_rooms SET unread_super = unread_super + 1, last_message_at = NOW() WHERE id = ${roomId}`);
 
-      return NextResponse.json({ message: msg });
+      // ── FAQ auto-reply: answer known questions directly from the CSV ──
+      let autoReply: { senderName: string; message: string } | null = null;
+      const faqAnswer = findFaqAnswer(safeMsg);
+      if (faqAnswer) {
+        autoReply = { senderName: "Net2APP Assistant", message: faqAnswer };
+        await db.insert(liveChatMessages).values({
+          roomId,
+          senderType: "super",
+          senderName: autoReply.senderName,
+          message: autoReply.message,
+        });
+        // Mark the auto-reply as unread for the tenant (it appears as an agent reply)
+        await db.execute(sql`UPDATE live_chat_rooms SET unread_tenant = unread_tenant + 1, last_message_at = NOW() WHERE id = ${roomId}`);
+      }
+
+      return NextResponse.json({ message: msg, autoReply });
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });

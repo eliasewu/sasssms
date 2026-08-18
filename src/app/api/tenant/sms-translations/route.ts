@@ -54,29 +54,38 @@ export async function POST(request: Request) {
 
   const profile = result.rows[0];
 
-  // Create translation assignment based on scope
+  // Create translation assignments based on scope + entity list (multi-select)
   const scope: string = body.scope || "both";
-  const entityId: number | null = body.entityId || null;
-  let clientId: number | null = null;
-  let supplierId: number | null = null;
+  const rawIds: number[] = Array.isArray(body.entityIds)
+    ? body.entityIds.map((n: unknown) => parseInt(String(n), 10)).filter((n: number) => !isNaN(n))
+    : body.entityId ? [parseInt(String(body.entityId), 10)] : [];
 
-  if (scope === "client" && entityId) {
-    clientId = entityId;
-  } else if (scope === "supplier" && entityId) {
-    supplierId = entityId;
+  const createdAssignments: unknown[] = [];
+  if (scope === "both" || rawIds.length === 0) {
+    // Global assignment (both NULL)
+    const assignResult = await tenantQuery(
+      tenant.schemaName,
+      `INSERT INTO translation_assignments (profile_id, client_id, supplier_id, priority, is_active)
+       VALUES ($1, NULL, NULL, $2, true) RETURNING *`,
+      [profile.id, body.priority || 1]
+    );
+    createdAssignments.push(assignResult.rows[0]);
+  } else {
+    for (const eid of rawIds) {
+      const assignResult = await tenantQuery(
+        tenant.schemaName,
+        `INSERT INTO translation_assignments (profile_id, client_id, supplier_id, priority, is_active)
+         VALUES ($1, $2, $3, $4, true) RETURNING *`,
+        [profile.id, scope === "client" ? eid : null, scope === "supplier" ? eid : null, body.priority || 1]
+      );
+      createdAssignments.push(assignResult.rows[0]);
+    }
   }
-  // "both" leaves both NULL (global assignment)
-
-  const assignResult = await tenantQuery(
-    tenant.schemaName,
-    `INSERT INTO translation_assignments (profile_id, client_id, supplier_id, priority, is_active)
-     VALUES ($1, $2, $3, $4, true) RETURNING *`,
-    [profile.id, clientId, supplierId, body.priority || 1]
-  );
 
   return NextResponse.json({
     profile,
-    assignment: assignResult.rows[0],
-    scope: clientId ? "client" : supplierId ? "supplier" : "both",
+    assignment: createdAssignments[0],
+    assignments: createdAssignments,
+    scope: rawIds.length === 0 ? "both" : scope,
   }, { status: 201 });
 }

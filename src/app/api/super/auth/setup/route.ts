@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { superAdmins, packages, mccMncDatabase, platformSettings } from "@/db/schema";
-import { hashPassword, createToken } from "@/lib/auth";
+import { hashPassword, createToken, generateRefreshToken } from "@/lib/auth";
+import { createAuthSession, setSessionCookies } from "@/lib/session-store";
 
 const ALL_REGIONS = [
   "global", "americas", "middle_east", "africa",
@@ -87,15 +88,22 @@ export async function POST(request: Request) {
     for (const m of mccData) { await db.insert(mccMncDatabase).values(m); }
 
     const token = createToken({ adminId: admin.id, email: admin.email, isSuper: true });
+    const refreshToken = generateRefreshToken();
+    await createAuthSession({
+      userType: "super",
+      userId: admin.id,
+      email: admin.email,
+      accessToken: token,
+      refreshToken,
+    });
+
     const response = NextResponse.json({
       success: true,
       admin: { id: admin.id, email: admin.email, name: admin.name },
       message: "Super admin created. 10 regions ready for API connectors.",
     });
-    response.cookies.set("super_admin_token", token, {
-      httpOnly: true, secure: false, sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7, path: "/",
-    });
+    // secure:false — first-run setup may happen over plain HTTP before SSL.
+    setSessionCookies(response, "super", token, refreshToken, false);
     return response;
   } catch (error: unknown) {
     console.error("Setup error:", error);

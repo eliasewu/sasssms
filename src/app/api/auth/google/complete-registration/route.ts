@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { db, pool } from "@/db";
 import { tenants } from "@/db/schema";
-import { createToken, hashPassword } from "@/lib/auth";
+import { createToken, hashPassword, generateRefreshToken, ACCESS_COOKIE_MAX_AGE } from "@/lib/auth";
+import { createAuthSession, setSessionCookies } from "@/lib/session-store";
 import { createTenantSchema, seedMccMncRates } from "@/lib/tenant-schema";
 import { safeText, safeDecimal } from "@/lib/validation";
 import { ALL_SERVER_IPS, getSelfIp, isDevServer } from "@/lib/server-ips";
@@ -172,13 +173,18 @@ export async function POST(request: Request) {
       schemaName: tenant.schemaName,
       companyName: tenant.companyName,
     });
-
-    const response = NextResponse.json({ success: true, redirect: "/dashboard" });
-
-    response.cookies.set("tenant_token", token, {
-      httpOnly: true, secure: true, sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 30, path: "/",
+    const refreshToken = generateRefreshToken();
+    await createAuthSession({
+      userType: "tenant",
+      userId: tenant.id,
+      email: tenant.email,
+      accessToken: token,
+      refreshToken,
     });
+
+    const response = NextResponse.json({ success: true, redirect: "/dashboard", refreshToken, expiresIn: ACCESS_COOKIE_MAX_AGE });
+
+    setSessionCookies(response, "tenant", token, refreshToken);
 
     // Replicate to other servers (fire-and-forget)
     const tenantData = {

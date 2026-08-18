@@ -1,17 +1,19 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
+import TranslationModal from "@/components/translation-modal";
+import EntityMultiSelect from "@/components/entity-multiselect";
 
 interface RandomRule {
   ruleId: number | null;
   name: string;
   matchPattern: string;
   poolItems: string[];
+  extractOtp: boolean;
   scope: "client" | "supplier" | "both";
-  entityId: number | null;
-  entityName: string | null;
+  entityIds: number[];
   priority: number;
   isActive: boolean;
   mcc: string;
@@ -31,19 +33,22 @@ export default function RandomContentPage() {
   const [saving, setSaving] = useState(false);
 
   const [rules, setRules] = useState<RandomRule[]>([]);
-  const [originalRules, setOriginalRules] = useState<RandomRule[]>([]);
   const [clients, setClients] = useState<ClientSupplier[]>([]);
   const [suppliers, setSuppliers] = useState<ClientSupplier[]>([]);
-
-  // Drag state
-  const [dragEntity, setDragEntity] = useState<{ type: "client" | "supplier"; id: number; name: string } | null>(null);
-  const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
-  const [unassignedEntities, setUnassignedEntities] = useState<{ clients: ClientSupplier[]; suppliers: ClientSupplier[] }>({ clients: [], suppliers: [] });
 
   // Quick Test
   const [quickTestMessage, setQuickTestMessage] = useState("Your OTP code is 252525");
   const [quickTestResult, setQuickTestResult] = useState<string | null>(null);
-  const [sampleOtp, setSampleOtp] = useState("252525");
+  const [sampleDestination, setSampleDestination] = useState("33612345678");
+  const [previewMeta, setPreviewMeta] = useState<{ ruleName: string; applied: boolean; samples: string[] } | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  // Modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [draft, setDraft] = useState<RandomRule | null>(null);
+  const [draftPreview, setDraftPreview] = useState<string | null>(null);
+  const bulkInputRef = useRef<HTMLInputElement>(null);
 
   const loadRules = useCallback(async (loadedClients: ClientSupplier[], loadedSuppliers: ClientSupplier[]) => {
     try {
@@ -59,23 +64,26 @@ export default function RandomContentPage() {
       const profiles = (data.profiles || []) as any[];
 
       const parsed: RandomRule[] = profiles.map((p: any) => {
-        const a = (p.assignments || []).find((x: any) => x.isActive !== false);
+        const assignments = (p.assignments || []).filter((x: any) => x.isActive !== false);
+        const clientIds = assignments.filter((a: any) => a.clientId).map((a: any) => a.clientId as number);
+        const supplierIds = assignments.filter((a: any) => a.supplierId).map((a: any) => a.supplierId as number);
+        const scope: "client" | "supplier" | "both" = clientIds.length > 0 ? "client" : supplierIds.length > 0 ? "supplier" : "both";
+        const entityIds = scope === "client" ? clientIds : scope === "supplier" ? supplierIds : [];
         return {
           ruleId: p.id,
           name: p.name,
           matchPattern: p.match_pattern || p.matchPattern || ".*",
           poolItems: (p.pool_items || []).map((pi: any) => pi.replacementValue || pi.replacement_value || ""),
-          scope: a?.clientId ? "client" : a?.supplierId ? "supplier" : "both",
-          entityId: a?.clientId || a?.supplierId || null,
-          entityName: a?.clientId ? loadedClients.find((c: ClientSupplier) => c.id === a.clientId)?.name || `Client #${a.clientId}` : a?.supplierId ? loadedSuppliers.find((s: ClientSupplier) => s.id === a.supplierId)?.name || `Supplier #${a.supplierId}` : null,
-          priority: a?.priority || 1,
+          extractOtp: true,
+          scope,
+          entityIds,
+          priority: assignments[0]?.priority || 1,
           isActive: p.is_active !== false,
           mcc: p.mcc || "",
           mnc: p.mnc || "",
         };
       });
       setRules(parsed);
-      setOriginalRules(JSON.parse(JSON.stringify(parsed)));
     } catch (err) {
       setError("Failed to load rules. " + (err as Error).message);
     } finally {
@@ -96,81 +104,65 @@ export default function RandomContentPage() {
     }).catch(() => loadRules([], []));
   }, [loadRules]);
 
-  useEffect(() => {
-    const assignedClientIds = new Set(rules.filter(r => r.scope === "client" && r.entityId).map(r => r.entityId!));
-    const assignedSupplierIds = new Set(rules.filter(r => r.scope === "supplier" && r.entityId).map(r => r.entityId!));
-    setUnassignedEntities({
-      clients: clients.filter(c => !assignedClientIds.has(c.id)),
-      suppliers: suppliers.filter(s => !assignedSupplierIds.has(s.id)),
+  const newDraft = (): RandomRule => ({
+    ruleId: null, name: `Random Rule ${rules.length + 1}`,
+    matchPattern: ".*",
+    poolItems: [
+      "Your OTP code is {{OTP}}. Valid for 5 min.",
+      "Verification code: {{OTP}}",
+      "{{OTP}} is your one-time password",
+      "OTP: {{OTP}}. Do not share.",
+    ],
+    extractOtp: true,
+    scope: "both", entityIds: [], priority: rules.length + 1,
+    isActive: true, mcc: selection.mcc || "", mnc: selection.mnc || "",
+  });
+
+  const openAdd = () => {
+    setDraft(newDraft());
+    setEditingIdx(null);
+    setDraftPreview(null);
+    setModalOpen(true);
+  };
+
+  const openEdit = (idx: number) => {
+    setDraft(JSON.parse(JSON.stringify(rules[idx])));
+    setEditingIdx(idx);
+    setDraftPreview(null);
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setDraft(null);
+    setEditingIdx(null);
+    setDraftPreview(null);
+  };
+
+  const updateDraft = (field: string, value: any) => {
+    setDraft(prev => prev ? { ...prev, [field]: value } : prev);
+  };
+
+  const toggleEntity = (id: number) => {
+    setDraft(prev => {
+      if (!prev) return prev;
+      const has = prev.entityIds.includes(id);
+      return { ...prev, entityIds: has ? prev.entityIds.filter(x => x !== id) : [...prev.entityIds, id] };
     });
-  }, [rules, clients, suppliers]);
-
-  const addRule = () => {
-    const newRule: RandomRule = {
-      ruleId: null, name: `Random Rule ${rules.length + 1}`,
-      matchPattern: ".*", poolItems: [
-        "Your OTP code is {{OTP}}. Valid for 5 min.",
-        "Verification code: {{OTP}}",
-        "{{OTP}} is your one-time password",
-        "OTP: {{OTP}}. Do not share.",
-      ],
-      scope: "both", entityId: null, entityName: null, priority: rules.length + 1,
-      isActive: true, mcc: selection.mcc || "", mnc: selection.mnc || "",
-    };
-    setRules(prev => [...prev, newRule]);
-    setOriginalRules(prev => [...prev, JSON.parse(JSON.stringify(newRule))]);
   };
 
-  const deleteRule = async (idx: number) => {
-    const rule = rules[idx];
-    if (rule.ruleId) {
-      await fetch(`/api/tenant/sms-translations/${rule.ruleId}`, { method: "DELETE" });
-    }
-    setRules(prev => prev.filter((_, i) => i !== idx));
-    setOriginalRules(prev => prev.filter((_, i) => i !== idx));
-    setMsg("Rule deleted");
-    setTimeout(() => setMsg(""), 2000);
-    loadRules(clients, suppliers);
+  const draftTemplatesText = (r: RandomRule) => r.poolItems.join("\n");
+  const setDraftTemplatesText = (text: string) => {
+    const items = text.split(/\r?\n/);
+    updateDraft("poolItems", items);
   };
 
-  const updateRule = (idx: number, field: string, value: any) => {
-    setRules(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
-  };
-
-  const cancelRule = (idx: number) => {
-    const orig = originalRules[idx];
-    if (!orig) return;
-    setRules(prev => prev.map((r, i) => i === idx ? JSON.parse(JSON.stringify(orig)) : r));
-    setMsg(`Reverted "${orig.name}"`);
-    setTimeout(() => setMsg(""), 2000);
-  };
-
-  const addPoolItem = (idx: number) => {
-    setRules(prev => prev.map((r, i) => i === idx ? { ...r, poolItems: [...r.poolItems, ""] } : r));
-  };
-
-  const updatePoolItem = (idx: number, itemIdx: number, value: string) => {
-    setRules(prev => prev.map((r, i) => {
-      if (i !== idx) return r;
-      const items = [...r.poolItems];
-      items[itemIdx] = value;
-      return { ...r, poolItems: items };
-    }));
-  };
-
-  const removePoolItem = (idx: number, itemIdx: number) => {
-    setRules(prev => prev.map((r, i) => {
-      if (i !== idx) return r;
-      return { ...r, poolItems: r.poolItems.filter((_, j) => j !== itemIdx) };
-    }));
-  };
-
-  // Bulk upload templates from .txt or .csv file
-  const handleBulkUpload = (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+  // Bulk upload templates from .txt / .csv file into the draft
+  const handleDraftBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const ext = file.name.split('.').pop()?.toLowerCase();
-    if (ext !== 'txt' && ext !== 'csv') {
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (ext !== "txt" && ext !== "csv") {
       setError("Only .txt or .csv files are supported");
       setTimeout(() => setError(null), 3000);
       return;
@@ -178,34 +170,15 @@ export default function RandomContentPage() {
     const reader = new FileReader();
     reader.onload = () => {
       const text = reader.result as string;
-      const lines = text.split(/[\r\n]+/).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+      const lines = text.split(/[\r\n]+/).map(l => l.trim()).filter(l => l && !l.startsWith("#"));
       if (lines.length === 0) { setMsg("No templates found in file"); setTimeout(() => setMsg(""), 2000); return; }
-      // For CSV, take first column if comma-separated
-      const templates = lines.map(l => l.includes(',') ? l.split(',')[0].trim() : l.trim());
-      setRules(prev => prev.map((r, i) => i === idx ? { ...r, poolItems: templates } : r));
+      const templates = lines.map(l => (l.includes(",") ? l.split(",")[0].trim() : l.trim()));
+      updateDraft("poolItems", templates);
       setMsg(`Loaded ${templates.length} templates from ${file.name}`);
       setTimeout(() => setMsg(""), 2500);
     };
     reader.readAsText(file);
-    e.target.value = ''; // reset so same file can be re-uploaded
-  };
-
-  const handleDrop = (idx: number, type: "client" | "supplier" | null, entityId: number | null, entityName: string | null) => {
-    if (!type || !entityId) return;
-    setRules(prev => prev.map((r, i) => i === idx ? { ...r, scope: type, entityId, entityName } : r));
-    setDropTargetIdx(null);
-    setDragEntity(null);
-    setMsg(`Assigned ${entityName} to "${rules[idx]?.name || "rule"}"`);
-    setTimeout(() => setMsg(""), 2000);
-  };
-
-  const clearAssignment = (idx: number) => {
-    setRules(prev => prev.map((r, i) => i === idx ? { ...r, scope: "both", entityId: null, entityName: null } : r));
-  };
-
-  const handleDragOverRule = (e: React.DragEvent, idx: number) => {
-    e.preventDefault();
-    setDropTargetIdx(idx);
+    e.target.value = "";
   };
 
   const saveRuleToApi = async (rule: RandomRule): Promise<number | null> => {
@@ -216,7 +189,7 @@ export default function RandomContentPage() {
         body: JSON.stringify({
           name: rule.name, matchPattern: rule.matchPattern,
           mcc: rule.mcc || null, mnc: rule.mnc || null,
-          scope: rule.scope, entityId: rule.entityId, priority: rule.priority,
+          scope: rule.scope, entityIds: rule.entityIds, priority: rule.priority,
           isActive: rule.isActive,
         }),
       });
@@ -235,7 +208,7 @@ export default function RandomContentPage() {
           name: rule.name, targetField: "BODY", category: "RANDOM_CONTENT", mode: "RANDOM",
           matchPattern: rule.matchPattern,
           mcc: rule.mcc || null, mnc: rule.mnc || null,
-          scope: rule.scope, entityId: rule.entityId, priority: rule.priority,
+          scope: rule.scope, entityIds: rule.entityIds, priority: rule.priority,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -251,50 +224,109 @@ export default function RandomContentPage() {
     }
   };
 
-  const saveRule = async (idx: number) => {
-    const rule = rules[idx];
+  const handleSave = async () => {
+    if (!draft) return;
+    if (!draft.name.trim()) { setError("Name is required"); return; }
+    const templates = draft.poolItems.filter(p => p.trim());
+    if (templates.length === 0) { setError("Add at least one template"); return; }
+    setSaving(true);
+    setError(null);
     try {
-      const newId = await saveRuleToApi(rule);
-      if (newId && !rule.ruleId) {
-        updateRule(idx, "ruleId", newId);
-        setOriginalRules(prev => prev.map((r, i) => i === idx ? { ...r, ruleId: newId } : r));
+      const newId = await saveRuleToApi(draft);
+      if (editingIdx === null) {
+        setRules(prev => [...prev, { ...draft, ruleId: newId ?? draft.ruleId }]);
       } else {
-        setOriginalRules(prev => prev.map((r, i) => i === idx ? JSON.parse(JSON.stringify(rule)) : r));
+        setRules(prev => prev.map((r, i) => i === editingIdx ? { ...draft, ruleId: newId ?? draft.ruleId } : r));
       }
-      setMsg(`"${rule.name}" saved!`);
-      setTimeout(() => setMsg(""), 2000);
+      setMsg(`"${draft.name}" saved!`);
+      setTimeout(() => setMsg(""), 2500);
+      closeModal();
+      loadRules(clients, suppliers);
     } catch (err) {
       setError(`Failed to save: ${(err as Error).message}`);
+    } finally {
+      setSaving(false);
     }
   };
 
-  const saveAll = async () => {
-    setSaving(true); setError(null);
-    let saved = 0; let failed = 0;
-    for (const rule of rules) {
-      try { await saveRuleToApi(rule); saved++; } catch { failed++; }
+  const deleteRule = async (idx: number) => {
+    const rule = rules[idx];
+    if (rule.ruleId) {
+      await fetch(`/api/tenant/sms-translations/${rule.ruleId}`, { method: "DELETE" }).catch(() => {});
     }
-    setSaving(false);
-    setMsg(failed > 0 ? `Saved ${saved}/${rules.length} (${failed} failed)` : `All ${saved} rules saved!`);
-    setTimeout(() => setMsg(""), 3000);
-    loadRules(clients, suppliers);
+    setRules(prev => prev.filter((_, i) => i !== idx));
+    setMsg("Rule deleted");
+    setTimeout(() => setMsg(""), 2000);
   };
 
-  // Quick test: pick random template and fill OTP from the test message
+  // Run an EXACT preview through the real translation engine
+  const runPreviewForRule = async (rule: RandomRule): Promise<{ exact: string; samples: string[]; applied: boolean }> => {
+    const otp = quickTestMessage.match(/\b(\d{4,8})\b/)?.[1] || "123456";
+    const fillOtp = (t: string) => (rule.extractOtp ? t.replace(/\{\{OTP\}\}/g, otp) : t);
+
+    if (!rule.ruleId) {
+      const active = rule.poolItems.filter(p => p.trim());
+      const exact = active.length === 0 ? "" : fillOtp(active[Math.floor(Math.random() * active.length)]);
+      return { exact, samples: active.map(fillOtp), applied: active.length > 0 };
+    }
+
+    const res = await fetch("/api/tenant/sms-translations/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profileId: rule.ruleId,
+        sampleSender: "TEST",
+        sampleDestination: sampleDestination.trim() || "33612345678",
+        sampleContent: quickTestMessage,
+      }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const exact = data.sample?.translated?.content ?? "";
+    const applied = !!data.sample?.applied;
+    const samples: string[] = Array.isArray(data.randomSamples)
+      ? data.randomSamples.map(fillOtp)
+      : [];
+    return { exact, samples, applied };
+  };
+
+  const runPreview = async (rule: RandomRule) => {
+    setTesting(true);
+    setQuickTestResult(null);
+    setPreviewMeta(null);
+    try {
+      const r = await runPreviewForRule(rule);
+      setQuickTestResult(r.applied ? r.exact : "(no match)");
+      setPreviewMeta({ ruleName: rule.name, applied: r.applied, samples: r.samples });
+    } catch (e) {
+      setQuickTestResult("(preview error: " + (e as Error).message + ")");
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const runDraftPreview = async () => {
+    if (!draft) return;
+    const r = await runPreviewForRule(draft);
+    setDraftPreview(r.applied ? r.exact : "(no templates)");
+  };
+
   const runQuickTest = () => {
     const activeRules = rules.filter(r => r.isActive && r.poolItems.some(p => p.trim()));
     if (activeRules.length === 0) {
       setQuickTestResult("(no active rules)");
+      setPreviewMeta(null);
       return;
     }
     const pick = activeRules[Math.floor(Math.random() * activeRules.length)];
-    const tmpl = pick.poolItems.filter(p => p.trim());
-    const random = tmpl[Math.floor(Math.random() * tmpl.length)];
-    const otp = quickTestMessage.match(/\b(\d{4,8})\b/)?.[1] || sampleOtp;
-    setQuickTestResult(random.replace(/\{\{OTP\}\}/g, otp));
+    runPreview(pick);
   };
 
-  const assignedRules = rules.filter(r => r.scope !== "both" && r.entityId);
+  const entityLabel = (rule: RandomRule) => {
+    if (rule.scope === "client") return rule.entityIds.map(id => clients.find(c => c.id === id)?.name || `Client #${id}`).join(", ");
+    if (rule.scope === "supplier") return rule.entityIds.map(id => suppliers.find(s => s.id === id)?.name || `Supplier #${id}`).join(", ");
+    return "All clients and suppliers";
+  };
 
   if (loading) return <Spinner />;
 
@@ -311,12 +343,12 @@ export default function RandomContentPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-lg font-bold text-slate-800">Random Content Rules</h2>
-          <p className="text-xs text-slate-400">Pick a random template from a pool when content matches — assigned per client or supplier</p>
+          <h2 className="text-lg font-bold text-slate-800">Random Content</h2>
+          <p className="text-xs text-slate-400">Extract OTP from any content and send a random pre-uploaded template</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-slate-500">Scope: <strong>{selection.label}</strong></span>
-          <button onClick={addRule}
+          <button onClick={openAdd}
             className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-700 transition">
             + Add Rule
           </button>
@@ -324,306 +356,242 @@ export default function RandomContentPage() {
       </div>
 
       {/* Quick Random Test */}
-      <div className="bg-gradient-to-br from-slate-800 via-slate-900 to-amber-950 border border-slate-700 rounded-2xl p-6 mb-6 shadow-lg">
-        <div className="flex items-center gap-3 mb-1">
+      <div className="bg-gradient-to-br from-slate-800 via-slate-900 to-purple-950 border border-slate-700 rounded-2xl p-6 mb-6 shadow-lg">
+        <div className="flex items-center gap-3 mb-3">
           <span className="text-2xl">🎲</span>
           <div>
             <h3 className="text-lg font-bold text-white">Quick Random Pick Test</h3>
             <p className="text-xs text-slate-400">Extract OTP from original message and fill into random template</p>
           </div>
         </div>
-        <div className="mt-5 space-y-4">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex-1 min-w-[200px]">
-              <label className="text-[10px] font-medium text-slate-400 mb-1 block">Original Message (with OTP)</label>
-              <input value={quickTestMessage} onChange={e => { setQuickTestMessage(e.target.value); setQuickTestResult(null); }}
-                className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-3 py-2 text-xs font-mono text-white placeholder:text-slate-500 focus:ring-2 focus:ring-amber-500 focus:outline-none" />
-            </div>
-            <button onClick={runQuickTest}
-              className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition shadow-lg shadow-amber-600/25 shrink-0">
-              🎲 Random Pick
-            </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex-1 min-w-[200px]">
+            <label className="text-[10px] font-medium text-slate-400 mb-1 block">Original Message (with OTP)</label>
+            <input value={quickTestMessage} onChange={e => { setQuickTestMessage(e.target.value); setQuickTestResult(null); }}
+              className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-3 py-2 text-xs font-mono text-white placeholder:text-slate-500 focus:ring-2 focus:ring-purple-500 focus:outline-none" />
           </div>
-          {quickTestResult !== null && (
-            <div className={`rounded-xl border p-4 ${quickTestResult.startsWith("(no") ? "bg-red-900/20 border-red-700/50" : "bg-emerald-900/30 border-emerald-700/50"}`}>
-              {quickTestResult.startsWith("(no") ? (
-                <div className="flex items-center gap-3">
-                  <span className="text-lg">❌</span>
-                  <p className="text-sm font-semibold text-red-300">{quickTestResult === "(no active rules)" ? "No active rules with templates configured" : "No match"}</p>
+          <div className="w-48">
+            <label className="text-[10px] font-medium text-slate-400 mb-1 block">Destination Number</label>
+            <input value={sampleDestination} onChange={e => { setSampleDestination(e.target.value); setQuickTestResult(null); }}
+              placeholder="33612345678"
+              className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-3 py-2 text-xs font-mono text-white placeholder:text-slate-500 focus:ring-2 focus:ring-purple-500 focus:outline-none" />
+          </div>
+          <button onClick={runQuickTest} disabled={testing}
+            className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition shadow-lg shadow-purple-600/25 shrink-0 disabled:opacity-50">
+            {testing ? "Testing..." : "🎲 Random Pick"}
+          </button>
+        </div>
+        {quickTestResult !== null && (
+          <div className={`mt-4 rounded-xl border p-4 ${quickTestResult.startsWith("(no") || quickTestResult.startsWith("(preview error") ? "bg-red-900/20 border-red-700/50" : "bg-emerald-900/30 border-emerald-700/50"}`}>
+            {quickTestResult.startsWith("(no") || quickTestResult.startsWith("(preview error") ? (
+              <div className="flex items-center gap-3">
+                <span className="text-lg">❌</span>
+                <p className="text-sm font-semibold text-red-300">{quickTestResult === "(no active rules)" ? "No active rules with templates configured" : quickTestResult.slice(1, -1)}</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {previewMeta && (
+                  <p className="text-[10px] font-medium text-purple-300">
+                    Rule: <span className="font-semibold">{previewMeta.ruleName}</span>
+                    <span className="mx-2">•</span>
+                    Destination: <span className="font-mono">{sampleDestination}</span>
+                    <span className="mx-2">•</span>
+                    {previewMeta.applied ? "✅ applied" : "❌ not applied"}
+                  </p>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-slate-800/50 rounded-lg p-3">
+                    <span className="text-[10px] font-medium text-red-300 uppercase tracking-wider block mb-1">Original Message</span>
+                    <code className="text-xs font-mono text-slate-300 break-all">{quickTestMessage}</code>
+                  </div>
+                  <div className="bg-emerald-900/40 rounded-lg p-3">
+                    <span className="text-[10px] font-medium text-emerald-300 uppercase tracking-wider block mb-1">Exact Result</span>
+                    <code className="text-sm font-mono font-bold text-emerald-200 break-all">{quickTestResult}</code>
+                  </div>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-slate-800/50 rounded-lg p-3">
-                      <span className="text-[10px] font-medium text-red-300 uppercase tracking-wider block mb-1">Message</span>
-                      <code className="text-xs font-mono text-slate-300 break-all">{quickTestMessage}</code>
-                    </div>
-                    <div className="bg-emerald-900/40 rounded-lg p-3">
-                      <span className="text-[10px] font-medium text-emerald-300 uppercase tracking-wider block mb-1">Random Template</span>
-                      <code className="text-sm font-mono font-bold text-emerald-200 break-all">{quickTestResult}</code>
+                {previewMeta && previewMeta.samples.length > 1 && (
+                  <div className="bg-slate-800/40 rounded-lg p-3">
+                    <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider block mb-1">Other random picks from this pool</span>
+                    <div className="space-y-1">
+                      {previewMeta.samples.slice(0, 5).map((s, i) => (
+                        <code key={i} className="text-[10px] font-mono text-slate-300 block break-all">• {s}</code>
+                      ))}
                     </div>
                   </div>
-                  <p className="text-[10px] text-slate-500 italic">The OTP is extracted from the original message and filled into the template via {"{{OTP}}"} placeholder.</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        <div className="mt-3 flex items-center gap-4 text-[10px] text-slate-500">
-          <span>{rules.filter(r => r.isActive).length} active rules</span>
-          <span>•</span>
-          <span>{rules.reduce((s, r) => s + r.poolItems.filter(p => p.trim()).length, 0)} total templates</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        <div className="mt-3 text-[10px] text-slate-500">
+          {rules.filter(r => r.isActive).length} active rules • {rules.reduce((s, r) => s + r.poolItems.filter(p => p.trim()).length, 0)} total templates
         </div>
       </div>
-
-      {/* Unassigned */}
-      {(unassignedEntities.clients.length > 0 || unassignedEntities.suppliers.length > 0) && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
-          <p className="text-xs font-medium text-amber-700 mb-2">Drag clients/suppliers onto rules to assign:</p>
-          <div className="flex flex-wrap gap-1.5">
-            {unassignedEntities.clients.map(c => (
-              <span key={`c-${c.id}`} draggable
-                onDragStart={() => setDragEntity({ type: "client", id: c.id, name: c.name })}
-                onDragEnd={() => { setDragEntity(null); setDropTargetIdx(null); }}
-                className="px-2 py-1 bg-purple-100 text-purple-700 rounded-lg text-[10px] font-medium cursor-grab active:cursor-grabbing hover:bg-purple-200 transition">
-                👤 {c.name}
-              </span>
-            ))}
-            {unassignedEntities.suppliers.map(s => (
-              <span key={`s-${s.id}`} draggable
-                onDragStart={() => setDragEntity({ type: "supplier", id: s.id, name: s.name })}
-                onDragEnd={() => { setDragEntity(null); setDropTargetIdx(null); }}
-                className="px-2 py-1 bg-amber-100 text-amber-700 rounded-lg text-[10px] font-medium cursor-grab active:cursor-grabbing hover:bg-amber-200 transition">
-                📦 {s.name}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Rules Table */}
       <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider">
-                <th className="text-left px-4 py-2.5 font-medium w-8">#</th>
-                <th className="text-left px-3 py-2.5 font-medium">Rule Name</th>
-                <th className="text-left px-3 py-2.5 font-medium">Match Pattern</th>
-                <th className="text-left px-3 py-2.5 font-medium">Templates</th>
-                <th className="text-center px-3 py-2.5 font-medium w-44">Preview (sample OTP: <input value={sampleOtp} onChange={e => setSampleOtp(e.target.value)} className="w-12 border rounded px-1 py-0.5 text-center font-mono text-[10px] focus:ring-2 focus:ring-amber-500 focus:outline-none" /></th>
-                <th className="text-left px-3 py-2.5 font-medium w-48">Applies To</th>
-                <th className="text-left px-3 py-2.5 font-medium w-16">Priority</th>
-                <th className="text-center px-3 py-2.5 font-medium w-12">Active</th>
-                <th className="text-right px-4 py-2.5 font-medium">Actions</th>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider">
+              <th className="text-left px-4 py-2.5 font-medium w-8">#</th>
+              <th className="text-left px-3 py-2.5 font-medium">Name</th>
+              <th className="text-left px-3 py-2.5 font-medium">Templates</th>
+              <th className="text-left px-3 py-2.5 font-medium">Applies To</th>
+              <th className="text-left px-3 py-2.5 font-medium w-16">Priority</th>
+              <th className="text-center px-3 py-2.5 font-medium w-16">Active</th>
+              <th className="text-right px-4 py-2.5 font-medium w-28">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {rules.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                  <p className="text-2xl mb-2">🎲</p>
+                  <p className="text-sm">No random content rules yet</p>
+                  <p className="text-xs mt-1">Click &quot;+ Add Rule&quot; to create your first rule</p>
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {rules.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
-                    <p className="text-2xl mb-2">🎲</p>
-                    <p className="text-sm">No random content rules yet</p>
-                    <p className="text-xs mt-1">Click "+ Add Rule" to create your first rule</p>
-                  </td>
-                </tr>
-              )}
-              {rules.map((rule, idx) => {
-                const isDirty = originalRules[idx]
-                  ? JSON.stringify(rule) !== JSON.stringify(originalRules[idx])
-                  : false;
-                return (
-                  <tr key={idx}
-                    className={`hover:bg-blue-50/40 transition-colors ${!rule.isActive ? "opacity-50" : ""} ${dropTargetIdx === idx ? "bg-indigo-50 ring-2 ring-indigo-200" : ""} ${isDirty ? "bg-yellow-50/30" : ""}`}
-                    onDragOver={(e) => handleDragOverRule(e, idx)}
-                    onDragLeave={() => setDropTargetIdx(null)}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      if (dragEntity) handleDrop(idx, dragEntity.type, dragEntity.id, dragEntity.name);
-                      setDropTargetIdx(null);
-                    }}>
-                    <td className="px-4 py-2 text-slate-400 font-mono">
-                      {idx + 1}
-                      {isDirty && <span className="ml-1 text-[8px] text-amber-500 align-top">•</span>}
-                    </td>
-                    <td className="px-3 py-2">
-                      <input value={rule.name} onChange={e => updateRule(idx, "name", e.target.value)}
-                        className="w-full border-0 bg-transparent focus:bg-white focus:border focus:border-blue-300 rounded px-1 py-0.5 text-xs font-medium text-slate-800 focus:outline-none" />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input value={rule.matchPattern} onChange={e => updateRule(idx, "matchPattern", e.target.value)}
-                        placeholder=".*"
-                        className="w-28 border rounded px-2 py-1 font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
-                    </td>
-                    <td className="px-3 py-2 min-w-[220px]">
-                      <div className="space-y-1">
-                        {rule.poolItems.map((item, pi) => (
-                          <div key={pi} className="flex items-center gap-1">
-                            <span className="text-[10px] text-slate-400 w-4 shrink-0">{pi + 1}.</span>
-                            <input value={item} onChange={e => updatePoolItem(idx, pi, e.target.value)}
-                              placeholder="Template {{OTP}}"
-                              className="flex-1 border rounded px-2 py-1 text-[10px] font-mono focus:ring-2 focus:ring-amber-500 focus:outline-none" />
-                            {rule.poolItems.length > 1 && (
-                              <button onClick={() => removePoolItem(idx, pi)}
-                                className="text-red-400 hover:text-red-600 text-[10px] px-0.5 shrink-0">✕</button>
-                            )}
-                          </div>
-                        ))}
-                        <div className="flex items-center gap-2 mt-1">
-                          <button onClick={() => addPoolItem(idx)}
-                            className="text-[10px] text-amber-600 hover:text-amber-800 font-medium">+ Add template</button>
-                          <button onClick={() => document.getElementById(`bulk-${idx}`)?.click()}
-                            className="text-[10px] text-amber-600 hover:text-amber-800 font-medium">📁 Bulk upload</button>
-                          <input id={`bulk-${idx}`} type="file" accept=".txt,.csv" onChange={(e) => handleBulkUpload(idx, e)}
-                            className="hidden" />
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="space-y-1 max-h-20 overflow-y-auto">
-                        {rule.poolItems.filter(p => p.trim()).map((item, pi) => {
-                          const filled = item.replace(/\{\{OTP\}\}/g, sampleOtp);
-                          return (
-                            <code key={pi} className={`text-[10px] font-mono block truncate max-w-[160px] ${filled !== item ? "text-emerald-700" : "text-slate-400"}`}>
-                              {filled}
-                            </code>
-                          );
-                        })}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1">
-                        <select value={rule.scope} onChange={e => {
-                          const v = e.target.value as "client" | "supplier" | "both";
-                          updateRule(idx, "scope", v);
-                          if (v === "both") { updateRule(idx, "entityId", null); updateRule(idx, "entityName", null); }
-                          else if (v === "client" && clients.length > 0) { updateRule(idx, "entityId", clients[0].id); updateRule(idx, "entityName", clients[0].name); }
-                          else if (v === "supplier" && suppliers.length > 0) { updateRule(idx, "entityId", suppliers[0].id); updateRule(idx, "entityName", suppliers[0].name); }
-                        }} className="border rounded px-1.5 py-1 text-[10px] focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                          <option value="both">Global</option>
-                          <option value="client">Client</option>
-                          <option value="supplier">Supplier</option>
-                        </select>
-                        {rule.scope === "client" && (
-                          <select value={rule.entityId || ""} onChange={e => {
-                            const cid = e.target.value ? parseInt(e.target.value) : null;
-                            updateRule(idx, "entityId", cid);
-                            updateRule(idx, "entityName", cid ? clients.find(c => c.id === cid)?.name || null : null);
-                          }} className="border rounded px-1.5 py-1 text-[10px] focus:ring-2 focus:ring-blue-500 focus:outline-none min-w-[90px]">
-                            <option value="">Select...</option>
-                            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                          </select>
-                        )}
-                        {rule.scope === "supplier" && (
-                          <select value={rule.entityId || ""} onChange={e => {
-                            const sid = e.target.value ? parseInt(e.target.value) : null;
-                            updateRule(idx, "entityId", sid);
-                            updateRule(idx, "entityName", sid ? suppliers.find(s => s.id === sid)?.name || null : null);
-                          }} className="border rounded px-1.5 py-1 text-[10px] focus:ring-2 focus:ring-blue-500 focus:outline-none min-w-[90px]">
-                            <option value="">Select...</option>
-                            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                          </select>
-                        )}
-                        {rule.entityId && rule.scope !== "both" && (
-                          <button onClick={() => clearAssignment(idx)} className="text-red-400 hover:text-red-600 text-[10px] px-0.5" title="Clear">✕</button>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <input type="number" min={1} max={99} value={rule.priority} onChange={e => updateRule(idx, "priority", parseInt(e.target.value) || 1)}
-                        className="w-12 border rounded px-1.5 py-1 text-center font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <input type="checkbox" checked={rule.isActive} onChange={e => updateRule(idx, "isActive", e.target.checked)}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5" />
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <div className="flex items-center justify-end gap-1 flex-wrap">
-                        <button onClick={() => {
-                          const active = rule.poolItems.filter(p => p.trim());
-                          if (active.length === 0) { setMsg("No templates to test"); setTimeout(() => setMsg(""), 2000); return; }
-                          const pick = active[Math.floor(Math.random() * active.length)];
-                          const otp = quickTestMessage.match(/\b(\d{4,8})\b/)?.[1] || sampleOtp;
-                          setQuickTestResult(pick.replace(/\{\{OTP\}\}/g, otp));
-                        }}
-                          className="bg-purple-600 text-white px-2 py-1 rounded text-[10px] font-medium hover:bg-purple-700 transition">Test</button>
-                        <button onClick={() => saveRule(idx)}
-                          className="bg-green-600 text-white px-2.5 py-1 rounded text-[10px] font-medium hover:bg-green-700 transition">Update</button>
-                        <button onClick={() => cancelRule(idx)}
-                          disabled={!isDirty}
-                          className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 px-2 py-1 rounded text-[10px] font-medium transition disabled:opacity-30 disabled:cursor-not-allowed"
-                          title="Revert unsaved changes">Cancel</button>
-                        <button onClick={() => { if (confirm("Delete this rule?")) deleteRule(idx); }}
-                          className="text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded text-[10px] font-medium transition">Del</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="px-4 py-2 border-t bg-slate-50 flex items-center justify-between">
-          <span className="text-[10px] text-slate-400">{rules.filter(r => r.ruleId).length} saved — {rules.filter(r => !r.ruleId).length} draft</span>
-          <div className="flex items-center gap-2">
-            <button onClick={addRule} className="text-blue-600 hover:text-blue-800 text-[10px] font-medium transition">+ Add Rule</button>
-            <button onClick={saveAll} disabled={saving}
-              className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 transition">
-              {saving ? "Saving..." : "Save All"}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Applies To Table */}
-      {assignedRules.length > 0 && (
-        <div className="mt-4 bg-white border rounded-xl shadow-sm overflow-hidden">
-          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 px-4 py-2 border-b">
-            <h3 className="text-xs font-semibold text-slate-800">📋 Applies To — Client/Supplier Assignments</h3>
-          </div>
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider">
-                <th className="text-left px-4 py-2 font-medium">Rule</th>
-                <th className="text-left px-3 py-2 font-medium">Scope</th>
-                <th className="text-left px-3 py-2 font-medium">Entity</th>
-                <th className="text-left px-3 py-2 font-medium">Priority</th>
-                <th className="text-left px-3 py-2 font-medium">Templates</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {assignedRules.map((rule, idx) => (
-                <tr key={idx} className="hover:bg-slate-50">
-                  <td className="px-4 py-2 font-medium text-slate-700">{rule.name}</td>
+            )}
+            {rules.map((rule, idx) => {
+              const count = rule.poolItems.filter(p => p.trim()).length;
+              return (
+                <tr key={idx} className={`hover:bg-purple-50/40 transition-colors ${!rule.isActive ? "opacity-50" : ""}`}>
+                  <td className="px-4 py-2 text-slate-400 font-mono">{idx + 1}</td>
+                  <td className="px-3 py-2 font-medium text-slate-800">{rule.name}</td>
                   <td className="px-3 py-2">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${rule.scope === "client" ? "bg-purple-100 text-purple-700" : "bg-amber-100 text-amber-700"}`}>
-                      {rule.scope === "client" ? "Client" : "Supplier"}
-                    </span>
+                    <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700">{count} templates</span>
                   </td>
-                  <td className="px-3 py-2 font-medium text-slate-600">{rule.entityName || `#${rule.entityId}`}</td>
+                  <td className="px-3 py-2 text-slate-600">{entityLabel(rule)}</td>
                   <td className="px-3 py-2 text-slate-500">{rule.priority}</td>
-                  <td className="px-3 py-2 text-slate-500">{rule.poolItems.filter(p => p.trim()).length} templates</td>
+                  <td className="px-3 py-2 text-center">
+                    {rule.isActive
+                      ? <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700">Active</span>
+                      : <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-400">Inactive</span>}
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => openEdit(idx)}
+                        className="bg-slate-600 text-white px-2.5 py-1 rounded text-[10px] font-medium hover:bg-slate-700 transition">Edit</button>
+                      <button onClick={() => { if (confirm("Delete this rule?")) deleteRule(idx); }}
+                        className="text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded text-[10px] font-medium transition">Del</button>
+                    </div>
+                  </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Help */}
-      <div className="mt-4 bg-slate-50 border rounded-xl p-4 text-xs text-slate-500">
-        <p className="font-medium text-slate-700 mb-2">💡 How Random Content Works</p>
-        <ul className="space-y-1 list-disc list-inside">
-          <li><strong>Match Pattern:</strong> Regex to match incoming SMS content. Use <code className="bg-slate-200 px-1 rounded text-[10px]">.*</code> to match all.</li>
-          <li><strong>Templates:</strong> Each line is one template. Use <code className="bg-slate-200 px-1 rounded text-[10px]">{"{{OTP}}"}</code> as placeholder — the OTP is extracted from the original message and substituted.</li>
-          <li><strong>Bulk Upload:</strong> Click 📁 to load templates from a .txt or .csv file (one template per line).</li>
-          <li><strong>Preview:</strong> See how each template renders with the sample OTP at the top of the column.</li>
-          <li><strong>Test:</strong> Per-row Test button picks a random template and fills the OTP from the Quick Test message.</li>
-          <li><strong>Update / Cancel:</strong> Save or revert changes per rule.</li>
-          <li><strong>Scope:</strong> Drag clients/suppliers from the top bar. Check the Applies To table.</li>
-        </ul>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
+
+      {/* Edit / Add Modal */}
+      {modalOpen && draft && (
+        <TranslationModal
+          title={editingIdx === null ? "Add Random Content" : "Edit Random Content"}
+          onClose={closeModal}
+          onPreview={runDraftPreview}
+          onTest={runDraftPreview}
+          onSave={handleSave}
+          saving={saving}
+          saveLabel="Update"
+        >
+          {/* Row 1 */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Name <span className="text-red-500">*</span></label>
+              <input value={draft.name} onChange={e => updateDraft("name", e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Priority</label>
+              <input type="number" min={1} max={99} value={draft.priority}
+                onChange={e => updateDraft("priority", parseInt(e.target.value) || 1)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none" />
+            </div>
+          </div>
+
+          {/* Row 2 */}
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Apply To</label>
+              <select value={draft.scope} onChange={e => {
+                const v = e.target.value as "client" | "supplier" | "both";
+                updateDraft("scope", v);
+                updateDraft("entityIds", []);
+              }} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none bg-white">
+                <option value="both">All Clients &amp; Suppliers</option>
+                <option value="client">Client</option>
+                <option value="supplier">Supplier</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Applies to</label>
+              {draft.scope === "both" ? (
+                <input readOnly value="All clients and suppliers"
+                  className="w-full border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-sm text-slate-500" />
+              ) : (
+                <EntityMultiSelect
+                  entities={draft.scope === "client" ? clients : suppliers}
+                  selectedIds={draft.entityIds}
+                  onToggle={toggleEntity}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Templates section */}
+          <div className="mt-4 bg-purple-50 border border-purple-200 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-slate-700">Templates (one per line)</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-200 text-purple-800">
+                  {draft.poolItems.filter(p => p.trim()).length} templates
+                </span>
+              </div>
+              <button onClick={() => updateDraft("poolItems", [])}
+                className="inline-flex items-center gap-1 text-red-500 hover:text-red-700 text-xs font-medium transition">
+                🗑 <span>Clear all</span>
+              </button>
+            </div>
+            <textarea
+              value={draftTemplatesText(draft)}
+              onChange={e => setDraftTemplatesText(e.target.value)}
+              rows={6}
+              placeholder={"Your OTP code is {{OTP}}. Valid for 5 min.\nVerification code: {{OTP}}\n{{OTP}} is your one-time password\nOTP: {{OTP}}. Do not share."}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-purple-500 focus:outline-none bg-white resize-y"
+            />
+            <div className="mt-2 flex items-center gap-2">
+              <input type="checkbox" checked={draft.extractOtp} onChange={e => updateDraft("extractOtp", e.target.checked)}
+                className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 h-4 w-4" />
+              <label className="text-xs text-slate-700">Extract OTP from original message (use {"{{OTP}}"} in templates)</label>
+            </div>
+            <div
+              onClick={() => bulkInputRef.current?.click()}
+              className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-purple-300 bg-white hover:bg-purple-50 cursor-pointer transition"
+            >
+              <span className="text-purple-500">📁</span>
+              <span className="text-xs text-purple-700 font-medium">Bulk Upload Templates</span>
+              <span className="text-[10px] text-slate-400">— upload 100s of templates from a .txt file</span>
+              <span className="ml-auto text-purple-400">▼</span>
+            </div>
+            <input ref={bulkInputRef} type="file" accept=".txt,.csv" onChange={handleDraftBulkUpload} className="hidden" />
+          </div>
+
+          {/* Active */}
+          <div className="mt-4 flex items-center gap-2">
+            <input type="checkbox" checked={draft.isActive} onChange={e => updateDraft("isActive", e.target.checked)}
+              className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 h-4 w-4" />
+            <label className="text-sm text-slate-700">Active</label>
+          </div>
+
+          {/* Draft preview result */}
+          {draftPreview && (
+            <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+              <span className="text-[10px] font-medium text-emerald-600 uppercase tracking-wider block mb-1">Exact Result</span>
+              <code className="text-sm font-mono font-bold text-emerald-800 break-all">{draftPreview}</code>
+            </div>
+          )}
+        </TranslationModal>
+      )}
     </div>
   );
 }

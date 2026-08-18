@@ -63,15 +63,18 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       smpp_password=COALESCE(NULLIF($11, '••••••••'), smpp_password),
       billing_mode=$16, currency=$17,
       route_plan_id=$18, is_active=$19, enable_http_api=$20, http_api_key=$21, force_dlr=$22,
-      dlr_timeout_mode=$23, dlr_timeout=$24, webhook_url=$25, charging_mode=$26, updated_at=NOW()
-    WHERE id=$27 AND deleted_at IS NULL RETURNING *`,
+      dlr_timeout_mode=$23, dlr_timeout=$24, webhook_url=$25, charging_mode=$26,
+      balance=COALESCE($27, balance), low_balance_threshold=COALESCE($28, low_balance_threshold),
+      billing_email=$29, updated_at=NOW()
+    WHERE id=$30 AND deleted_at IS NULL RETURNING *`,
     [
       body.clientCode ?? null, body.name ?? '', body.companyName ?? null, body.contactPerson ?? null, body.email ?? '', body.phone ?? '',
       body.country ?? null, body.address ?? null, body.connectionType ?? null, body.smppUsername ?? null, smppPassword,
       body.smppAllowedIp ?? null, body.smppPort ?? 2775, body.smppSystemType ?? null, body.maxTps ?? null,
       body.billingMode ?? 'prepaid', body.currency ?? 'USD',
       body.routePlanId ?? null, body.isActive ?? true, body.enableHttpApi ?? false, httpApiKey, body.forceDlr ?? false,
-      body.dlrTimeoutMode ?? null, body.dlrTimeout ?? null, body.webhookUrl ?? null, body.chargingMode ?? 'on_submit', id
+      body.dlrTimeoutMode ?? null, body.dlrTimeout ?? null, body.webhookUrl ?? null, body.chargingMode ?? 'on_submit',
+      body.balance ?? null, body.lowBalanceThreshold ?? null, body.billingEmail ?? null, id
     ]
   );
 

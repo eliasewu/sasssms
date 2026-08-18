@@ -11,6 +11,8 @@ import {
   serverRegion,
   preferredRegions,
   matchScore,
+  remainingCapacity,
+  isServerFull,
 } from "../server-assignment";
 import type { ServerLocation } from "../server-assignment";
 
@@ -80,6 +82,43 @@ function check() {
   // ── Unknown region → any starter server ──
   const any = pickServerForPackage(STARTER_SERVERS, { package: "starter", countryCode: null });
   assert.ok(any, "unknown region still gets a starter server");
+
+  // ── Capacity-aware assignment ──
+  const cappedServers: ServerLocation[] = STARTER_SERVERS.map((s) => ({ ...s, capacity: 5 }));
+  // France at capacity (5/5) → falls through to Germany (region match, 0/5)
+  const frFull = pickServerForPackage(cappedServers, {
+    package: "starter",
+    countryCode: "FR",
+    loads: { "54.37.252.5": 5, "145.239.1.7": 0 },
+  });
+  assert.strictEqual(frFull?.id, "germany", "full best-region server skipped → next regional server picked");
+  // All eu-af servers full → falls back to an APAC starter server with capacity
+  const euFull = pickServerForPackage(cappedServers, {
+    package: "starter",
+    countryCode: "FR",
+    loads: { "54.37.252.5": 5, "145.239.1.7": 5 },
+  });
+  assert.ok(euFull && euFull.ipAddress.startsWith("139.99.148"), `EU full → fall back to APAC, got ${euFull?.id}`);
+  // Every starter server full → null (no capacity anywhere)
+  const allFull = pickServerForPackage(cappedServers, {
+    package: "starter",
+    countryCode: "FR",
+    loads: { "54.37.252.5": 5, "145.239.1.7": 5, "139.99.148.65": 5, "139.99.148.177": 5 },
+  });
+  assert.strictEqual(allFull, null, "all starter servers full → no auto-assignment");
+  // No capacity configured = unlimited → still assigned even at high load
+  const unlimited = pickServerForPackage(STARTER_SERVERS, {
+    package: "starter",
+    countryCode: "FR",
+    loads: { "54.37.252.5": 100 },
+  });
+  assert.strictEqual(unlimited?.id, "france", "no capacity set → unlimited, still assigned");
+
+  // ── remainingCapacity / isServerFull helpers ──
+  assert.strictEqual(remainingCapacity({ capacity: 5 }, 3), 2, "5 - 3 = 2 remaining");
+  assert.strictEqual(remainingCapacity({ capacity: 0 }, 100), Number.POSITIVE_INFINITY, "0 capacity → unlimited");
+  assert.strictEqual(isServerFull({ capacity: 5 }, 5), true, "at capacity → full");
+  assert.strictEqual(isServerFull({ capacity: 5 }, 4), false, "under capacity → not full");
 
   // ── Professional / Enterprise: manual only ──
   const pro = pickServerForPackage(STARTER_SERVERS, { package: "professional", countryCode: "AU" });

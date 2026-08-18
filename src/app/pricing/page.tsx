@@ -96,8 +96,15 @@ export default function PricingPage() {
 
   useEffect(() => {
     fetch("/api/public/settings")
-      .then(r => r.json())
-      .then(setSettings)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        // Only apply responses that carry `packages` — an error/partial
+        // response must never replace the fallback (settings.packages.find()
+        // would crash the page).
+        if (data && typeof data === "object" && Array.isArray(data.packages)) {
+          setSettings(data);
+        }
+      })
       .catch(() => {});
   }, []);
 

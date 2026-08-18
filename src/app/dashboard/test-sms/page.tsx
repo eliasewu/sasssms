@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 
 interface Client { id: number; name: string; connection_type: string; route_plan_id: number; }
 interface Route { id: number; name: string; trunk_name: string; country_code: string; prefix: string; is_active?: boolean; }
-interface TestResult { message?: Record<string,unknown>; routing?: { route: string; trunk: string; supplier: string; connectionType: string }; cost?: number; error?: string; freeCredits?: { before: number; after: number; total: number; usedTotal: number } }
-interface FreeCredits { freeCredits: number; totalCredits: number; usedCredits: number; packageType: string }
+interface TestResult { message?: Record<string,unknown>; routing?: { route: string; trunk: string; supplier: string; connectionType: string }; cost?: number; error?: string; freeCredits?: { before: number | null; after: number | null; total: number; usedTotal: number; unlimited?: boolean } }
+interface FreeCredits { freeCredits: number | null; totalCredits: number; usedCredits: number; packageType: string; unlimited?: boolean }
 
 export default function RouteBasedTestSmsPage() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -68,8 +68,10 @@ export default function RouteBasedTestSmsPage() {
     setSending(false);
   };
 
-  const pctUsed = credits ? Math.min(100, Math.round((credits.usedCredits / Math.max(1, credits.totalCredits)) * 100)) : 0;
-  const creditsColor = credits && credits.freeCredits > 5 ? "bg-green-500" : credits && credits.freeCredits > 0 ? "bg-amber-500" : "bg-red-500";
+  const isUnlimited = credits?.unlimited === true;
+  const freeRemaining = credits?.freeCredits ?? 0;
+  const pctUsed = credits && !isUnlimited ? Math.min(100, Math.round((credits.usedCredits / Math.max(1, credits.totalCredits)) * 100)) : 0;
+  const creditsColor = isUnlimited || freeRemaining > 5 ? "bg-green-500" : freeRemaining > 0 ? "bg-amber-500" : "bg-red-500";
 
   return (
     <div className="space-y-6">
@@ -87,10 +89,19 @@ export default function RouteBasedTestSmsPage() {
               <p className="text-xs text-slate-500">Pay-as-you-go testing allowance — does not deduct from client balance</p>
             </div>
             <div className="text-right">
-              <p className={`text-4xl font-bold ${credits.freeCredits > 0 ? "text-green-600" : "text-red-500"}`}>
-                {credits.freeCredits}
-              </p>
-              <p className="text-xs text-slate-500">of {credits.totalCredits} free</p>
+              {isUnlimited ? (
+                <>
+                  <p className="text-4xl font-bold text-green-600">Unlimited</p>
+                  <p className="text-xs text-slate-500">Enterprise plan — no limit</p>
+                </>
+              ) : (
+                <>
+                  <p className={`text-4xl font-bold ${freeRemaining > 0 ? "text-green-600" : "text-red-500"}`}>
+                    {freeRemaining}
+                  </p>
+                  <p className="text-xs text-slate-500">of {credits.totalCredits} free</p>
+                </>
+              )}
             </div>
           </div>
 
@@ -103,7 +114,7 @@ export default function RouteBasedTestSmsPage() {
           </div>
           <div className="flex justify-between mt-1 text-[10px] text-slate-400">
             <span>{credits.usedCredits} used</span>
-            <span>{credits.freeCredits} remaining</span>
+            <span>{isUnlimited ? "Unlimited remaining" : `${freeRemaining} remaining`}</span>
           </div>
 
           {credits.freeCredits === 0 && (
@@ -175,17 +186,17 @@ export default function RouteBasedTestSmsPage() {
               </div>
             )}
 
-            {credits && credits.freeCredits <= 0 && (
+            {credits && !isUnlimited && freeRemaining <= 0 && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
                 ⚠️ All {credits.totalCredits} free test SMS used. Visit <strong>Billing</strong> to top up.
               </div>
             )}
 
             <button
-              disabled={sending || !form.clientId || (credits !== null && credits.freeCredits <= 0)}
+              disabled={sending || !form.clientId || (credits !== null && !isUnlimited && freeRemaining <= 0)}
               className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium disabled:opacity-50 hover:bg-blue-700 transition"
             >
-              {sending ? "Sending..." : credits === null ? "Loading credits..." : credits.freeCredits === 0 ? "No Free Credits Left" : `Send Free Test SMS (${credits.freeCredits} left)`}
+              {sending ? "Sending..." : credits === null ? "Loading credits..." : isUnlimited ? "Send Free Test SMS (Unlimited)" : freeRemaining === 0 ? "No Free Credits Left" : `Send Free Test SMS (${freeRemaining} left)`}
             </button>
           </form>
 
@@ -209,7 +220,10 @@ export default function RouteBasedTestSmsPage() {
                   <p>Connection: {result.routing?.connectionType} | Cost: <span className="font-bold text-green-600">$0.00 (Free)</span></p>
                   {result.freeCredits && (
                     <div className="bg-blue-50 rounded-lg p-2 text-xs">
-                      <span className="text-slate-500">Credits:</span> {result.freeCredits.before} → <strong>{result.freeCredits.after}</strong> ({result.freeCredits.usedTotal} / {result.freeCredits.total} used)
+                      <span className="text-slate-500">Credits:</span>{" "}
+                      {result.freeCredits.unlimited
+                        ? " Unlimited"
+                        : ` ${result.freeCredits.before} → ${result.freeCredits.after} (${result.freeCredits.usedTotal} / ${result.freeCredits.total} used)`}
                     </div>
                   )}
                 </div>

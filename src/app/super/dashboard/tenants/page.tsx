@@ -53,7 +53,7 @@ interface MccStat {
 
 interface ServerLocation {
   id: string; country: string; city: string; ipAddress: string; role?: string; isActive: boolean;
-  package?: string;
+  package?: string; capacity?: number;
 }
 
 interface AutoConnectAuditEntry {
@@ -124,6 +124,13 @@ export default function TenantsPage() {
   // Scale API-load bars relative to the busiest tenant so "who uses how much"
   // is comparable across rows.
   const maxRequests7d = tenants.reduce((m, t) => Math.max(m, t.usage?.requests7d ?? 0), 0);
+
+  // Tenant load per server (for the capacity display in the assignment dropdown)
+  const serverLoads: Record<string, number> = {};
+  tenants.forEach(t => {
+    const ip = t.smppServerIp;
+    if (ip && ip !== "0.0.0.0") serverLoads[ip] = (serverLoads[ip] || 0) + 1;
+  });
 
   useEffect(() => { load(); }, [load]);
 
@@ -215,6 +222,29 @@ export default function TenantsPage() {
     load();
   };
 
+  const [accessingId, setAccessingId] = useState<number | null>(null);
+  const handleAccessTenant = async (tenant: Tenant) => {
+    setAccessingId(tenant.id);
+    try {
+      const res = await fetch("/api/super/auth/access-tenant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId: tenant.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMsg(data.error || "Failed to access tenant");
+        setTimeout(() => setMsg(""), 5000);
+        return;
+      }
+      // Open the tenant dashboard in a new tab — the impersonation cookie is
+      // scoped to this domain, so the dashboard loads as that tenant.
+      window.open("/dashboard", "_blank");
+    } finally {
+      setAccessingId(null);
+    }
+  };
+
   const handleHardDelete = async () => {
     if (!hardDeleteConfirm) return;
     const res = await fetch(`/api/super/tenants/${hardDeleteConfirm.id}`, { method: "DELETE", credentials: "include" });
@@ -270,11 +300,16 @@ export default function TenantsPage() {
                       className="w-full border rounded-lg px-3 py-2"
                     >
                       <option value="0.0.0.0">0.0.0.0 (Not assigned)</option>
-                      {assignableServers(serverLocations, editing.packageType).map(s => (
-                        <option key={s.id} value={s.ipAddress}>
-                          {s.country}{s.city ? ` — ${s.city}` : ""} ({s.ipAddress}) · {(s.package || "starter").replace(/^./, c => c.toUpperCase())}
-                        </option>
-                      ))}
+                      {assignableServers(serverLocations, editing.packageType).map(s => {
+                        const load = serverLoads[s.ipAddress] || 0;
+                        const cap = s.capacity || 0;
+                        return (
+                          <option key={s.id} value={s.ipAddress}>
+                            {s.country}{s.city ? ` — ${s.city}` : ""} ({s.ipAddress}) · {(s.package || "starter").replace(/^./, c => c.toUpperCase())}
+                            {cap ? ` · ${load}/${cap} tenants${load >= cap ? " (FULL)" : ""}` : ` · ${load} tenants`}
+                          </option>
+                        );
+                      })}
                       {/* Always include the tenant's current IP so existing
                           dev-server tenants can be edited and migrated, and the
                           field never renders blank. */}
@@ -577,6 +612,14 @@ export default function TenantsPage() {
                 </td>
                 <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs ${statusColor}`}>{statusLabel}</span></td>
                 <td className="px-4 py-3 flex gap-2 flex-wrap">
+                  <button
+                    onClick={() => handleAccessTenant(t)}
+                    disabled={accessingId === t.id}
+                    className="text-green-600 hover:underline text-xs font-medium"
+                    title="Open this tenant's dashboard as them (no password needed)"
+                  >
+                    {accessingId === t.id ? "Opening…" : "Access"}
+                  </button>
                   <button onClick={() => { setEditing(t); loadAutoConnectAudit(t.id); }} className="text-blue-600 hover:underline text-xs">Edit</button>
                   <button onClick={() => setResetModal({email: t.email})} className="text-amber-600 hover:underline text-xs">Reset PW</button>
                   <button onClick={() => viewMccTraffic(t.id, t.companyName)} className="text-purple-600 hover:underline text-xs">MCC</button>

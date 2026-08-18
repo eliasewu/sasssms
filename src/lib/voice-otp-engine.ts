@@ -512,6 +512,47 @@ export async function buildBilingualPlaylist(
 }
 
 /**
+ * Build the audio playlist for a single call attempt from the configured play
+ * mode (each digit is spoken once per pass):
+ *
+ *   local_single        → [greeting] → [digits]                                  (once)
+ *   local_double        → [greeting] → [digits] → [greeting] → [digits]         (twice)
+ *   local_international → [greeting_local] → [digits_local] → [greeting_en] → [digits_en]
+ *
+ * For local_international, if the local language already is the secondary
+ * (or no secondary is configured) the sequence plays a single time to avoid
+ * repeating the same language twice.
+ */
+export async function buildPlayModePlaylist(
+  audioFiles: AudioFile[],
+  configId: number,
+  playMode: string,
+  primaryLanguage: string,
+  secondaryLanguage: string,
+  otpCode: string
+): Promise<AudioPlaylistItem[]> {
+  const single = (lang: string) => buildAudioPlaylist(audioFiles, configId, lang, otpCode, 1);
+
+  if (playMode === "local_double") {
+    const p1 = await single(primaryLanguage);
+    const p2 = await single(primaryLanguage);
+    return [...p1, ...p2].map((item, i) => ({ ...item, order: i }));
+  }
+
+  if (playMode === "local_international") {
+    if (!secondaryLanguage || secondaryLanguage === primaryLanguage) {
+      return single(primaryLanguage);
+    }
+    const p1 = await single(primaryLanguage);
+    const p2 = await single(secondaryLanguage);
+    return [...p1, ...p2].map((item, i) => ({ ...item, order: i }));
+  }
+
+  // local_single (default)
+  return single(primaryLanguage);
+}
+
+/**
  * Build playlists for all retry attempts.
  * 
  * When bilingual=true: single call with concatenated 1st + 2nd language audio.
@@ -782,7 +823,7 @@ export async function executeVoiceOtpCall(params: {
   ]);
   const audioFiles: AudioFile[] = audioResult.rows;
   const sipConfigs: SipConfig[] = sipResult.rows;
-  const activeSip = sipConfigs[0] || null;
+  let activeSip = sipConfigs[0] || null;
 
   // ── Get retry/play config from voice_otp_config ──
   const votpConfig = votpConfigResult.rows[0] as Record<string,unknown> | undefined;
@@ -793,27 +834,81 @@ export async function executeVoiceOtpCall(params: {
   const primaryLang = (votpConfig?.primary_language as string) || langResolution.primaryLanguage;
   const secondaryLang = (votpConfig?.secondary_language as string) || langResolution.fallbackLanguage;
 
-  // ── 4. Build audio playlists for all attempts ──
-  // language_mode: 'local' → local + English fallback, 'dual' → bilingual single call, 'international' → English only
-  const effectiveBilingual = languageMode === 'dual' ? true : bilingual;
-  const effectiveRetryCount = languageMode === 'international' ? 1 : (languageMode === 'dual' ? 1 : retryCount);
-  const effectivePrimaryLang = languageMode === 'international' ? 'English' : primaryLang;
-  const effectiveSecondaryLang = languageMode === 'international' ? 'English' : secondaryLang;
+  // ── Supplier-level overrides (play mode + SIP endpoint) ──
+  // A "Voice OTP" supplier can pin a specific SIP endpoint and play mode in
+  // its `config` JSON; those take precedence over the tenant defaults.
+  let playMode = (votpConfig?.play_mode as string) || null;
+  if (supplierId) {
+    const supRes = await tenantQuery(
+      schemaName,
+      "SELECT config FROM suppliers WHERE id = $1",
+      [supplierId]
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+    const supConfigRaw = supRes.rows[0]?.config;
+    if (supConfigRaw) {
+      let supConfig: Record<string, unknown> = {};
+      try {
+        supConfig = typeof supConfigRaw === "string"
+          ? JSON.parse(supConfigRaw)
+          : (supConfigRaw as Record<string, unknown>);
+      } catch { /* ignore malformed supplier config */ }
+      if (typeof supConfig.playMode === "string" && supConfig.playMode) playMode = supConfig.playMode;
+      if (supConfig.sipConfigId != null) {
+        const matched = sipConfigs.find((c) => c.id === Number(supConfig.sipConfigId));
+        if (matched) activeSip = matched;
+      }
+    }
+  }
 
-  const attemptLanguages = languageMode === 'international'
-    ? ['English']
-    : determineAttemptLanguages(langResolution, effectiveRetryCount);
+  // ── Resolve the effective play mode (with legacy fallback) ──
+  // New model: local_single | local_double | local_international.
+  // Legacy rows (created before play_mode existed) map the old fields onto the
+  // new model; anything else keeps the original multi-attempt behavior.
+  if (!playMode) {
+    if (bilingual || languageMode === "dual") playMode = "local_international";
+    else if (languageMode === "international") playMode = "local_single"; // English-only
+    else playMode = "legacy";
+  }
+
+  // ── 4. Build audio playlists for all attempts ──
+  const effectiveRetryCount = Math.max(1, retryCount);
+  let attemptLanguages: string[];
   let attemptPlaylists: Array<Array<AudioPlaylistItem>> = [];
-  try {
-    attemptPlaylists = await buildAttemptPlaylists(audioFiles, langResolution, otpCode, {
-      primaryLanguage: effectivePrimaryLang,
-      secondaryLanguage: effectiveSecondaryLang,
-      bilingual: effectiveBilingual,
-      playCount,
-      retryCount: effectiveRetryCount,
-    });
-  } catch {
-    attemptPlaylists = attemptLanguages.map(() => []);
+
+  if (playMode === "legacy") {
+    // Original behavior: multi-attempt calls alternating local + fallback.
+    attemptLanguages = determineAttemptLanguages(langResolution, effectiveRetryCount);
+    try {
+      attemptPlaylists = await buildAttemptPlaylists(audioFiles, langResolution, otpCode, {
+        primaryLanguage: primaryLang,
+        secondaryLanguage: secondaryLang,
+        bilingual: false,
+        playCount,
+        retryCount: effectiveRetryCount,
+      });
+    } catch {
+      attemptPlaylists = attemptLanguages.map(() => []);
+    }
+  } else {
+    // Play-mode driven: a single playlist, replayed on each retry attempt.
+    let playlist: AudioPlaylistItem[] = [];
+    try {
+      playlist = await buildPlayModePlaylist(
+        audioFiles,
+        (votpConfig?.id as number) || (audioFiles[0]?.configId ?? 0),
+        playMode,
+        primaryLang,
+        secondaryLang,
+        otpCode
+      );
+    } catch {
+      playlist = [];
+    }
+    const langLabel = playMode === "local_international" && secondaryLang !== primaryLang
+      ? `${primaryLang} + ${secondaryLang}`
+      : primaryLang;
+    attemptLanguages = Array(effectiveRetryCount).fill(langLabel);
+    attemptPlaylists = Array(effectiveRetryCount).fill(playlist);
   }
 
   // Apply dial_prefix from SIP config (e.g. "99900" → "99900+8801712345678")

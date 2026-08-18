@@ -14,6 +14,8 @@ import { lookupSupplierCost } from "@/lib/rates";
 import { enqueueRestMt, isRestGatewayOnline } from "@/lib/gateway-rest-registry";
 import { pushDlrWebhook } from "@/lib/dlr-webhook-log";
 import { enqueueDlrPersist } from "@/lib/dlr-queue-persist";
+import { publishMt, publishDlr, publishRetry } from "@/lib/kafka-bus";
+import { enqueueServerMt } from "@/lib/server-mt-queue";
 
 const smppLib: any = smpp;
 type SmppSession = any;
@@ -64,6 +66,9 @@ export interface DeliveryResult {
   fallbackUsed: boolean;
   failedRoutes: number;
   errorMessage?: string;
+  /** True when the message was queued for a SERVER-mode (Android) gateway that
+   *  is currently offline — it will be re-delivered when the device re-binds. */
+  queued?: boolean;
 }
 
 interface PendingDelivery {
@@ -297,6 +302,21 @@ async function processSupplierDlr(
   }
 
   console.log(`[SMPP-CLIENT] DLR received: ${supplierMessageId} → ${parsed.status} (our: ${delivery.ourMessageId})`);
+
+  // ── Publish the receipt to the Kafka DLR bus (fire-and-forget) ──
+  publishDlr({
+    ts: new Date().toISOString(),
+    tenantId,
+    schemaName,
+    clientId: delivery.clientId,
+    supplierId,
+    messageId: delivery.ourMessageId,
+    supplierMessageId,
+    status: parsed.status,
+    dlrStatus: parsed.status.toUpperCase(),
+    destination: delivery.destination,
+    source: delivery.source,
+  });
 
   // Update message DLR status in tenant DB
   const client = await pool.connect();
@@ -848,6 +868,13 @@ function registerSessionHandlers(sess: any, sessKey: string) {
     return other?.status === "BOUND";
   }
 
+  // Respond to the SMSC's enquire_link keepalive. node-smpp does NOT
+  // auto-answer it — without this reply the SMSC times out and drops the
+  // connection, causing the BOUND -> UNBOUND reconnect flap.
+  sess.on("enquire_link", (pdu: any) => {
+    try { sess.send(pdu.response()); } catch {}
+  });
+
   sess.on("error", (err: Error) => {
     console.error(`[SMPP-CLIENT] Error on supplier ${supplierId} (${sessKey}): ${err.message}`);
     const c = supplierConnections.get(sessKey);
@@ -1295,6 +1322,54 @@ export function deliverSmsWithFallback(
 
   async function tryNextRoute(index: number): Promise<DeliveryResult> {
     if (index >= sortedRoutes.length) {
+      // Terminal: every route is offline/failed. If one of them is an Android
+      // gateway (ANDROID_SMS, SERVER-mode), queue the MT so it delivers when
+      // the phone re-binds, instead of dropping it as FAILED.
+      const androidRoute = sortedRoutes.find(
+        (r) => r.supplierId && String(r.connectionType).toUpperCase() === "ANDROID_SMS"
+      );
+      if (androidRoute?.supplierId) {
+        const queued = enqueueServerMt({
+          messageId,
+          tenantId,
+          schemaName,
+          clientId,
+          supplierId: androidRoute.supplierId,
+          source,
+          destination,
+          content,
+          dlrCallbackUrl,
+          routeId: androidRoute.routeId,
+          trunkId: androidRoute.trunkId,
+          routeName: androidRoute.routeName,
+          connectionType: androidRoute.connectionType,
+          enqueuedAt: Date.now(),
+        });
+        if (queued) {
+          console.log(`[SMPP-CLIENT] Android gateway offline — queued ${messageId} for supplier ${androidRoute.supplierId} (re-deliver on bind)`);
+          return {
+            success: true,
+            queued: true,
+            messageId,
+            routeUsed: androidRoute,
+            fallbackUsed: fallbackUsed && failedCount > 0,
+            failedRoutes: failedCount,
+          };
+        }
+      }
+
+      publishRetry({
+        ts: new Date().toISOString(),
+        tenantId,
+        schemaName,
+        clientId,
+        messageId,
+        source,
+        destination,
+        content,
+        attempts: failedCount,
+        reason: `All ${sortedRoutes.length} routes failed`,
+      });
       return {
         success: false,
         messageId,
@@ -1404,6 +1479,24 @@ export function deliverSmsWithFallback(
         createdAt: new Date(),
       });
     }
+
+    // ── Publish the outbound submit to the Kafka SMS bus (fire-and-forget) ──
+    publishMt({
+      type: "submit",
+      ts: new Date().toISOString(),
+      tenantId,
+      schemaName,
+      clientId,
+      messageId,
+      supplierMessageId: result.supplierMessageId,
+      supplierId: route.supplierId,
+      routeId: route.routeId,
+      trunkId: route.trunkId,
+      source,
+      destination,
+      connectionType: route.connectionType,
+      status: "SENT",
+    });
 
     return {
       success: true,

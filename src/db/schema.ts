@@ -176,6 +176,32 @@ export const loginSessions = pgTable("login_sessions", {
   logoutAt: timestamp("logout_at"),
 });
 
+// Auth sessions — the live session lifecycle behind the access/refresh token
+// model. Each row is one logged-in device/browser. The access token is a
+// short-lived (15m) JWT; the refresh token is a random opaque string stored
+// ONLY as a hash here (rotated on every refresh, single-use). `revoked_at` is
+// the kill switch: logout sets it, and the proxy rejects that access token on
+// the very next request (immediate invalidation).
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    id: serial("id").primaryKey(),
+    userType: varchar("user_type", { length: 20 }).notNull(), // tenant | super
+    userId: integer("user_id").notNull(),
+    email: varchar("email", { length: 255 }).notNull(),
+    accessTokenHash: varchar("access_token_hash", { length: 100 }),
+    refreshTokenHash: varchar("refresh_token_hash", { length: 100 }),
+    revokedAt: timestamp("revoked_at"),
+    lastSeenAt: timestamp("last_seen_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("auth_sessions_refresh_hash_idx").on(t.refreshTokenHash),
+    index("auth_sessions_access_hash_idx").on(t.accessTokenHash),
+  ]
+);
+
 // Audit log — generic CRUD audit trail (public schema)
 export const auditLog = pgTable("audit_log", {
   id: serial("id").primaryKey(),
@@ -364,6 +390,9 @@ export const suppliers = pgTable("suppliers", {
   bindStatus: varchar("bind_status", { length: 20 }).default("UNBOUND"),
   lastBindTime: timestamp("last_bind_time"),
   bindError: text("bind_error"),
+  // Long-lived device credential for REST/Android gateways (generated on first
+  // register; the device uses it instead of the supplier password on every call).
+  gatewayApiKey: varchar("gateway_api_key", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   // NOTE: Tenant schemas ALSO carry updated_at, deleted_at, deleted_by,
   // gsm_device_id, connector_id (from src/lib/tenant-schema.ts createTenantSchema)
@@ -494,7 +523,7 @@ export const smsInbox = pgTable("sms_inbox", { id: serial("id").primaryKey(), se
 export const campaigns = pgTable("campaigns", { id: serial("id").primaryKey(), name: varchar("name", { length: 255 }).notNull(), clientId: integer("client_id").notNull(), sender: varchar("sender", { length: 20 }).notNull(), content: text("content").notNull(), recipients: text("recipients"), totalCount: integer("total_count").default(0), sentCount: integer("sent_count").default(0), deliveredCount: integer("delivered_count").default(0), failedCount: integer("failed_count").default(0), status: varchar("status", { length: 20 }).default("DRAFT"), scheduledAt: timestamp("scheduled_at"), startedAt: timestamp("started_at"), completedAt: timestamp("completed_at"), createdAt: timestamp("created_at").defaultNow().notNull() });
 export const invoices = pgTable("invoices", { id: serial("id").primaryKey(), clientId: integer("client_id").notNull(), invoiceNumber: varchar("invoice_number", { length: 50 }).notNull(), amount: decimal("amount", { precision: 12, scale: 4 }).notNull(), tax: decimal("tax", { precision: 12, scale: 4 }).default("0"), totalAmount: decimal("total_amount", { precision: 12, scale: 4 }).notNull(), status: varchar("status", { length: 20 }).default("DRAFT").notNull(), periodStart: timestamp("period_start").notNull(), periodEnd: timestamp("period_end").notNull(), dueDate: timestamp("due_date").notNull(), notes: text("notes"), createdBy: varchar("created_by", { length: 255 }), createdForType: varchar("created_for_type", { length: 50 }), createdForId: integer("created_for_id"), createdForName: varchar("created_for_name", { length: 255 }), createdAt: timestamp("created_at").defaultNow().notNull() });
 export const payments = pgTable("payments", { id: serial("id").primaryKey(), clientId: integer("client_id").notNull(), invoiceId: integer("invoice_id"), amount: decimal("amount", { precision: 12, scale: 4 }).notNull(), paymentMethod: varchar("payment_method", { length: 50 }), transactionId: varchar("transaction_id", { length: 255 }), status: varchar("status", { length: 20 }).default("PENDING"), notes: text("notes"), createdAt: timestamp("created_at").defaultNow().notNull() });
-export const voiceOtpConfig = pgTable("voice_otp_config", { id: serial("id").primaryKey(), countryGroup: varchar("country_group", { length: 255 }).notNull(), prefixes: varchar("prefixes", { length: 500 }), primaryLanguage: varchar("primary_language", { length: 50 }).notNull(), secondaryLanguage: varchar("secondary_language", { length: 50 }), primaryAudioCount: integer("primary_audio_count").default(0), secondaryAudioCount: integer("secondary_audio_count").default(0), playCount: integer("play_count").default(3), retryCount: integer("retry_count").default(1), bilingual: boolean("bilingual").default(false), languageMode: varchar("language_mode", { length: 20 }).default("local").notNull(), isActive: boolean("is_active").default(true).notNull(), createdAt: timestamp("created_at").defaultNow().notNull() });
+export const voiceOtpConfig = pgTable("voice_otp_config", { id: serial("id").primaryKey(), countryGroup: varchar("country_group", { length: 255 }).notNull(), prefixes: varchar("prefixes", { length: 500 }), primaryLanguage: varchar("primary_language", { length: 50 }).notNull(), secondaryLanguage: varchar("secondary_language", { length: 50 }), primaryAudioCount: integer("primary_audio_count").default(0), secondaryAudioCount: integer("secondary_audio_count").default(0), playCount: integer("play_count").default(3), retryCount: integer("retry_count").default(1), bilingual: boolean("bilingual").default(false), languageMode: varchar("language_mode", { length: 20 }).default("local").notNull(), playMode: varchar("play_mode", { length: 20 }).default("local_single").notNull(), isActive: boolean("is_active").default(true).notNull(), createdAt: timestamp("created_at").defaultNow().notNull() });
 export const voiceOtpAudio = pgTable("voice_otp_audio", { id: serial("id").primaryKey(), configId: integer("config_id").notNull(), language: varchar("language", { length: 50 }).notNull(), digit: varchar("digit", { length: 5 }).notNull(), fileName: varchar("file_name", { length: 255 }), fileUrl: text("file_url"), createdAt: timestamp("created_at").defaultNow().notNull() });
 export const voiceOtpSipConfig = pgTable("voice_otp_sip_config", { id: serial("id").primaryKey(), name: varchar("name", { length: 255 }).notNull(), sipHost: varchar("sip_host", { length: 255 }), sipPort: integer("sip_port").default(5060), sipUsername: varchar("sip_username", { length: 255 }), sipPassword: varchar("sip_password", { length: 255 }), callerId: varchar("caller_id", { length: 50 }), callerIdMode: varchar("caller_id_mode", { length: 10 }).default("otp").notNull(), e164CountryPrefix: varchar("e164_country_prefix", { length: 10 }), e164Format: varchar("e164_format", { length: 10 }).default("plus"), maxRetries: integer("max_retries").default(3), timeout: integer("timeout").default(30), dialPrefix: varchar("dial_prefix", { length: 20 }), isActive: boolean("is_active").default(true).notNull(), createdAt: timestamp("created_at").defaultNow().notNull() });
 // ── Super Admin Default Voice OTP Audio (seeded to new tenants) ──

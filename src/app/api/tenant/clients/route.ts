@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getTenantFromRequest, deriveApiKey } from "@/lib/auth";
 import { tenantQuery, isSmppUsernameTaken, registerSmppUsername } from "@/lib/tenant-schema";
 import { auditLog } from "@/lib/db-helpers";
+import { getInvoiceSettings, getTenantInfo, sendClientWelcomeEmail } from "@/lib/billing-service";
 
 export const dynamic = "force-dynamic";
 
@@ -48,8 +49,8 @@ export async function POST(request: Request) {
       connection_type, smpp_username, smpp_password, smpp_allowed_ip, smpp_port, smpp_system_type, max_tps,
       billing_mode, currency,
       route_plan_id, enable_http_api, http_api_key, force_dlr, dlr_timeout_mode, dlr_timeout, webhook_url,
-      charging_mode
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *`,
+      charging_mode, balance, low_balance_threshold, billing_email
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28) RETURNING *`,
     [
       body.clientCode || null, body.name, body.companyName || null, body.contactPerson || null,
       body.email, body.phone, body.country || null, body.address || null,
@@ -58,7 +59,8 @@ export async function POST(request: Request) {
       body.billingMode || "prepaid", body.currency || "USD",
       body.routePlanId || null, body.enableHttpApi || false, httpApiKey, body.forceDlr || false,
       body.dlrTimeoutMode || null, body.dlrTimeout || null, body.webhookUrl || null,
-      body.chargingMode || "on_submit"
+      body.chargingMode || "on_submit",
+      body.balance ?? 0, body.lowBalanceThreshold ?? 0, body.billingEmail || null
     ]
   );
 
@@ -67,6 +69,20 @@ export async function POST(request: Request) {
   // ── Register SMPP username in global index (O(1) future lookups) ──
   if (smppUsername) {
     await registerSmppUsername(smppUsername, tenant.tenantId, result.rows[0].id, tenant.schemaName);
+  }
+
+  // ── Auto-send welcome email with SMPP credentials (per tenant settings) ──
+  if (body.sendWelcomeEmail !== false && result.rows[0].email) {
+    const settings = await getInvoiceSettings(tenant.schemaName);
+    if (settings.welcomeEmailAuto) {
+      const info = await getTenantInfo(tenant.tenantId);
+      if (info) {
+        const ok = await sendClientWelcomeEmail(info, result.rows[0]);
+        if (ok) {
+          await tenantQuery(tenant.schemaName, "UPDATE clients SET welcome_email_sent = true WHERE id = $1", [result.rows[0].id]);
+        }
+      }
+    }
   }
 
   return NextResponse.json({ client: result.rows[0] }, { status: 201 });

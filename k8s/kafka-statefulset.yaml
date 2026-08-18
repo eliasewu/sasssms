@@ -1,0 +1,154 @@
+# ═══════════════════════════════════════════════════════════════════════
+#  Net2APP — Apache Kafka (KRaft, no ZooKeeper) — 3-broker StatefulSet
+#
+#  Purpose: message bus for the SMS flow and DLR flow so the MT/DLR pipeline
+#  can buffer bursts and scale each stage independently:
+#      sms.mt    — outbound submit (producer: smpp-server / HTTP API;
+#                  consumer: delivery workers)
+#      sms.dlr   — delivery receipts (producer: delivery workers;
+#                  consumer: DLR processor → messages table + webhooks)
+#      sms.retry — retries / dead-letter (replaces dlr-timeout-sweeper)
+#
+#  POC posture: PLAINTEXT listeners, no SASL/TLS, in-cluster local-path storage.
+#  Production: add SASL_SSL, a NetworkPolicy, and managed storage (see README).
+#
+#  Apply:  kubectl apply -f k8s/kafka-statefulset.yaml
+#  ═══════════════════════════════════════════════════════════════════════
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-config
+  namespace: net2app
+data:
+  # KRaft cluster id — STABLE, shared by all 3 brokers. Generated once with:
+  #   /opt/kafka/bin/kafka-storage.sh random-uuid
+  # Do NOT change after the cluster has been formatted.
+  CLUSTER_ID: "f94f7b11-a00a-4201-9713-b6c005da6a82"
+---
+# Headless service — per-pod DNS used by the quorum voters and the advertised
+# listeners (kafka-0.kafka-headless.net2app.svc.cluster.local, ...).
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-headless
+  namespace: net2app
+spec:
+  clusterIP: None
+  selector:
+    app: kafka
+  ports:
+    - name: internal
+      port: 9092
+      targetPort: 9092
+    - name: controller
+      port: 9093
+      targetPort: 9093
+---
+# Client bootstrap service — apps connect to kafka:9092 once, then brokers
+# hand back their advertised (per-pod) addresses.
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: net2app
+spec:
+  selector:
+    app: kafka
+  ports:
+    - name: internal
+      port: 9092
+      targetPort: 9092
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  namespace: net2app
+spec:
+  serviceName: kafka-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: kafka
+          image: apache/kafka:4.0.0   # pin to a specific tag for prod
+          command:
+            - sh
+            - -ec
+            - |
+              # KRaft node id = StatefulSet ordinal (kafka-0 → 0, kafka-1 → 1, ...)
+              export KAFKA_NODE_ID="${HOSTNAME##*-}"
+              exec /etc/kafka/docker/run
+          ports:
+            - containerPort: 9092
+              name: internal
+            - containerPort: 9093
+              name: controller
+          env:
+            - name: CLUSTER_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: CLUSTER_ID
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: KAFKA_PROCESS_ROLES
+              value: broker,controller
+            - name: KAFKA_LISTENERS
+              value: PLAINTEXT://:9092,CONTROLLER://:9093
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: PLAINTEXT://$(POD_NAME).kafka-headless.net2app.svc.cluster.local:9092
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: CONTROLLER
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: PLAINTEXT
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: 0@kafka-0.kafka-headless.net2app.svc.cluster.local:9093,1@kafka-1.kafka-headless.net2app.svc.cluster.local:9093,2@kafka-2.kafka-headless.net2app.svc.cluster.local:9093
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "3"
+            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              value: "3"
+            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+              value: "2"
+            - name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS
+              value: "0"
+            - name: KAFKA_NUM_PARTITIONS
+              value: "3"
+            - name: KAFKA_LOG_DIRS
+              value: /data
+          resources:
+            requests: { cpu: 500m, memory: 1Gi }
+            limits:   { cpu: 2000m, memory: 4Gi }
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
+          volumeMounts:
+            - name: kafka-data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: kafka-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # local-path ships with k3s; swap for Longhorn/Rook/managed storage in prod.
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 10Gi

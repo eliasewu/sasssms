@@ -1999,11 +1999,11 @@
       },
       {
        "t": "p",
-       "text": "Strip First N Digits: This function removes a specified number of characters from the beginning of an incoming phone number. For example, an administrator can strip the first two digits from a number like \"00880\" to leave just \"880\"."
+       "text": "Strip First N Digits: This function removes a specified number of characters from the beginning of an incoming phone number. For example, an administrator can strip the first two digits from a number like \"0086\" to leave just \"86\"."
       },
       {
        "t": "p",
-       "text": "Add Prefix: After the stripping process is complete, this function prepends a specific string of text or numbers to the result. Using the previous example, if \"77\" is added to the stripped number \"880,\" the final translated destination becomes \"77880\"."
+       "text": "Add Prefix: After the stripping process is complete, this function prepends a specific string of text or numbers to the result. Using the previous example, if \"77\" is added to the stripped number \"86,\" the final translated destination becomes \"7786\"."
       },
       {
        "t": "sub",
@@ -2200,8 +2200,8 @@
        "t": "callout",
        "title": "How it works",
        "items": [
-        "Strip First N Digits: Removes the first N characters from incoming numbers. Example: strip 2 from \"00880\" → \"880\"",
-        "Add Prefix: Prepends text to the number after stripping. Example: add \"77\" to \"880\" → \"77880\"",
+        "Strip First N Digits: Removes the first N characters from incoming numbers. Example: strip 2 from \"0086\" → \"86\"",
+        "Add Prefix: Prepends text to the number after stripping. Example: add \"77\" to \"86\" → \"7786\"",
         "Scope: Global applies to all. Client/Supplier applies only to messages from that specific entity."
        ]
       }
@@ -2277,7 +2277,7 @@
         },
         {
          "q": "How does the Number Translation feature modify incoming digits?",
-         "a": "Number Translation allows the system to strip a specific number of leading digits from a phone number and optionally prepend a new prefix. For example, the system can strip the first two digits of \"00880\" and add \"77\" to transform the number into \"77880.\""
+         "a": "Number Translation allows the system to strip a specific number of leading digits from a phone number and optionally prepend a new prefix. For example, the system can strip the first two digits of \"0086\" and add \"77\" to transform the number into \"7786.\""
         }
        ]
       }

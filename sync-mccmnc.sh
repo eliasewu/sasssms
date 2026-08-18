@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-APP_DIR="/opt/net2app"
+APP_DIR="/home/ubuntu/saas-sms-platform-architecture"
 CSV_FILE="$APP_DIR/MCCMNC.csv"
 MARKER_FILE="$APP_DIR/.mccmnc-last-import"
 LOG_FILE="/var/log/net2app-mccmnc-sync.log"

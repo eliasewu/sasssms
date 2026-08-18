@@ -87,9 +87,12 @@ async function checkTenantHealth(
       unbound: parseInt(bindsResult.rows[0]?.total || "0") - parseInt(bindsResult.rows[0]?.bound || "0"),
     };
 
-    // Supplier status
+    // Supplier status — only count suppliers that are active and not soft-deleted.
+    // (Otherwise an intentionally disabled supplier makes a tenant look like
+    // "all suppliers disconnected" and triggers false alerts.)
     const suppResult = await client.query(
-      `SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE bind_status = 'BOUND' AND is_active = true) as bound FROM suppliers`
+      `SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE bind_status = 'BOUND') as bound
+       FROM suppliers WHERE is_active = true AND deleted_at IS NULL`
     );
     const supplierStats = {
       total: parseInt(suppResult.rows[0]?.total || "0"),

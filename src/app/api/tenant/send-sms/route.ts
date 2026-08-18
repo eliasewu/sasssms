@@ -364,9 +364,22 @@ export async function POST(request: Request) {
        ORDER BY ta.priority ASC`,
       supplierId ? [clientId, supplierId] : [clientId]
     );
-    // Blacklist rules checked first
-    const blacklistRules = cfResult.rows.filter((r: Record<string,unknown>) => (r.filter_mode as string) !== "whitelist");
-    const whitelistRules = cfResult.rows.filter((r: Record<string,unknown>) => (r.filter_mode as string) === "whitelist");
+    // Classify rules: replace, blacklist (incl. url_block), and whitelist
+    const isReplaceMode = (m: string): boolean => {
+      try { const j = JSON.parse(m); return !!(j && j.mode === "replace"); } catch { return false; }
+    };
+    const replaceRules = cfResult.rows.filter((r: Record<string, unknown>) => isReplaceMode((r.filter_mode as string) || ""));
+    const blacklistRules = cfResult.rows.filter((r: Record<string, unknown>) => !isReplaceMode((r.filter_mode as string) || "") && (r.filter_mode as string) !== "whitelist");
+    const whitelistRules = cfResult.rows.filter((r: Record<string, unknown>) => (r.filter_mode as string) === "whitelist");
+
+    // Replace rules: transform content in-place before block/allow checks
+    for (const row of replaceRules) {
+      try {
+        const meta = JSON.parse((row.filter_mode as string) || "{}");
+        const replacement = meta.replacement != null ? String(meta.replacement) : "";
+        content = content.replace(buildRegex(row.match_pattern as string, "gm"), replacement);
+      } catch { /* invalid regex — skip */ }
+    }
 
     for (const row of blacklistRules) {
       try {
@@ -499,7 +512,7 @@ export async function POST(request: Request) {
     }
   }
 
-  let deliveryResult: { success: boolean; supplierMessageId?: string; routeUsed?: RouteInfo; fallbackUsed: boolean; failedRoutes: number; errorMessage?: string } | null = null;
+  let deliveryResult: { success: boolean; supplierMessageId?: string; routeUsed?: RouteInfo; fallbackUsed: boolean; failedRoutes: number; errorMessage?: string; queued?: boolean } | null = null;
 
   // ── Real outbound SMS delivery for non-Voice OTP routes ──
   const isVoiceOtp = selectedRoute.connection_type === "VOICE_OTP" || selectedRoute.connection_type === "Voice OTP";
@@ -525,11 +538,13 @@ export async function POST(request: Request) {
       dlrCallbackUrl || undefined
     );
 
-    status = deliveryResult.success ? "SENT" : "FAILED";
-    dlrStatus = deliveryResult.success ? "SENT" : "FAILED";
+    status = deliveryResult.queued ? "QUEUED" : (deliveryResult.success ? "SENT" : "FAILED");
+    dlrStatus = deliveryResult.queued ? "QUEUED" : (deliveryResult.success ? "SENT" : "FAILED");
 
-    // Register DLR callback for HTTP push when real DLR arrives
-    if (deliveryResult.success && dlrCallbackUrl) {
+    // Register DLR callback for HTTP push when real DLR arrives. Queued sends
+    // are handled by the SMPP server's flush (which registers its own callback
+    // and pushes the webhook), so don't double-register here.
+    if (deliveryResult.success && !deliveryResult.queued && dlrCallbackUrl) {
       registerDlrCallback(messageId, (dlr: DlrPayload) => {
         const payload = {
           message_id: dlr.messageId,
@@ -819,7 +834,7 @@ export async function POST(request: Request) {
       deliveryResult?.routeUsed?.connectionType || (selectedRoute.connection_type as string),
       finalCost, supplierCost, profit,
       dlrStatus,
-      !isVoiceOtp && dlrStatus !== "SENT" ? new Date() : null,
+      !isVoiceOtp && dlrStatus !== "SENT" && dlrStatus !== "QUEUED" ? new Date() : null,
       otpCode, language, messageId,
       origSender, origDestination, origContent,
       appliedTranslations.length > 0 ? JSON.stringify(appliedTranslations) : null,
@@ -987,6 +1002,7 @@ export async function POST(request: Request) {
     supplierCost,
     profit,
     supplierMessageId: deliveryResult?.supplierMessageId || customApiMessageId || businessApiMessageId || null,
+    queued: deliveryResult?.queued ?? false,
     dlr: { status: dlrStatus, pushed_to: client.dlr_callback_url || client.webhook_url || null },
     ott: ottDeviceId ? {
       deviceId: ottDeviceId,

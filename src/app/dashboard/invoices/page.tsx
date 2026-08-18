@@ -57,27 +57,11 @@ export default function InvoicesPage() {
     load();
   };
 
-  const downloadCSV = (inv: Invoice) => {
-    const csv = `Invoice Number,${inv.invoice_number}\nClient,${inv.client_name || inv.created_for_name}\nAmount,$${inv.amount}\nTax,$${inv.tax}\nTotal,$${inv.total_amount}\nPeriod,${new Date(inv.period_start).toLocaleDateString()} - ${new Date(inv.period_end).toLocaleDateString()}\nDue,${new Date(inv.due_date).toLocaleDateString()}\nStatus,${inv.status}`;
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `${inv.invoice_number}.csv`; a.click(); URL.revokeObjectURL(url);
-  };
-
-  const downloadSummary = (inv: Invoice) => {
-    // Generate summary with MCC/MNC breakdown
-    fetch(`/api/tenant/invoices/${inv.id}/mcc-summary`)
-      .then(r => r.json())
-      .then(data => {
-        let csv = "MCC,Country,Network,Count,Cost\n";
-        (data.summary || []).forEach((s: Record<string,unknown>) => {
-          csv += `${s.mcc},${s.country},${s.network},${s.count},$${s.cost}\n`;
-        });
-        const blob = new Blob([csv], { type: "text/csv" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a"); a.href = url; a.download = `${inv.invoice_number}_mcc_summary.csv`; a.click(); URL.revokeObjectURL(url);
-      })
-      .catch(() => alert("No MCC data available yet"));
+  const emailInvoice = async (inv: Invoice) => {
+    const res = await fetch(`/api/tenant/invoices/${inv.id}/email`, { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) alert(data.error || "Failed to send invoice email. Check SMTP settings.");
+    else alert(`Invoice emailed to ${data.to}`);
   };
 
   const updateStatus = async (id: number, status: string) => {
@@ -103,7 +87,7 @@ export default function InvoicesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Invoices</h2>
-          <p className="text-sm text-slate-500">Generate invoices with MCC-based summary. Download PDF/Excel.</p>
+          <p className="text-sm text-slate-500">Generate invoices with MCC/network line items. Download PDF/Excel or email them.</p>
         </div>
         <div className="flex items-center gap-3">
           <FilterToggle showFilters={showFilters} hasActive={hasActive} activeCount={activeFilterCount} onClick={toggle} />
@@ -154,9 +138,11 @@ export default function InvoicesPage() {
                     <option value="DRAFT">Draft</option><option value="SENT">Sent</option><option value="PAID">Paid</option><option value="OVERDUE">Overdue</option><option value="CANCELLED">Cancelled</option>
                   </select>
                 </td>
-                <td className="px-5 py-3">
-                  <button onClick={() => downloadCSV(inv)} className="text-blue-600 hover:underline text-xs mr-2">📥 CSV</button>
-                  <button onClick={() => downloadSummary(inv)} className="text-purple-600 hover:underline text-xs">📊 MCC</button>
+                <td className="px-5 py-3 whitespace-nowrap">
+                  <a href={`/api/tenant/invoices/${inv.id}/export?format=xlsx`} className="text-green-600 hover:underline text-xs mr-2">📊 Excel</a>
+                  <a href={`/api/tenant/invoices/${inv.id}/export?format=pdf`} className="text-red-600 hover:underline text-xs mr-2">📄 PDF</a>
+                  <a href={`/api/tenant/invoices/${inv.id}/export?format=html`} target="_blank" rel="noreferrer" className="text-slate-600 hover:underline text-xs mr-2">👁 View</a>
+                  <button onClick={() => emailInvoice(inv)} className="text-blue-600 hover:underline text-xs">📧 Email</button>
                 </td>
               </tr>
             ))}

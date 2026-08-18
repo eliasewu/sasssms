@@ -24,20 +24,25 @@ const CONNECTION_MODES = ["CLIENT", "SERVER"];
 interface Supplier {
   id: number; supplier_code: string; name: string; company_name: string; contact_person: string;
   email: string; phone: string; connection_type: string; connection_mode: string;
-  host: string; port: number; username: string; password?: string; system_id: string; system_type: string;
+  host: string; port: number; username: string; system_id: string; system_type: string;
   smpp_version: string; bind_type: string; address_ton: number; address_npi: number;
-  address_range: string; inbound_mode: boolean;  api_url: string; api_key?: string; connector_id: number;
+  address_range: string; inbound_mode: boolean;  api_url: string; connector_id: number;
   currency: string; charging_mode: string; dlr_timeout: number; force_dlr: boolean;
   is_active: boolean; bind_status: string; bind_error?: string; config?: string | null;
+  billing_email: string; welcome_email_sent: boolean;
+  // Secrets are never sent to the browser — the API replaces them with these flags.
+  has_password?: boolean; has_api_key?: boolean; has_gateway_api_key?: boolean;
 }
 interface Connector { id: number; name: string; type: string; provider: string; region: string; api_url?: string; }
 interface BusinessApiConn { id: number; name: string; provider: string; api_url?: string; is_active?: boolean; }
+interface SipConfig { id: number; name: string; sip_host: string; sip_port: number; }
 
 export default function SupplierPage() {
   const searchParams = useSearchParams();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [businessApis, setBusinessApis] = useState<BusinessApiConn[]>([]);
+  const [sipConfigs, setSipConfigs] = useState<SipConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
@@ -47,6 +52,12 @@ export default function SupplierPage() {
   const [bindLoading, setBindLoading] = useState<number | null>(null);
   const [testLoading, setTestLoading] = useState<number | null>(null);
   const [testResult, setTestResult] = useState<{ supplierId: number; supplierName: string; data: any } | null>(null);
+  const [keyModal, setKeyModal] = useState<{ supplierId: number; supplierName: string } | null>(null);
+  const [keyLoading, setKeyLoading] = useState(false);
+  const [keyError, setKeyError] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [keyHistory, setKeyHistory] = useState<{ id: number; action: string; changedBy: string | null; ip: string | null; at: string }[]>([]);
   const [form, setForm] = useState({
     supplierCode: "", name: "", companyName: "", contactPerson: "", email: "", phone: "",
     connectionType: "SMPP", connectionMode: "CLIENT",
@@ -57,19 +68,23 @@ export default function SupplierPage() {
     currency: "USD", initialBalance: "0", creditLimit: "0",
     chargingMode: "on_submit", dlrTimeout: "300",
     businessApiConnectId: "",
+    sipConfigId: "",
+    playMode: "local_single",
   });
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [sr, cr, br] = await Promise.all([
+      const [sr, cr, br, vr] = await Promise.all([
         fetch("/api/tenant/suppliers", { cache: "no-store" }).then(r => r.json()),
         fetch("/api/tenant/connectors", { cache: "no-store" }).then(r => r.json()).catch(() => ({ connectors: [] })),
         fetch("/api/tenant/business-api", { cache: "no-store" }).then(r => r.json()).catch(() => ({ apis: [] })),
+        fetch("/api/tenant/voice-otp-sip", { cache: "no-store" }).then(r => r.json()).catch(() => ({ configs: [] })),
       ]);
       setSuppliers(sr.suppliers || []);
       setConnectors(cr.connectors || []);
       setBusinessApis(br.apis || []);
+      setSipConfigs(vr.configs || []);
     } catch (err) {
       console.error("Failed to load suppliers:", err);
     } finally {
@@ -158,8 +173,8 @@ export default function SupplierPage() {
         chargingMode: form.chargingMode,
         dlrTimeout: parseInt(form.dlrTimeout) || 300,
         connectorId: (form as any).connectorId ? parseInt((form as any).connectorId) : null,
-        config: form.connectionType === "VOICE_OTP"
-          ? JSON.stringify({ type: "voice_otp" })
+        config: (form.connectionType === "VOICE_OTP" || form.connectionType === "Voice OTP")
+          ? JSON.stringify({ type: "voice_otp", playMode: form.playMode || "local_single", sipConfigId: form.sipConfigId ? parseInt(form.sipConfigId) : null })
           : form.connectionType === "Business API"
             ? JSON.stringify({ business_api_connect_id: form.businessApiConnectId ? parseInt(form.businessApiConnectId) : null })
             : null,
@@ -204,11 +219,11 @@ export default function SupplierPage() {
       contactPerson: s.contact_person || "", email: s.email || "", phone: s.phone || "",
       connectionType: s.connection_type, connectionMode: s.connection_mode || "CLIENT",
       host: s.host || "", port: (s.port || 2775).toString(), username: s.username || "",
-      password: s.password ? "••••••••" : "", systemId: s.system_id || "", systemType: s.system_type || "ESME",
+      password: s.has_password ? "••••••••" : "", systemId: s.system_id || "", systemType: s.system_type || "ESME",
       smppVersion: s.smpp_version || "3.4", bindType: s.bind_type || "TRX",
       addressTon: (s.address_ton || 0).toString(), addressNpi: (s.address_npi || 0).toString(),
       addressRange: s.address_range || "", inboundMode: s.inbound_mode || false,
-      apiUrl: s.api_url || "", apiKey: s.api_key ? "••••••••" : "",
+      apiUrl: s.api_url || "", apiKey: s.has_api_key ? "••••••••" : "",
       currency: s.currency || "USD",
       initialBalance: "0", creditLimit: "0",
       chargingMode: s.charging_mode || (s.force_dlr ? "force_dlr" : "on_submit"),
@@ -218,6 +233,18 @@ export default function SupplierPage() {
           const cfg = typeof s.config === "string" ? JSON.parse(s.config) : (s.config || {});
           return cfg.business_api_connect_id ? String(cfg.business_api_connect_id) : "";
         } catch { return ""; }
+      })(),
+      sipConfigId: (() => {
+        try {
+          const cfg = typeof s.config === "string" ? JSON.parse(s.config) : (s.config || {});
+          return cfg.sipConfigId ? String(cfg.sipConfigId) : "";
+        } catch { return ""; }
+      })(),
+      playMode: (() => {
+        try {
+          const cfg = typeof s.config === "string" ? JSON.parse(s.config) : (s.config || {});
+          return cfg.playMode || "local_single";
+        } catch { return "local_single"; }
       })(),
     });
     setShowForm(true);
@@ -259,6 +286,25 @@ export default function SupplierPage() {
     load();
   };
 
+  const [toggleLoading, setToggleLoading] = useState<number | null>(null);
+  const toggleActive = async (supplierId: number, currentActive: boolean) => {
+    setSuppliers(prev => prev.map(s => s.id === supplierId ? { ...s, is_active: !currentActive } : s));
+    setToggleLoading(supplierId);
+    try {
+      const res = await fetch(`/api/tenant/suppliers/${supplierId}/toggle-active`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !currentActive }),
+      });
+      if (!res.ok) throw new Error("Toggle failed");
+    } catch {
+      setSuppliers(prev => prev.map(s => s.id === supplierId ? { ...s, is_active: currentActive } : s));
+      alert("Failed to toggle Active/Inactive. Please try again.");
+    } finally {
+      setToggleLoading(null);
+    }
+  };
+
   const handleTestConnection = async (supplierId: number) => {
     setTestLoading(supplierId);
     setTestResult(null);
@@ -276,6 +322,52 @@ export default function SupplierPage() {
     if (!await confirmDelete("Archive this supplier to CDR?")) return;
     await fetch(`/api/tenant/suppliers/${id}`, { method: "DELETE" });
     load();
+  };
+
+  const [welcomeSending, setWelcomeSending] = useState<number | null>(null);
+  const sendWelcome = async (id: number) => {
+    setWelcomeSending(id);
+    try {
+      const res = await fetch(`/api/tenant/suppliers/${id}/welcome-email`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { alert(data.error || "Failed to send welcome email"); }
+      else { alert(`Welcome email sent to ${data.to}`); }
+    } catch { alert("Failed to send welcome email"); }
+    finally { setWelcomeSending(null); }
+  };
+
+  const loadKeyData = async (supplierId: number) => {
+    const res = await fetch(`/api/tenant/suppliers/${supplierId}/gateway-api-key`, { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setKeyError(data.error || "Failed to load API key"); return; }
+    setApiKey(data.apiKey || "");
+    setKeyHistory(Array.isArray(data.history) ? data.history : []);
+  };
+
+  const openApiKeyModal = async (s: Supplier) => {
+    setKeyModal({ supplierId: s.id, supplierName: s.name });
+    setApiKey(""); setShowApiKey(false); setKeyError(""); setKeyHistory([]);
+    setKeyLoading(true);
+    try {
+      await loadKeyData(s.id);
+    } catch { setKeyError("Network error. Please try again."); }
+    finally { setKeyLoading(false); }
+  };
+
+  const rotateApiKey = async () => {
+    if (!keyModal) return;
+    setKeyLoading(true); setKeyError("");
+    try {
+      const res = await fetch(`/api/tenant/suppliers/${keyModal.supplierId}/gateway-api-key`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setKeyError(data.error || "Failed to rotate API key"); }
+      else {
+        setApiKey(data.apiKey || "");
+        setShowApiKey(true);
+        await loadKeyData(keyModal.supplierId); // refresh history with the new entry
+      }
+    } catch { setKeyError("Network error. Please try again."); }
+    finally { setKeyLoading(false); }
   };
 
   const typeColors: Record<string, string> = {
@@ -304,6 +396,8 @@ export default function SupplierPage() {
               password: prev.password || genPwd(),
               connectionType: "SMPP",
               connectionMode: "CLIENT",
+              playMode: "local_single",
+              sipConfigId: "",
             }));
           }} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium">+ Add Supplier</button>
         </div>
@@ -462,7 +556,34 @@ export default function SupplierPage() {
                   Voice OTP delivers OTPs via phone call. If you have an external voice OTP HTTP API,
                   enter the endpoint below. Otherwise, our built-in Asterisk AMI will be used.
                 </p>
-                
+
+                {/* Play Mode + SIP Server */}
+                <div className="bg-white rounded-lg border p-4 mb-4">
+                  <p className="text-xs font-medium text-slate-500 mb-3">Play Mode &amp; SIP Server</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Play Mode</label>
+                      <select value={form.playMode} onChange={e => setForm({...form, playMode: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm bg-white">
+                        <option value="local_single">🎯 Local (Single) — greeting + digits once</option>
+                        <option value="local_double">🔁 Local (Double) — greeting + digits twice</option>
+                        <option value="local_international">🌐 Local + International — local then English</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">SIP Server</label>
+                      <select value={form.sipConfigId} onChange={e => setForm({...form, sipConfigId: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm bg-white">
+                        <option value="">-- Default (first active SIP) --</option>
+                        {sipConfigs.map(s => (
+                          <option key={s.id} value={s.id}>{s.name} ({s.sip_host}:{s.sip_port || 5060})</option>
+                        ))}
+                      </select>
+                      {sipConfigs.length === 0 && (
+                        <p className="text-xs text-amber-600 mt-1">No SIP endpoints yet. Add one on the <a href="/dashboard/voice-otp" target="_blank" className="underline">Voice OTP page</a>.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 {/* External HTTP API */}
                 <div className="bg-white rounded-lg border p-4 mb-4">
                   <p className="text-xs font-medium text-slate-500 mb-3">External Voice OTP API (optional)</p>
@@ -613,8 +734,8 @@ export default function SupplierPage() {
                   {(s.username || s.system_id) ? (
                     <>
                       <span className="font-mono text-xs font-medium text-slate-700">{s.username || s.system_id}</span>
-                      <br/><span className="inline-flex items-center gap-1"><span className="text-xs text-slate-400">{s.password ? "••••••••" : "No password"}</span>{s.password && <CopyButton value={s.password} />}</span>
-                      {s.api_key && <><br/><span className="inline-flex items-center gap-1"><span className="text-xs text-slate-400">API Key: ••••••••</span><CopyButton value={s.api_key} /></span></>}
+                      <br/><span className="inline-flex items-center gap-1"><span className="text-xs text-slate-400">{s.has_password ? "••••••••" : "No password"}</span></span>
+                      {s.has_api_key && <><br/><span className="inline-flex items-center gap-1"><span className="text-xs text-slate-400">API Key: ••••••••</span></span></>}
                     </>
                   ) : (
                     <span className="text-xs text-slate-400">—</span>
@@ -642,7 +763,16 @@ export default function SupplierPage() {
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs ${s.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{s.is_active ? "Active" : "Inactive"}</span></td>
+                <td className="px-4 py-3">
+                  <button
+                    onClick={() => toggleActive(s.id, s.is_active)}
+                    disabled={toggleLoading === s.id}
+                    className={`px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${s.is_active ? "bg-green-100 text-green-700 hover:ring-2 hover:ring-green-300" : "bg-red-100 text-red-700 hover:ring-2 hover:ring-red-300"} disabled:opacity-50`}
+                    title={`Click to ${s.is_active ? "deactivate" : "activate"} this supplier`}
+                  >
+                    {toggleLoading === s.id ? "…" : s.is_active ? "Active" : "Inactive"}
+                  </button>
+                </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2 flex-wrap">
                     {s.connection_type === "SMPP" && s.connection_mode === "CLIENT" && (
@@ -650,6 +780,8 @@ export default function SupplierPage() {
                         {testLoading === s.id ? "⏳" : "🧪"}
                       </button>
                     )}
+                    <button onClick={() => sendWelcome(s.id)} disabled={welcomeSending === s.id} className="text-green-600 hover:underline text-xs disabled:opacity-50">{welcomeSending === s.id ? "Sending…" : "📧 Welcome"}</button>
+                    <button onClick={() => openApiKeyModal(s)} className="text-amber-600 hover:underline text-xs" title="View / rotate gateway API key">🔑 API Key</button>
                     <button onClick={() => handleEdit(s)} className="text-blue-600 hover:underline text-xs">Edit</button>
                     <button onClick={() => handleDelete(s.id)} className="text-red-600 hover:underline text-xs">Delete</button>
                   </div>
@@ -663,6 +795,79 @@ export default function SupplierPage() {
       </div>
       )}
       {confirmModal}
+
+      {/* ── Gateway API Key Modal ── */}
+      {keyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setKeyModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4" onClick={e => e.stopPropagation()}>
+            <div className="border-b px-6 py-4 flex justify-between items-center">
+              <div>
+                <h3 className="font-semibold text-lg">🔑 Gateway API Key</h3>
+                <p className="text-xs text-slate-500">{keyModal.supplierName}</p>
+              </div>
+              <button onClick={() => setKeyModal(null)} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-slate-600">
+                This long-lived key lets the Android/REST gateway device authenticate on every heartbeat/poll <strong>without</strong> sending the supplier password. Give it to the device once after it registers.
+              </p>
+
+              {keyError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{keyError}</div>}
+
+              {keyLoading ? (
+                <div className="text-center text-sm text-slate-400 py-4">Loading…</div>
+              ) : apiKey ? (
+                <div className="bg-slate-50 rounded-lg border p-4">
+                  <span className="text-xs text-slate-400 font-medium uppercase tracking-wide">API Key</span>
+                  <div className="mt-1 flex items-center gap-2">
+                    <code className="flex-1 font-mono text-sm break-all text-slate-800">{showApiKey ? apiKey : "••••••••••••••••••••••••••••"}</code>
+                    <CopyButton value={apiKey} />
+                    <button type="button" onClick={() => setShowApiKey(!showApiKey)} className="shrink-0 px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100" title={showApiKey ? "Hide" : "Reveal"}>{showApiKey ? "🙈" : "👁️"}</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-lg text-sm">
+                  No API key generated yet. Click <strong>Generate Key</strong> below to create one for this supplier.
+                </div>
+              )}
+
+              {keyHistory.length > 0 && (
+                <div className="bg-slate-50 rounded-lg border p-4">
+                  <span className="text-xs text-slate-400 font-medium uppercase tracking-wide">Rotation History</span>
+                  <ul className="mt-2 space-y-2 max-h-48 overflow-y-auto">
+                    {keyHistory.map(h => (
+                      <li key={h.id} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="inline-flex items-center gap-1.5 flex-wrap">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${h.action === "GATEWAY_KEY_CREATED" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                            {h.action === "GATEWAY_KEY_CREATED" ? "🆕 Generated" : "🔄 Rotated"}
+                          </span>
+                          <span className="text-slate-600">{h.changedBy || "unknown"}</span>
+                          {h.ip && <span className="text-xs text-slate-400 font-mono">{h.ip}</span>}
+                        </span>
+                        <span className="text-xs text-slate-400 shrink-0">{h.at ? new Date(h.at).toLocaleString() : "—"}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <button
+                  onClick={rotateApiKey}
+                  disabled={keyLoading}
+                  className="bg-amber-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-amber-700 disabled:opacity-50"
+                >
+                  {keyLoading ? "Working…" : apiKey ? "🔄 Rotate Key" : "Generate Key"}
+                </button>
+                {apiKey && (
+                  <p className="text-xs text-red-500 text-right">Rotating immediately invalidates the old key — update the device with the new one.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Connection Test Results Modal ── */}
       {testResult && (

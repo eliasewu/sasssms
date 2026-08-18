@@ -621,6 +621,64 @@ async function suiteOperatorNamePersistence() {
 }
 
 // ═══════════════════════════════════════════════════════════
+// TEST SUITE 7: MCC/MNC operator-specific rate matching
+// ═══════════════════════════════════════════════════════════
+
+async function suiteMccMncMatching() {
+  console.log("\n── MCC/MNC Operator-Specific Matching ──");
+
+  await test("operator-specific: +88017 (GrameenPhone) vs +88018 (Robi)", async () => {
+    const { schemaName } = await getTestContext();
+    await insertClientRate(90070, "880", 0.00050, true, "470", "01", "GrameenPhone");
+    await insertClientRate(90070, "880", 0.00040, true, "470", "02", "Robi");
+
+    const gp = await lookupClientRate("+8801712345678", 90070, schemaName);
+    const robi = await lookupClientRate("+8801812345678", 90070, schemaName);
+    assert.equal(gp, 0.00050, "GrameenPhone rate for +88017...");
+    assert.equal(robi, 0.00040, "Robi rate for +88018...");
+  });
+
+  await test("supplier cost: operator-specific matching", async () => {
+    const { schemaName } = await getTestContext();
+    await insertSupplierRate(90070, "880", 0.00020, true, "470", "01", "GrameenPhone");
+    await insertSupplierRate(90070, "880", 0.00010, true, "470", "02", "Robi");
+
+    const gp = await lookupSupplierCost("+8801712345678", 90070, schemaName);
+    const robi = await lookupSupplierCost("+8801812345678", 90070, schemaName);
+    assert.equal(gp, 0.00020, "GP supplier cost");
+    assert.equal(robi, 0.00010, "Robi supplier cost");
+  });
+
+  await test("falls back to country-level rate when operator rate missing", async () => {
+    const { schemaName } = await getTestContext();
+    await insertClientRate(90071, "880", 0.00030, true, "470", undefined, "Bangladesh");
+    await insertClientRate(90071, "880", 0.00050, true, "470", "01", "GrameenPhone");
+
+    const robi = await lookupClientRate("+8801812345678", 90071, schemaName);
+    assert.equal(robi, 0.00030, "Robi falls back to country-level rate");
+    const gp = await lookupClientRate("+8801712345678", 90071, schemaName);
+    assert.equal(gp, 0.00050, "GP uses its operator rate");
+  });
+
+  await test("does not apply another operator's rate via shared country_code", async () => {
+    const { schemaName } = await getTestContext();
+    await insertClientRate(90072, "880", 0.00050, true, "470", "01", "GrameenPhone");
+
+    const robi = await lookupClientRate("+8801812345678", 90072, schemaName);
+    assert.equal(robi, 0.00010, "default when only a different operator's rate exists");
+  });
+
+  await test("operator rate wins over legacy country_code-only rate", async () => {
+    const { schemaName } = await getTestContext();
+    await insertClientRate(90073, "880", 0.00030);
+    await insertClientRate(90073, "880", 0.00050, true, "470", "01", "GrameenPhone");
+
+    const gp = await lookupClientRate("+8801712345678", 90073, schemaName);
+    assert.equal(gp, 0.00050, "operator-specific rate should win over legacy country rate");
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
 // Run all suites
 // ═══════════════════════════════════════════════════════════
 
@@ -642,6 +700,7 @@ async function main() {
   await suiteConcurrent();
   await suiteMultiCountry();
   await suiteOperatorNamePersistence();
+  await suiteMccMncMatching();
 
   // Final cleanup
   await clearRates();

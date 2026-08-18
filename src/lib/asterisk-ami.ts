@@ -411,6 +411,33 @@ function parseAmiMessage(raw: string): AmiMessage {
 
 import type { SipCallExecutor } from "./voice-otp-engine";
 
+/**
+ * Resolve an AudioPlaylistItem to an absolute filesystem path that Asterisk
+ * can Playback on THIS host (the app and Asterisk share the same machine).
+ *
+ * Builtin audio lives at public/audio/builtin/<lang>/<digit>.wav, uploaded
+ * tenant audio at public/uploads/voice/<file>, and super-admin default audio
+ * at public/uploads/voice-defaults/<file>. The engine previously told
+ * Asterisk to Playback `voice-otp/<name>` — but nothing ever synced files
+ * into Asterisk's sounds dir, so calls had NO audio at all.
+ *
+ * Returns null when the item's fileUrl isn't a local public path (then the
+ * caller falls back to the legacy `voice-otp/<name>` convention for
+ * tenant-hosted Asterisk boxes).
+ */
+function resolveAudioPath(item: AudioPlaylistItem): string | null {
+  const url = item.fileUrl || "";
+  // Any /audio/builtin/ or /uploads/... URL maps onto this process's public/
+  // dir (which is where both builtin audio and uploaded files live on this host).
+  if (url.startsWith("/audio/builtin/") || url.startsWith("/uploads/")) {
+    // Map the URL onto this process's public/ dir. Asterisk Playback accepts
+    // absolute paths and auto-detects the format from the extension.
+    const rel = url.replace(/^\//, ""); // e.g. uploads/voice-defaults/default_English_0_123.wav
+    return `${process.cwd()}/public/${rel}`;
+  }
+  return null;
+}
+
 export class AsteriskAmiExecutor implements SipCallExecutor {
   private defaultAmiConfig: AmiConfig;
   private localClient: AsteriskAmiClient | null = null;
@@ -485,13 +512,20 @@ export class AsteriskAmiExecutor implements SipCallExecutor {
       const channel = buildChannel(params);
 
       // ── Build Playback data string from audio playlist ──
-      // Converts AudioPlaylistItem[] → "voice-otp/greeting_bangla&voice-otp/digit_2&..."
-      // Asterisk Playback auto-answers the channel and plays each file sequentially.
-      // Falls back to Answer if playlist is empty.
+      // Resolves each item to a sound path that ACTUALLY EXISTS on this server:
+      //   1. If the item has a fileUrl under /audio/builtin/ or /uploads/,
+      //      the file lives in the app's public/ dir on this host — Asterisk
+      //      Playback accepts absolute paths, so we point straight at it.
+      //   2. Otherwise fall back to the legacy `voice-otp/<name>` convention
+      //      (tenant-hosted Asterisk that manages its own sound files).
+      // Asterisk Playback auto-answers the channel and plays each file
+      // sequentially. Falls back to Answer if playlist is empty.
       let originateApp: string | undefined;
       let originateData: string | undefined;
       if (params.audioPlaylist.length > 0) {
         const soundPaths = params.audioPlaylist.map((item) => {
+          const abs = resolveAudioPath(item);
+          if (abs) return abs;
           // Strip any file extension — Asterisk adds format-specific extension automatically
           const name = item.fileName.replace(/\.[^.]+$/, "");
           return `voice-otp/${name}`;

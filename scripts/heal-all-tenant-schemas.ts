@@ -114,6 +114,44 @@ async function healVoiceOtpAudioIndex(client: any, schema: string): Promise<numb
   }
 }
 
+async function seedBillingDefaults(client: any, schema: string): Promise<number> {
+  // Existing tenants healed by this script get the billing tables/columns,
+  // but not the DEFAULT rows that createTenantSchema seeds for brand-new
+  // tenants. Seed those here so the recurring-invoicing feature works for
+  // pre-existing tenants too: a default invoice_settings row + the weekly
+  // "Every Monday" schedule (idempotent WHERE NOT EXISTS).
+  let seeded = 0;
+  const seeds: { label: string; sql: string }[] = [
+    {
+      label: "invoice_settings",
+      sql: `INSERT INTO "${schema}".invoice_settings (id, currency, timezone, tax_rate, due_days, invoice_prefix, next_invoice_number)
+            SELECT 1, 'USD', 'UTC', 0, 15, '', 1000
+            WHERE NOT EXISTS (SELECT 1 FROM "${schema}".invoice_settings LIMIT 1)`,
+    },
+    {
+      label: "invoice_schedules",
+      sql: `INSERT INTO "${schema}".invoice_schedules (name, frequency, day_of_week, day_of_month, interval_days, scope, period_days, is_active, next_run_at)
+            SELECT 'Weekly — Every Monday', 'weekly', 1, 1, NULL, 'all', 7, true, NOW() + INTERVAL '1 day'
+            WHERE NOT EXISTS (SELECT 1 FROM "${schema}".invoice_schedules LIMIT 1)`,
+    },
+    {
+      label: "smtp_config",
+      sql: `INSERT INTO "${schema}".smtp_config (host, port, from_email, from_name)
+            SELECT '', 587, '', 'Net2APP'
+            WHERE NOT EXISTS (SELECT 1 FROM "${schema}".smtp_config LIMIT 1)`,
+    },
+  ];
+  for (const s of seeds) {
+    try {
+      await client.query(s.sql);
+      seeded++;
+    } catch (e) {
+      console.error(`[HEAL] ${schema}.${s.label} seed FAILED:`, (e as Error).message);
+    }
+  }
+  return seeded;
+}
+
 async function main() {
   const client = await pool.connect();
   try {
@@ -190,6 +228,13 @@ async function main() {
         await healIdDefaults(client, schema);
       } catch (e) {
         console.error(`[HEAL] ${schema} id-default repair FAILED:`, (e as Error).message);
+      }
+      // Seed billing defaults (invoice_settings + weekly schedule + smtp_config)
+      // for pre-existing tenants that only got the tables, not the default rows.
+      try {
+        await seedBillingDefaults(client, schema);
+      } catch (e) {
+        console.error(`[HEAL] ${schema} billing defaults seed FAILED:`, (e as Error).message);
       }
       // Public defaults table must have a working id sequence + wide digit column
       try {

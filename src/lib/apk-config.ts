@@ -17,7 +17,16 @@
  * uploads were rejected with HTTP 400 because raw control chars in logcat
  * broke JSON.parse). Artifact: /opt/net2app/android-app/net2app-v2.4.1.apk.
  */
-export const APK_VERSION = "2.4.6";
+export const APK_VERSION = "2.4.9";
 export const APK_FILENAME = `net2app-v${APK_VERSION}.apk`;
 export const APK_PATH = `/opt/net2app/android-app/${APK_FILENAME}`;
 export const APK_SIZE_MB = 62;
+
+// v2.4.7 adds gateway API-key auth: the app stores the device `apiKey`
+// returned by /api/public/gateway/register and sends it on every heartbeat /
+// poll / result / mo instead of the supplier username+password, so the SMPP
+// password never leaves the device after first registration.
+// v2.4.8 adds the in-app "Rotate Gateway API Key" flow (Settings > Device
+// tab): rotate via /api/public/gateway/rotate-api-key using the stored key
+// (falling back to username+password if the key was already rejected),
+// persist the fresh key, and self-heal on 401s.
