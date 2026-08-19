@@ -221,7 +221,7 @@ async function applyProfile(
 
   // ── Number Pipeline: check if replacement_fixed is a JSON step definition ──
   if (target === "DESTINATION") {
-    let pipelineResult = input;
+    let pipelineResult = input.replace(/^\+/, "00");
     let pipelineApplied = false;
     try {
       const parsed = JSON.parse(replacement);

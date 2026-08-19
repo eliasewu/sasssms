@@ -5,6 +5,7 @@ import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
 import TranslationModal from "@/components/translation-modal";
 import EntityMultiSelect from "@/components/entity-multiselect";
+import { matchPatternForName } from "@/lib/number-match";
 
 interface NumberRule {
   ruleId: number | null;
@@ -24,14 +25,13 @@ interface ClientSupplier {
   name: string;
 }
 
-const SAMPLE_NUMBER = "0086";
-
 export default function NumberTranslationPage() {
   const { selection } = useMccMnc();
   const [msg, setMsg] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testNumber, setTestNumber] = useState("1234567890");
 
   const [rules, setRules] = useState<NumberRule[]>([]);
   const [clients, setClients] = useState<ClientSupplier[]>([]);
@@ -115,10 +115,10 @@ export default function NumberTranslationPage() {
 
   const newDraft = (): NumberRule => ({
     ruleId: null, name: `Number Rule ${rules.length + 1}`,
-    stripDigits: 2, addPrefix: "77",
+    stripDigits: 0, addPrefix: "",
     scope: "both", entityIds: [],
     priority: rules.length + 1, isActive: true,
-    mcc: selection.mcc || "", mnc: selection.mnc || "",
+    mcc: "", mnc: "",
   });
 
   const openAdd = () => {
@@ -168,7 +168,7 @@ export default function NumberTranslationPage() {
       const res = await fetch(`/api/tenant/sms-translations/${rule.ruleId}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: rule.name, matchPattern: "^.*$", replacementFixed: jsonSteps,
+          name: rule.name, matchPattern: matchPatternForName(rule.name), replacementFixed: jsonSteps,
           scope: rule.scope, entityIds: rule.entityIds, priority: rule.priority,
           isActive: rule.isActive,
         }),
@@ -180,7 +180,7 @@ export default function NumberTranslationPage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: rule.name, targetField: "DESTINATION", category: "NUMBER", mode: "FIXED",
-          matchPattern: "^.*$", replacementFixed: jsonSteps,
+          matchPattern: matchPatternForName(rule.name), replacementFixed: jsonSteps,
           mcc: rule.mcc || null, mnc: rule.mnc || null,
           scope: rule.scope, entityIds: rule.entityIds, priority: rule.priority,
         }),
@@ -224,17 +224,20 @@ export default function NumberTranslationPage() {
     setTimeout(() => setMsg(""), 2000);
   };
 
+  const sample = testNumber.trim() || "1234567890";
+
   const previewTransform = (input: string, strip: number, add: string): string => {
     let result = input;
-    if (strip > 0 && strip < result.length) result = result.slice(strip);
+    if (strip > 0) result = result.slice(strip);
     if (add) result = add + result;
     return result;
   };
 
   const runPreview = () => {
     if (!draft) return;
-    const stripped = draft.stripDigits > 0 && draft.stripDigits < SAMPLE_NUMBER.length ? SAMPLE_NUMBER.slice(draft.stripDigits) : SAMPLE_NUMBER;
-    setPreviewResult(`${SAMPLE_NUMBER} → strip ${draft.stripDigits} → ${stripped}${draft.addPrefix ? ` → + "${draft.addPrefix}" → ${draft.addPrefix + stripped}` : ""}`);
+    const stripped = previewTransform(sample, draft.stripDigits, "");
+    const final = previewTransform(sample, draft.stripDigits, draft.addPrefix);
+    setPreviewResult(`${sample} → strip ${draft.stripDigits} → ${stripped}${draft.addPrefix ? ` → + "${draft.addPrefix}" → ${final}` : ""}`);
   };
 
   const entityLabel = (rule: NumberRule) => {
@@ -259,9 +262,13 @@ export default function NumberTranslationPage() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-lg font-bold text-slate-800">Number Translation</h2>
-          <p className="text-xs text-slate-400">Strip prefix digits, add custom prefixes — applied per client or supplier</p>
+          <p className="text-xs text-slate-400">Rule name = country prefix to match. Strip prefix digits, add custom prefixes — applied per client or supplier</p>
         </div>
         <div className="flex items-center gap-2">
+          <label className="text-xs text-slate-500">Test Number:</label>
+          <input value={testNumber} onChange={e => setTestNumber(e.target.value)}
+            placeholder="1234567890"
+            className="w-28 border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
           <span className="text-xs text-slate-500">Scope: <strong>{selection.label}</strong></span>
           <button onClick={openAdd}
             className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-700 transition">
@@ -297,7 +304,7 @@ export default function NumberTranslationPage() {
               </tr>
             )}
             {rules.map((rule, idx) => {
-              const preview = rule.isActive ? previewTransform(SAMPLE_NUMBER, rule.stripDigits, rule.addPrefix) : "—";
+              const preview = rule.isActive ? previewTransform(sample, rule.stripDigits, rule.addPrefix) : "—";
               return (
                 <tr key={idx} className={`hover:bg-blue-50/40 transition-colors ${!rule.isActive ? "opacity-50" : ""}`}>
                   <td className="px-4 py-2 text-slate-400 font-mono">{idx + 1}</td>
@@ -312,7 +319,7 @@ export default function NumberTranslationPage() {
                       : <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-400">Inactive</span>}
                   </td>
                   <td className="px-3 py-2 text-center">
-                    <code className="text-[10px] text-slate-400 font-mono">{SAMPLE_NUMBER}</code>
+                    <code className="text-[10px] text-slate-400 font-mono">{sample}</code>
                     <span className="text-slate-300 mx-1">→</span>
                     <code className={`text-[10px] font-mono font-semibold ${rule.isActive ? "text-emerald-700" : "text-slate-400"}`}>{preview}</code>
                   </td>
@@ -348,6 +355,7 @@ export default function NumberTranslationPage() {
               <label className="text-xs font-medium text-slate-600 mb-1 block">Name <span className="text-red-500">*</span></label>
               <input value={draft.name} onChange={e => updateDraft("name", e.target.value)}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+              <p className="text-[10px] text-slate-400 mt-1">Name = country prefix to match (e.g. "0091" matches 0091… / +91… / 91…). A non-numeric name matches all numbers.</p>
             </div>
             <div>
               <label className="text-xs font-medium text-slate-600 mb-1 block">Priority</label>
@@ -394,14 +402,14 @@ export default function NumberTranslationPage() {
                 <input type="number" min={0} max={20} value={draft.stripDigits}
                   onChange={e => updateDraft("stripDigits", parseInt(e.target.value) || 0)}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white" />
-                <p className="text-[10px] text-slate-500 mt-1">{SAMPLE_NUMBER} with strip={draft.stripDigits} → {draft.stripDigits > 0 && draft.stripDigits < SAMPLE_NUMBER.length ? SAMPLE_NUMBER.slice(draft.stripDigits) : SAMPLE_NUMBER}</p>
+                <p className="text-[10px] text-slate-500 mt-1">{sample} with strip={draft.stripDigits} → {draft.stripDigits > 0 ? sample.slice(draft.stripDigits) : sample}</p>
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-700 mb-1 block">Add Prefix (text to prepend)</label>
                 <input value={draft.addPrefix} onChange={e => updateDraft("addPrefix", e.target.value)}
                   placeholder="77"
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white" />
-                <p className="text-[10px] text-slate-500 mt-1">{SAMPLE_NUMBER} + add &quot;{draft.addPrefix || ""}&quot; → {draft.addPrefix + (draft.stripDigits > 0 && draft.stripDigits < SAMPLE_NUMBER.length ? SAMPLE_NUMBER.slice(draft.stripDigits) : SAMPLE_NUMBER)}</p>
+                <p className="text-[10px] text-slate-500 mt-1">{sample} + add &quot;{draft.addPrefix || ""}&quot; → {draft.addPrefix + (draft.stripDigits > 0 ? sample.slice(draft.stripDigits) : sample)}</p>
               </div>
             </div>
           </div>
