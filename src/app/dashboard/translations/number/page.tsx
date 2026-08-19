@@ -275,10 +275,6 @@ export default function NumberTranslationPage() {
           <p className="text-xs text-slate-400">Rule name = country prefix to match. Strip prefix digits, add custom prefixes — applied per client or supplier</p>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-xs text-slate-500">Test Number:</label>
-          <input value={testNumber} onChange={e => setTestNumber(e.target.value)}
-            placeholder="1234567890"
-            className="w-28 border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
           <span className="text-xs text-slate-500">Scope: <strong>{selection.label}</strong></span>
           <button onClick={openAdd}
             className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-700 transition">
@@ -406,7 +402,19 @@ export default function NumberTranslationPage() {
 
           {/* Strip / Add Prefix section */}
           <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4">
-            <div className="grid grid-cols-2 gap-4">
+            <label className="text-xs font-medium text-slate-700 mb-1 block">Test Number</label>
+            <input
+              value={testNumber}
+              onChange={e => setTestNumber(e.target.value)}
+              placeholder="e.g. 00971506380825"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white"
+            />
+            <p className="text-[10px] text-slate-500 mt-1">
+              Result: <code className="font-mono">{sample}</code>
+              <span className="mx-1 text-slate-400">→</span>
+              <code className="font-mono font-semibold text-emerald-700">{previewTransform(sample, draft.stripDigits, draft.addPrefix)}</code>
+            </p>
+            <div className="grid grid-cols-2 gap-4 mt-4">
               <div>
                 <label className="text-xs font-medium text-slate-700 mb-1 block">Strip Prefix (digits to remove)</label>
                 <input type="number" min={0} max={20} value={draft.stripDigits}
