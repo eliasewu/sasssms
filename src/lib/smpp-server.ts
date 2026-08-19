@@ -1098,6 +1098,7 @@ async function processSubmitSm(
       let dest = origDest;
       let src = origSrc;
       let content = origContent;
+      let tonNpiOverrides: { srcTon?: number; srcNpi?: number; dstTon?: number; dstNpi?: number } = {};
       const appliedTranslations: string[] = [];
       try {
         const transResult = await applyTranslations(
@@ -1107,6 +1108,12 @@ async function processSubmitSm(
         src = transResult.sender;
         dest = transResult.destination;
         content = transResult.content;
+        tonNpiOverrides = {
+          srcTon: transResult.srcTon,
+          srcNpi: transResult.srcNpi,
+          dstTon: transResult.dstTon,
+          dstNpi: transResult.dstNpi,
+        };
         appliedTranslations.push(...transResult.appliedProfiles);
         if (dest !== origDest || src !== origSrc || content !== origContent) {
           console.log(`[SMPP] Translations applied: ${origDest}→${dest}, ${origSrc}→${src}`);
@@ -1199,6 +1206,12 @@ async function processSubmitSm(
           src = suppTransResult.sender;
           dest = suppTransResult.destination;
           content = suppTransResult.content;
+          tonNpiOverrides = {
+            srcTon: suppTransResult.srcTon,
+            srcNpi: suppTransResult.srcNpi,
+            dstTon: suppTransResult.dstTon,
+            dstNpi: suppTransResult.dstNpi,
+          };
           appliedTranslations.push(...suppTransResult.appliedNames.map((n: string) => `[Supplier] ${n}`));
         } catch (err) {
           console.error("[SMPP] Supplier translation error:", err);
@@ -1845,7 +1858,8 @@ async function processSubmitSm(
         messageId,
         filteredRoutes,
         dlrCallbackUrl,
-        activeSupplierSessions as unknown as Map<string, unknown>
+        activeSupplierSessions as unknown as Map<string, unknown>,
+        tonNpiOverrides
       );
 
       if (deliveryResult.success) {

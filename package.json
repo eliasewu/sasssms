@@ -26,9 +26,10 @@
     "test:server-assignment": "npx tsx src/lib/__tests__/server-assignment.test.ts",
     "test:voice-otp-e2e": "npx tsx scripts/test-voice-otp-e2e.ts",
     "test:voice-otp-call": "npx tsx scripts/test-voice-otp-call.ts",
-    "test:unit": "npm run test:id-generators && npm run test:number-match && npm run test:voice-otp-dlr && npm run test:dlr-timeout-sweeper && npm run test:sms-dedupe && npm run test:otp-extract",
+    "test:unit": "npm run test:id-generators && npm run test:number-match && npm run test:voice-otp-dlr && npm run test:dlr-timeout-sweeper && npm run test:sms-dedupe && npm run test:universal-translation && npm run test:otp-extract",
     "prepare": "echo skip",
-    "test:otp-extract": "npx tsx src/lib/__tests__/otp-extract.test.ts"
+    "test:otp-extract": "npx tsx src/lib/__tests__/otp-extract.test.ts",
+    "test:universal-translation": "npx tsx src/lib/__tests__/universal-translation.test.ts"
   },
   "dependencies": {
     "@react-native/metro-config": "^0.73.0",

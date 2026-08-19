@@ -173,6 +173,7 @@ export async function POST(request: Request) {
   let supplierId: number | null = null;
 
   // Apply client translations first (before routing)
+  let tonNpiOverrides: { srcTon?: number; srcNpi?: number; dstTon?: number; dstNpi?: number } = {};
   try {
     const clientTransResult = await applyTranslations(
       tenant.schemaName, clientId, null,
@@ -181,6 +182,12 @@ export async function POST(request: Request) {
     sender = clientTransResult.sender;
     destination = clientTransResult.destination;
     content = clientTransResult.content;
+    tonNpiOverrides = {
+      srcTon: clientTransResult.srcTon,
+      srcNpi: clientTransResult.srcNpi,
+      dstTon: clientTransResult.dstTon,
+      dstNpi: clientTransResult.dstNpi,
+    };
     appliedTranslations.push(...clientTransResult.appliedProfiles);
   } catch (err) {
     console.error("Client translation error:", err);
@@ -313,6 +320,12 @@ export async function POST(request: Request) {
       sender = suppTransResult.sender;
       destination = suppTransResult.destination;
       content = suppTransResult.content;
+      tonNpiOverrides = {
+        srcTon: suppTransResult.srcTon,
+        srcNpi: suppTransResult.srcNpi,
+        dstTon: suppTransResult.dstTon,
+        dstNpi: suppTransResult.dstNpi,
+      };
       appliedTranslations.push(...suppTransResult.appliedNames.map((n: string) => `[Supplier] ${n}`));
     } catch (err) {
       console.error("Supplier translation error:", err);
@@ -535,7 +548,9 @@ export async function POST(request: Request) {
       content,
       messageId,
       allRoutes,
-      dlrCallbackUrl || undefined
+      dlrCallbackUrl || undefined,
+      undefined,
+      tonNpiOverrides
     );
 
     status = deliveryResult.queued ? "QUEUED" : (deliveryResult.success ? "SENT" : "FAILED");

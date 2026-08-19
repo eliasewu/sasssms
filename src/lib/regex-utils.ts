@@ -46,3 +46,42 @@ export function isSafeRegex(pattern: string): boolean {
     return false;
   }
 }
+
+/**
+ * Convert PCRE-style backreferences (\1, \2, …) in a replacement string to
+ * JavaScript's `$1, $2, …` form so `String.replace(regex, replacement)` fills
+ * in capture groups. `\0` maps to `$&` (the whole match).
+ *
+ * This lets users write rules like:
+ *   match `(\d+)\s(\d+)` → replace `\1\2`   ("123 456" → "123456")
+ *   match `(.*\d+)-(\d+)` → replace `\1\2`  ("123-456" → "123456")
+ *   match `\D*(\d{4,})\D*` → replace `Your activation key is \1`
+ *
+ * Existing `$1` style references are left untouched.
+ */
+export function convertBackrefs(replacement: string): string {
+  if (!replacement) return replacement;
+  return replacement.replace(/\\([0-9])/g, (_m, d: string) =>
+    d === "0" ? "$&" : "$" + d
+  );
+}
+
+/** Determine TON (Type of Number) from an address. 1=International, 5=Alphanumeric, 0=Unknown */
+export function determineTon(address: string): number {
+  if (!address) return 0;
+  // Alphanumeric sender IDs (non-numeric)
+  if (!/^[\d+]+$/.test(address)) return 5;
+  // International numbers (start with +)
+  if (address.startsWith("+")) return 1;
+  // Numeric-only: assume international if long enough, otherwise unknown
+  return address.length >= 10 ? 1 : 0;
+}
+
+/** Determine NPI (Numbering Plan Indicator). 1=ISDN/E.164, 0=Unknown */
+export function determineNpi(address: string): number {
+  if (!address) return 0;
+  // Alphanumeric → unknown NPI
+  if (!/^[\d+]+$/.test(address)) return 0;
+  // Numeric/international → ISDN
+  return 1;
+}

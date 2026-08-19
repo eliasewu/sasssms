@@ -165,6 +165,28 @@ function determineNpi(address: string): number {
   return 1;
 }
 
+/** Translated TON/NPI overrides from the translation engine. */
+export interface TonNpiOverrides {
+  srcTon?: number;
+  srcNpi?: number;
+  dstTon?: number;
+  dstNpi?: number;
+}
+
+/**
+ * Resolve the four TON/NPI fields for a submit_sm/deliver_sm PDU, honoring
+ * any overrides produced by translation rules; otherwise compute from the
+ * address exactly as before.
+ */
+function resolveTonNpi(source: string, destination: string, o?: TonNpiOverrides) {
+  return {
+    srcTon: o?.srcTon ?? determineTon(source),
+    srcNpi: o?.srcNpi ?? determineNpi(source),
+    dstTon: o?.dstTon ?? determineTon(destination),
+    dstNpi: o?.dstNpi ?? determineNpi(destination),
+  };
+}
+
 /**
  * Parse DLR from deliver_sm short_message
  * Format: "id:{msgId} sub:001 dlvrd:001 submit date:{date} done date:{date} stat:{status} err:{err} text:{text}"
@@ -1110,7 +1132,8 @@ export function sendViaSupplierConnection(
   source: string,
   destination: string,
   content: string,
-  messageId: string
+  messageId: string,
+  tonNpi?: TonNpiOverrides
 ): Promise<{ success: boolean; supplierMessageId: string; errorCode?: number }> {
   // Try TX key first (TX_RX mode), then TRX key (transceiver mode)
   const txKey = `${tenantId}:${supplierId}:tx`;
@@ -1121,14 +1144,16 @@ export function sendViaSupplierConnection(
     return Promise.resolve({ success: false, supplierMessageId: "", errorCode: 14 });
   }
 
+  const tn = resolveTonNpi(source, destination, tonNpi);
+
   return new Promise((resolve) => {
     conn.session.send(
       new smppLib.PDU("submit_sm", {
-        source_addr_ton: determineTon(source),
-        source_addr_npi: determineNpi(source),
+        source_addr_ton: tn.srcTon,
+        source_addr_npi: tn.srcNpi,
         source_addr: source,
-        dest_addr_ton: determineTon(destination),
-        dest_addr_npi: determineNpi(destination),
+        dest_addr_ton: tn.dstTon,
+        dest_addr_npi: tn.dstNpi,
         destination_addr: destination,
         short_message: { message: content },
         registered_delivery: 1,
@@ -1158,7 +1183,8 @@ export function sendViaSupplierServerSession(
   content: string,
   messageId: string,
   /** Optional explicit map from the caller to bypass Next.js module-isolation issues */
-  serverSessions?: Map<string, any>
+  serverSessions?: Map<string, any>,
+  tonNpi?: TonNpiOverrides
 ): Promise<{ success: boolean; supplierMessageId: string; errorCode?: number }> {
   // Prefer the explicitly-passed map (caller's closure); fall back to globalThis
   const sessions: Map<string, any> | undefined = serverSessions
@@ -1178,6 +1204,7 @@ export function sendViaSupplierServerSession(
   // The Net2APP Android APK only answers DELIVER_SM for MT (SUBMIT_SM is reserved
   // for MO). Sending SUBMIT_SM to an Android gateway would hang waiting for a
   // response the app never sends, so push DELIVER_SM directly for these sessions.
+  const tn = resolveTonNpi(source, destination, tonNpi);
   if ((sess as any).systemType === "ANDROID_SMS") {
     return new Promise((resolve) => {
       // The phone can hold the ACK for seconds (paced SMS queue), so bound the
@@ -1195,11 +1222,11 @@ export function sendViaSupplierServerSession(
         console.log(`[SMPP-SRV] Android MT: DELIVER_SM to supplier #${supplierId} (${sess.systemId}): dst=${destination} our_id=${messageId}`);
         sess.session.send(
           new smppLib.PDU("deliver_sm", {
-            source_addr_ton: determineTon(source),
-            source_addr_npi: determineNpi(source),
+            source_addr_ton: tn.srcTon,
+            source_addr_npi: tn.srcNpi,
             source_addr: source,
-            dest_addr_ton: determineTon(destination),
-            dest_addr_npi: determineNpi(destination),
+            dest_addr_ton: tn.dstTon,
+            dest_addr_npi: tn.dstNpi,
             destination_addr: destination,
             short_message: { message: content },
             esm_class: 0,
@@ -1230,11 +1257,11 @@ export function sendViaSupplierServerSession(
       console.log(`[SMPP-SRV-DEBUG] Sending SUBMIT_SM to supplier #${supplierId}: dst=${destination} msg=${content.substring(0, 30)} our_id=${messageId} registered_delivery=1`);
       sess.session.send(
         new smppLib.PDU("submit_sm", {
-          source_addr_ton: determineTon(source),
-          source_addr_npi: determineNpi(source),
+          source_addr_ton: tn.srcTon,
+          source_addr_npi: tn.srcNpi,
           source_addr: source,
-          dest_addr_ton: determineTon(destination),
-          dest_addr_npi: determineNpi(destination),
+          dest_addr_ton: tn.dstTon,
+          dest_addr_npi: tn.dstNpi,
           destination_addr: destination,
           short_message: { message: content },
           registered_delivery: 1,  // request DLR
@@ -1255,11 +1282,11 @@ export function sendViaSupplierServerSession(
             try {
               sess.session.send(
                 new smppLib.PDU("deliver_sm", {
-                  source_addr_ton: determineTon(source),
-                  source_addr_npi: determineNpi(source),
+                  source_addr_ton: tn.srcTon,
+                  source_addr_npi: tn.srcNpi,
                   source_addr: source,
-                  dest_addr_ton: determineTon(destination),
-                  dest_addr_npi: determineNpi(destination),
+                  dest_addr_ton: tn.dstTon,
+                  dest_addr_npi: tn.dstNpi,
                   destination_addr: destination,
                   short_message: { message: content },
                   esm_class: 0,
@@ -1312,7 +1339,8 @@ export function deliverSmsWithFallback(
   messageId: string,
   routes: RouteInfo[],
   dlrCallbackUrl?: string,
-  serverSessions?: Map<string, unknown>
+  serverSessions?: Map<string, unknown>,
+  tonNpi?: TonNpiOverrides
 ): Promise<DeliveryResult> {
   // Sort routes by priority (ascending — lower number = higher priority)
   const sortedRoutes = [...routes].sort((a, b) => a.priority - b.priority);
@@ -1426,7 +1454,8 @@ export function deliverSmsWithFallback(
           destination,
           content,
           messageId,
-          serverSessions
+          serverSessions,
+          tonNpi
         );
       }
       // Try CLIENT-mode connection
@@ -1436,7 +1465,8 @@ export function deliverSmsWithFallback(
         source,
         destination,
         content,
-        messageId
+        messageId,
+        tonNpi
       );
     };
 

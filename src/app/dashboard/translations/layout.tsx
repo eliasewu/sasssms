@@ -40,6 +40,7 @@ export function useMccMnc() {
 
 // ── Translation type config ──
 const translationTypes = [
+  { href: "/dashboard/translations/universal", label: "Universal Translation", icon: "🌐", desc: "Regex match → replace across any SMPP parameter" },
   { href: "/dashboard/translations/sid", label: "SID Translation", icon: "📱", desc: "Change sender ID per operator" },
   { href: "/dashboard/translations/number", label: "Number Translation", icon: "🔢", desc: "Transform destination numbers" },
   { href: "/dashboard/translations/number-blacklist", label: "Number Blacklist", icon: "🚫", desc: "Block SMS to specific number series" },

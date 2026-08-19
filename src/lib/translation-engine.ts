@@ -1,16 +1,32 @@
 /**
  * SMS Translation Engine
- * Applies SID (sender), BODY (content), and DESTINATION (number) translations
- * in FIXED or RANDOM mode at client-level and supplier-level.
+ * Applies regex match → replace rules across the full SMPP parameter set:
+ *   SENDER (source_addr) / DESTINATION (destination_addr) / BODY (short_message)
+ *   plus SRC_TON, DST_TON, SRC_NPI, DST_NPI (numeric SMPP fields).
+ *
+ * Replacement strings support PCRE-style backreferences (\1, \2, …) which are
+ * converted to JS `$1, $2, …` before `String.replace` runs, so rules like:
+ *   match `(\d+)\s(\d+)` → replace `\1\2`  ("123 456" → "123456")
+ * work as expected.
  */
 import { tenantQuery } from "@/lib/tenant-schema";
 import { lookupMccMnc } from "@/lib/mcc-lookup";
-import { buildRegex, isSafeRegex } from "@/lib/regex-utils";
+import { buildRegex, isSafeRegex, convertBackrefs, determineTon, determineNpi } from "@/lib/regex-utils";
+
+type TargetField = "SENDER" | "DESTINATION" | "BODY" | "SRC_TON" | "DST_TON" | "SRC_NPI" | "DST_NPI";
+
+/** SMPP TON/NPI values carried alongside the three string fields. */
+export interface TonNpi {
+  srcTon: number;
+  srcNpi: number;
+  dstTon: number;
+  dstNpi: number;
+}
 
 interface TranslationProfile {
   id: number;
   name: string;
-  targetField: "SENDER" | "BODY" | "DESTINATION";
+  targetField: TargetField;
   mode: "FIXED" | "RANDOM";
   matchPattern: string;
   replacementFixed: string | null;
@@ -30,7 +46,39 @@ interface TranslationResult {
   sender: string;
   destination: string;
   content: string;
+  srcTon: number;
+  srcNpi: number;
+  dstTon: number;
+  dstNpi: number;
   appliedProfiles: string[];
+}
+
+/**
+ * Normalize a user-supplied "parameter" name to a canonical target field.
+ * Accepts the SMPP parameter names (src/dst routing, src/dst number,
+ * src/dst number ton/npi, sms body) as well as the legacy SENDER/BODY/
+ * DESTINATION values already stored in the DB.
+ */
+export function normalizeTargetField(raw: string): TargetField {
+  const f = (raw || "SENDER").toUpperCase().replace(/[\s_\-/]+/g, "");
+  switch (f) {
+    case "SRCROUTING": case "SRCNUMBER": case "SOURCEADDR": case "SENDER": case "SID": case "FROM":
+      return "SENDER";
+    case "DSTROUTING": case "DSTNUMBER": case "DESTADDR": case "DESTINATION": case "DESTINATIONADDR": case "TO":
+      return "DESTINATION";
+    case "SMSBODY": case "BODY": case "SHORTMESSAGE": case "CONTENT": case "MESSAGE":
+      return "BODY";
+    case "SRCNUMBERTON": case "SRCTON": case "SOURCEADDRTON":
+      return "SRC_TON";
+    case "DSTNUMBERTON": case "DSTTON": case "DESTADDRTON":
+      return "DST_TON";
+    case "SRCNUMBERNPI": case "SRCNPI": case "SOURCEADDRNPI":
+      return "SRC_NPI";
+    case "DSTNUMBERNPI": case "DSTNPI": case "DESTADDRNPI":
+      return "DST_NPI";
+    default:
+      return "SENDER";
+  }
 }
 
 /**
@@ -47,10 +95,6 @@ async function loadProfiles(
   includeGlobal: boolean = true
 ): Promise<TranslationProfile[]> {
   const col = entityType === "client" ? "client_id" : "supplier_id";
-  // When includeGlobal=true: load entity-specific + global (NULL/NULL) profiles.
-  // When includeGlobal=false: load ONLY entity-specific profiles.
-  // This prevents global profiles from being applied TWICE (once at client level
-  // and once at supplier level), which would duplicate transformations.
   const result = await tenantQuery(
     schemaName,
     includeGlobal
@@ -67,11 +111,10 @@ async function loadProfiles(
     [entityId]
   );
 
-  // Map snake_case DB columns to camelCase interface
   const profiles: TranslationProfile[] = result.rows.map((r: Record<string, unknown>) => ({
     id: r.id as number,
     name: r.name as string,
-    targetField: (r.target_field || r.targetField || "SENDER") as "SENDER" | "BODY" | "DESTINATION",
+    targetField: normalizeTargetField(String(r.target_field || r.targetField || "SENDER")),
     mode: (r.mode || "FIXED") as "FIXED" | "RANDOM",
     matchPattern: (r.match_pattern || r.matchPattern || ".*") as string,
     replacementFixed: (r.replacement_fixed ?? r.replacementFixed ?? null) as string | null,
@@ -80,21 +123,15 @@ async function loadProfiles(
     category: (r.category || null) as string | null,
   }));
 
-  // Exclude blacklist/filter categories — these are not transformations,
-  // they are enforced separately as blocking rules.
   const transformationProfiles = profiles.filter(
     p => p.category !== "NUMBER_BLACKLIST" && p.category !== "CONTENT_FILTER"
   );
 
-  // If no profiles remain after filtering, return empty
   if (transformationProfiles.length === 0) return [];
 
-  // If no profiles have MCC/MNC set, return all (global rules only)
   const hasMccMncProfiles = transformationProfiles.some(p => p.mcc || p.mnc);
   if (!hasMccMncProfiles) return transformationProfiles;
 
-  // Resolve destination's MCC/MNC (actual operator MNC, not a per-MCC
-  // representative — RANDOM SID / RANDOM CONTENT map SIDs per operator).
   let destMcc: string | null = null;
   let destMnc: string | null = null;
   try {
@@ -107,35 +144,23 @@ async function loadProfiles(
     console.error("[Translation] MCC/MNC lookup failed, applying global rules only:", err);
   }
 
-  // Normalize MNC to 3 digits for comparison (profiles may have 2-digit MNC,
-  // while lookupMccMnc returns the operator MNC from mcc_mnc_prefix_map).
-  // Wildcard "*" means "any MNC for this MCC".
   const norm = (mnc: string | null): string | null => {
     if (!mnc) return mnc;
-    if (mnc === "*") return null; // wildcard → treated as "match all" below
+    if (mnc === "*") return null;
     return mnc.padStart(3, "0");
   };
 
   const normalizedDestMnc = norm(destMnc);
 
-  // Filter: keep profiles that match the destination's MCC/MNC, OR are global
   return transformationProfiles.filter(p => {
-    // Global profile — applies to all destinations
     if (!p.mcc && !p.mnc) return true;
-    // MCC must match (or be null = match all MCCs)
     const mccMatch = !p.mcc || p.mcc === destMcc;
-    // MNC must match after normalizing both sides to 3 digits
     const profileMnc = norm(p.mnc);
     const mncMatch = !profileMnc || profileMnc === normalizedDestMnc;
     return mccMatch && mncMatch;
   });
 }
 
-/**
- * Load random pool items for a profile, optionally filtered by MCC/MNC.
- * If mccmncFilter is provided, only items with a matching mccmnc tag
- * or items with NULL mccmnc (global SIDs) are returned.
- */
 async function loadPoolItems(
   schemaName: string,
   profileId: number,
@@ -143,19 +168,17 @@ async function loadPoolItems(
 ): Promise<PoolItem[]> {
   let query: string;
   let params: unknown[];
-  
+
   if (mccmncFilter) {
-    // Return items tagged with this specific MCC/MNC OR global items (null mccmnc)
-    query = `SELECT * FROM translation_pool_items 
+    query = `SELECT * FROM translation_pool_items
              WHERE profile_id = $1 AND (mccmnc = $2 OR mccmnc IS NULL)`;
     params = [profileId, mccmncFilter];
   } else {
     query = `SELECT * FROM translation_pool_items WHERE profile_id = $1`;
     params = [profileId];
   }
-  
+
   const result = await tenantQuery(schemaName, query, params);
-  // Map snake_case DB columns to camelCase interface
   return result.rows.map((r: Record<string, unknown>) => ({
     id: r.id as number,
     profileId: r.profile_id as number,
@@ -164,68 +187,82 @@ async function loadPoolItems(
   }));
 }
 
+interface MessageState {
+  sender: string;
+  destination: string;
+  content: string;
+  srcTon: number;
+  srcNpi: number;
+  dstTon: number;
+  dstNpi: number;
+}
+
 /**
  * Apply a single translation profile to the message fields.
- * Returns the (possibly) modified sender, destination, content.
  */
-
 async function applyProfile(
   schemaName: string,
   profile: TranslationProfile,
-  sender: string,
-  destination: string,
-  content: string
-): Promise<{ sender: string; destination: string; content: string; applied: boolean }> {
+  state: MessageState
+): Promise<MessageState & { applied: boolean }> {
+  const { sender, destination, content, srcTon, srcNpi, dstTon, dstNpi } = state;
   const target = profile.targetField;
-  const input = target === "SENDER" ? sender : target === "DESTINATION" ? destination : content;
+
+  // The input to match is the string form of the selected SMPP field.
+  let input: string;
+  switch (target) {
+    case "SENDER": input = sender; break;
+    case "DESTINATION": input = destination; break;
+    case "SRC_TON": input = String(srcTon); break;
+    case "SRC_NPI": input = String(srcNpi); break;
+    case "DST_TON": input = String(dstTon); break;
+    case "DST_NPI": input = String(dstNpi); break;
+    case "BODY":
+    default: input = content; break;
+  }
 
   let regex: RegExp;
   try {
-    // Safety check before creating regex
     if (!isSafeRegex(profile.matchPattern || ".*")) {
       console.warn(`Unsafe regex pattern rejected for profile ${profile.name}: ${profile.matchPattern}`);
-      return { sender, destination, content, applied: false };
+      return { ...state, applied: false };
     }
     regex = buildRegex(profile.matchPattern || ".*", "m");
   } catch {
-    // Invalid regex, skip this profile
-    return { sender, destination, content, applied: false };
+    return { ...state, applied: false };
   }
 
   if (!regex.test(input)) {
-    return { sender, destination, content, applied: false };
+    return { ...state, applied: false };
   }
 
   let replacement: string;
 
   if (profile.mode === "RANDOM") {
-    // Derive mccmnc filter from destination for per-MCC/MNC pool item selection
     let mccmncFilter: string | null | undefined = undefined;
     try {
       const entry = await lookupMccMnc(destination);
       if (entry && entry.mcc) {
         mccmncFilter = entry.mcc + (entry.mnc || "").padStart(3, "0");
       }
-    } catch { /* skip — use all pool items */ }
+    } catch { /* skip */ }
     const pool = await loadPoolItems(schemaName, profile.id, mccmncFilter);
     if (pool.length === 0) {
-      return { sender, destination, content, applied: false };
+      return { ...state, applied: false };
     }
     const pick = pool[Math.floor(Math.random() * pool.length)];
     replacement = pick.replacementValue;
   } else {
-    // Use ?? instead of || — empty string "" is a valid replacement (e.g., strip prefix)
     replacement = profile.replacementFixed ?? input;
   }
 
-  // ── Number Pipeline: check if replacement_fixed is a JSON step definition ──
+  // ── Number pipeline: replacement_fixed may be a JSON step definition ──
   if (target === "DESTINATION") {
     let pipelineResult = input.replace(/^\+/, "00");
     let pipelineApplied = false;
     try {
       const parsed = JSON.parse(replacement);
       if (parsed && typeof parsed === "object" && Array.isArray(parsed.steps)) {
-        // Apply the 3-step pipeline in order: stripDigits → removePrefix → addPrefix
         for (const step of parsed.steps) {
           if (step.type === "stripDigits") {
             const n = parseInt(step.value, 10);
@@ -248,7 +285,7 @@ async function applyProfile(
           }
         }
         if (pipelineApplied) {
-          return { sender, destination: pipelineResult, content, applied: true };
+          return { ...state, destination: pipelineResult, applied: true };
         }
       }
     } catch {
@@ -257,8 +294,6 @@ async function applyProfile(
   }
 
   // ── Content (BODY) JSON config: {replacement, otpMinLength, otpMaxLength, customRegex} ──
-  // The content page stores each rule's template + OTP config as JSON in
-  // replacement_fixed. Unwrap it so the real template is used (not the JSON blob).
   let otpMinLength = 4;
   let otpMaxLength = 8;
   let otpCustomRegex = "";
@@ -277,17 +312,10 @@ async function applyProfile(
   }
 
   // ── {{OTP}} / {code} rewrite templates ──
-  // When the replacement contains {{OTP}} or {code}, the match pattern is a
-  // *trigger* (e.g. "facebook|FB|OTP"): the ENTIRE content is rewritten to the
-  // template, then the real OTP (extracted from the original content) is
-  // substituted in. A plain regex substitution would only swap the matched
-  // keyword and leave the rest of the original message behind (garbled output
-  // like "Your <template> code is 252525…").
   const isRewriteTemplate = replacement.includes("{{OTP}}") || replacement.includes("{code}");
 
-  // Normal replacement (supports $1, $2 capture groups). Rewrite templates get
-  // the full-message rewrite instead of a keyword substitution.
-  let newValue = isRewriteTemplate ? replacement : input.replace(regex, replacement);
+  // Normal replacement — converts \1..\9 → $1..$9 so capture groups are filled.
+  let newValue = isRewriteTemplate ? replacement : input.replace(regex, convertBackrefs(replacement));
 
   if (isRewriteTemplate) {
     let otp: string | null = null;
@@ -295,9 +323,7 @@ async function applyProfile(
       try {
         const m = content.match(buildRegex(otpCustomRegex));
         if (m) otp = m[1] || m[0];
-      } catch {
-        // invalid custom regex — ignore
-      }
+      } catch { /* invalid custom regex */ }
     }
     if (!otp) {
       const m = content.match(buildRegex("\\b(\\d{" + otpMinLength + "," + otpMaxLength + "})\\b"));
@@ -309,16 +335,26 @@ async function applyProfile(
     }
   }
 
+  // Write the new value back to the target field.
   switch (target) {
-    case "SENDER":
-      return { sender: newValue, destination, content, applied: true };
-    case "DESTINATION":
-      return { sender, destination: newValue, content, applied: true };
+    case "SENDER": return { ...state, sender: newValue, applied: true };
+    case "DESTINATION": return { ...state, destination: newValue, applied: true };
+    case "SRC_TON": return { ...state, srcTon: parseInt(newValue, 10) || 0, applied: true };
+    case "SRC_NPI": return { ...state, srcNpi: parseInt(newValue, 10) || 0, applied: true };
+    case "DST_TON": return { ...state, dstTon: parseInt(newValue, 10) || 0, applied: true };
+    case "DST_NPI": return { ...state, dstNpi: parseInt(newValue, 10) || 0, applied: true };
     case "BODY":
-      return { sender, destination, content: newValue, applied: true };
-    default:
-      return { sender, destination, content, applied: false };
+    default: return { ...state, content: newValue, applied: true };
   }
+}
+
+function initialTonNpi(sender: string, destination: string): TonNpi {
+  return {
+    srcTon: determineTon(sender),
+    srcNpi: determineNpi(sender),
+    dstTon: determineTon(destination),
+    dstNpi: determineNpi(destination),
+  };
 }
 
 /**
@@ -332,36 +368,48 @@ export async function applyEntityTranslations(
   destination: string,
   content: string,
   includeGlobal: boolean = true
-): Promise<{ sender: string; destination: string; content: string; appliedNames: string[] }> {
+): Promise<{
+  sender: string;
+  destination: string;
+  content: string;
+  srcTon: number;
+  srcNpi: number;
+  dstTon: number;
+  dstNpi: number;
+  appliedNames: string[];
+}> {
   const profiles = await loadProfiles(schemaName, entityType, entityId, destination, includeGlobal);
-  let currentSender = sender;
-  let currentDest = destination;
-  let currentContent = content;
+  let state: MessageState = {
+    sender,
+    destination,
+    content,
+    ...initialTonNpi(sender, destination),
+  };
   const appliedNames: string[] = [];
 
   for (const profile of profiles) {
-    const result = await applyProfile(
-      schemaName,
-      profile,
-      currentSender,
-      currentDest,
-      currentContent
-    );
+    const result = await applyProfile(schemaName, profile, state);
     if (result.applied) {
-      currentSender = result.sender;
-      currentDest = result.destination;
-      currentContent = result.content;
+      state = result;
       appliedNames.push(profile.name);
-      console.log(`[Translation] ${entityType} #${entityId}: "${profile.name}" | field=${profile.targetField} | pattern=${profile.matchPattern} | dest: ${currentDest} → ${result.destination}`);
+      console.log(`[Translation] ${entityType} #${entityId}: "${profile.name}" | field=${profile.targetField} | pattern=${profile.matchPattern}`);
     }
   }
 
-  return { sender: currentSender, destination: currentDest, content: currentContent, appliedNames };
+  return {
+    sender: state.sender,
+    destination: state.destination,
+    content: state.content,
+    srcTon: state.srcTon,
+    srcNpi: state.srcNpi,
+    dstTon: state.dstTon,
+    dstNpi: state.dstNpi,
+    appliedNames,
+  };
 }
 
 /**
  * Full translation pipeline: client-level first, then supplier-level.
- * Stores original values in the result for logging.
  */
 export async function applyTranslations(
   schemaName: string,
@@ -373,29 +421,33 @@ export async function applyTranslations(
 ): Promise<TranslationResult> {
   const allApplied: string[] = [];
 
-  // Step 1: Client-level translations
   const clientResult = await applyEntityTranslations(
     schemaName, "client", clientId,
     originalSender, originalDestination, originalContent
   );
   allApplied.push(...clientResult.appliedNames.map(n => `[Client] ${n}`));
 
-  // Step 2: Supplier-level translations (if supplier assigned).
-  // Pass includeGlobal=false so global profiles don't run again (they already
-  // ran at client-level above).
   let finalSender = clientResult.sender;
   let finalDest = clientResult.destination;
   let finalContent = clientResult.content;
+  let finalSrcTon = clientResult.srcTon;
+  let finalSrcNpi = clientResult.srcNpi;
+  let finalDstTon = clientResult.dstTon;
+  let finalDstNpi = clientResult.dstNpi;
 
   if (supplierId) {
     const supplierResult = await applyEntityTranslations(
       schemaName, "supplier", supplierId,
       finalSender, finalDest, finalContent,
-      false // includeGlobal = false — already applied at client level
+      false
     );
     finalSender = supplierResult.sender;
     finalDest = supplierResult.destination;
     finalContent = supplierResult.content;
+    finalSrcTon = supplierResult.srcTon;
+    finalSrcNpi = supplierResult.srcNpi;
+    finalDstTon = supplierResult.dstTon;
+    finalDstNpi = supplierResult.dstNpi;
     allApplied.push(...supplierResult.appliedNames.map(n => `[Supplier] ${n}`));
   }
 
@@ -403,6 +455,10 @@ export async function applyTranslations(
     sender: finalSender,
     destination: finalDest,
     content: finalContent,
+    srcTon: finalSrcTon,
+    srcNpi: finalSrcNpi,
+    dstTon: finalDstTon,
+    dstNpi: finalDstNpi,
     appliedProfiles: allApplied,
   };
 }
@@ -421,10 +477,13 @@ export async function generateSample(
   translated: { sender: string; destination: string; content: string };
   applied: boolean;
 }> {
-  const result = await applyProfile(
-    schemaName, profile,
-    sampleSender, sampleDestination, sampleContent
-  );
+  const state: MessageState = {
+    sender: sampleSender,
+    destination: sampleDestination,
+    content: sampleContent,
+    ...initialTonNpi(sampleSender, sampleDestination),
+  };
+  const result = await applyProfile(schemaName, profile, state);
   return {
     original: { sender: sampleSender, destination: sampleDestination, content: sampleContent },
     translated: { sender: result.sender, destination: result.destination, content: result.content },
