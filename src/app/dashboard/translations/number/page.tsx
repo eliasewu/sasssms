@@ -154,6 +154,9 @@ export default function NumberTranslationPage() {
 
   const updateDraft = (field: string, value: any) => {
     setDraft(prev => prev ? { ...prev, [field]: value } : prev);
+    // Keep the test number in sync with the country prefix in the rule name
+    // (e.g. typing "00971" → test number "0097112345678").
+    if (field === "name") setTestNumber(sampleForRuleName(String(value ?? "")));
   };
 
   const toggleEntity = (id: number) => {
