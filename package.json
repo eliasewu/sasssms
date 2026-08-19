@@ -22,10 +22,11 @@
     "test:auto-connect-audit": "npx tsx src/lib/__tests__/auto-connect-audit.test.ts",
     "test:tenant-toggle-audit": "npx tsx src/lib/__tests__/tenant-toggle-audit.test.ts",
     "test:sms-dedupe": "npx tsx src/lib/__tests__/sms-dedupe.test.ts",
+    "test:number-match": "npx tsx src/lib/__tests__/number-match.test.ts",
     "test:server-assignment": "npx tsx src/lib/__tests__/server-assignment.test.ts",
     "test:voice-otp-e2e": "npx tsx scripts/test-voice-otp-e2e.ts",
     "test:voice-otp-call": "npx tsx scripts/test-voice-otp-call.ts",
-    "test:unit": "npm run test:id-generators && npm run test:voice-otp-dlr && npm run test:dlr-timeout-sweeper && npm run test:sms-dedupe",
+    "test:unit": "npm run test:id-generators && npm run test:number-match && npm run test:voice-otp-dlr && npm run test:dlr-timeout-sweeper && npm run test:sms-dedupe",
     "prepare": "echo skip"
   },
   "dependencies": {
