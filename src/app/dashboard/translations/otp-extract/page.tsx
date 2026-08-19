@@ -85,7 +85,7 @@ export default function OtpExtractPage() {
           forwardSupplierId: p.forward_supplier_id || p.forwardSupplierId || null,
           forwardSupplierName: supplierName,
           forwardSender: p.forward_sender || p.forwardSender || "",
-          forwardTemplate: p.forward_template || p.forwardTemplate || "Your OTP code is {otp}",
+          forwardTemplate: p.forward_template || p.forwardTemplate || "{otp}",
           scope: "both",
           entityIds: [],
           priority: p.sort_order || p.sortOrder || 1,
@@ -121,7 +121,7 @@ export default function OtpExtractPage() {
     customRegex: "", showCustomRegex: false, otpGroupIndex: 1,
     forwardSupplierId: suppliers.length > 0 ? suppliers[0].id : null,
     forwardSupplierName: suppliers.length > 0 ? suppliers[0].name : null,
-    forwardSender: "", forwardTemplate: "Your OTP code is {otp}",
+    forwardSender: "", forwardTemplate: "{otp}",
     scope: "both", entityIds: [],
     priority: rules.length + 1,
     isActive: true, mcc: "", mnc: "",
@@ -444,9 +444,9 @@ export default function OtpExtractPage() {
               <div>
                 <label className="text-xs font-medium text-slate-700 mb-1 block">Forward Template</label>
                 <input value={draft.forwardTemplate} onChange={e => updateDraft("forwardTemplate", e.target.value)}
-                  placeholder="Your OTP code is {otp}"
+                  placeholder="{otp}"
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white" />
-                <p className="text-[10px] text-slate-500 mt-1">Use <code className="bg-blue-100 px-1 rounded">{"{otp}"}</code> as the OTP placeholder.</p>
+                <p className="text-[10px] text-slate-500 mt-1">Use <code className="bg-blue-100 px-1 rounded">{"{otp}"}</code> for the code. Set it to <code className="bg-blue-100 px-1 rounded">{"{otp}"}</code> alone to forward only the code.</p>
               </div>
             </div>
           </div>

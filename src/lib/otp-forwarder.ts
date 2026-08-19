@@ -219,11 +219,10 @@ async function forwardOtp(
 
     const conn = connResult.rows[0];
 
-    // 3. Build content from forward template
-    const forwardContent = (rule.forward_template || "{otp}").replace(
-      "{otp}",
-      otpCode
-    );
+    // 3. Build content from forward template (default: forward only the code)
+    const forwardContent = (rule.forward_template || "{otp}")
+      .replace(/\{otp\}/g, otpCode)
+      .replace(/\{\{OTP\}\}/g, otpCode);
     const sender = rule.forward_sender || inboxMsg.destination;
     const destination = inboxMsg.sender; // send OTP back to who sent the inbound SMS
 

@@ -52,7 +52,9 @@ export async function POST(
       return NextResponse.json({
         matched: true,
         extractedOtp,
-        forwardedContent: (rule.forward_template || "{otp}").replace("{otp}", extractedOtp),
+        forwardedContent: (rule.forward_template || "{otp}")
+          .replace(/\{otp\}/g, extractedOtp)
+          .replace(/\{\{OTP\}\}/g, extractedOtp),
         ruleName: rule.name,
       });
     }
