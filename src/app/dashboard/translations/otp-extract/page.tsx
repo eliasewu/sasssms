@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
 import { buildRegex } from "@/lib/regex-utils";
 import { autoDetectOtp } from "@/lib/otp-detect";
@@ -35,7 +34,6 @@ interface ClientSupplier {
 }
 
 export default function OtpExtractPage() {
-  const { selection } = useMccMnc();
   const [msg, setMsg] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,10 +54,7 @@ export default function OtpExtractPage() {
     try {
       setLoading(true);
       setError(null);
-      const params = new URLSearchParams();
-      if (selection.mcc) params.set("mcc", selection.mcc);
-      if (selection.mnc) params.set("mnc", selection.mnc);
-      const res = await fetch(`/api/tenant/otp-extract-rules?${params}`);
+      const res = await fetch("/api/tenant/otp-extract-rules");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const profiles = (data.data || data.rules || []) as any[];
@@ -105,7 +100,7 @@ export default function OtpExtractPage() {
     } finally {
       setLoading(false);
     }
-  }, [selection]);
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -129,7 +124,7 @@ export default function OtpExtractPage() {
     forwardSender: "", forwardTemplate: "Your OTP code is {otp}",
     scope: "both", entityIds: [],
     priority: rules.length + 1,
-    isActive: true, mcc: selection.mcc || "", mnc: selection.mnc || "",
+    isActive: true, mcc: "", mnc: "",
   });
 
   const openAdd = () => {
@@ -284,7 +279,6 @@ export default function OtpExtractPage() {
           <p className="text-xs text-slate-400">Extract OTP from incoming SMS and forward it to a supplier</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">Scope: <strong>{selection.label}</strong></span>
           <button onClick={openAdd}
             className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-700 transition">
             + Add Rule

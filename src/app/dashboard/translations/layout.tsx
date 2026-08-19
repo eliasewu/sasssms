@@ -53,6 +53,9 @@ const translationTypes = [
 
 export default function TranslationsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  // OTP Extract & Forward works on inbound SMS and is not scoped per operator,
+  // so hide the operator (MCC/MNC) panel on that page.
+  const isOtpExtract = pathname.startsWith("/dashboard/translations/otp-extract");
   const [countries, setCountries] = useState<CountryNode[]>([]);
   const [search, setSearch] = useState("");
   const [expandedCountries, setExpandedCountries] = useState<Set<string>>(new Set());
@@ -100,7 +103,8 @@ export default function TranslationsLayout({ children }: { children: React.React
   return (
     <MccMncContext.Provider value={{ selection, setSelection }}>
       <div className="flex gap-0 min-h-[calc(100vh-160px)]">
-        {/* ── MCC/MNC Tree Panel ── */}
+        {/* ── MCC/MNC Tree Panel (hidden on OTP Extract) ── */}
+        {!isOtpExtract && (
         <div className={`${collapsed ? "w-12" : "w-64"} bg-white border-r border-slate-200 shrink-0 transition-all duration-300 flex flex-col`}>
           <div className="p-3 border-b border-slate-200 flex items-center justify-between shrink-0">
             {!collapsed && <h3 className="font-semibold text-sm text-slate-700">🌍 Operators</h3>}
@@ -193,6 +197,7 @@ export default function TranslationsLayout({ children }: { children: React.React
             </>
           )}
         </div>
+        )}
 
         {/* ── Main Content Area ── */}
         <div className="flex-1 min-w-0">
