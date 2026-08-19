@@ -5,7 +5,7 @@ import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
 import TranslationModal from "@/components/translation-modal";
 import EntityMultiSelect from "@/components/entity-multiselect";
-import { matchPatternForName } from "@/lib/number-match";
+import { matchPatternForName, matchPrefixesForName } from "@/lib/number-match";
 
 interface NumberRule {
   ruleId: number | null;
@@ -121,17 +121,27 @@ export default function NumberTranslationPage() {
     mcc: "", mnc: "",
   });
 
+  // Build a realistic sample destination from a rule's name, e.g. "00971" →
+  // "0097112345678", so "strip 5 + add 0" previews as 012345678.
+  const sampleForRuleName = (name: string): string => {
+    const prefixes = matchPrefixesForName(name);
+    return prefixes ? prefixes[0] + "12345678" : "1234567890";
+  };
+
   const openAdd = () => {
     setDraft(newDraft());
     setEditingIdx(null);
     setPreviewResult(null);
+    setTestNumber("1234567890");
     setModalOpen(true);
   };
 
   const openEdit = (idx: number) => {
-    setDraft(JSON.parse(JSON.stringify(rules[idx])));
+    const rule = rules[idx];
+    setDraft(JSON.parse(JSON.stringify(rule)));
     setEditingIdx(idx);
     setPreviewResult(null);
+    setTestNumber(sampleForRuleName(rule.name));
     setModalOpen(true);
   };
 
@@ -227,8 +237,8 @@ export default function NumberTranslationPage() {
   const sample = testNumber.trim() || "1234567890";
 
   const previewTransform = (input: string, strip: number, add: string): string => {
-    let result = input;
-    if (strip > 0) result = result.slice(strip);
+    let result = input.replace(/^\+/, "00");
+    if (strip > 0 && strip < result.length) result = result.slice(strip);
     if (add) result = add + result;
     return result;
   };
@@ -304,7 +314,7 @@ export default function NumberTranslationPage() {
               </tr>
             )}
             {rules.map((rule, idx) => {
-              const preview = rule.isActive ? previewTransform(sample, rule.stripDigits, rule.addPrefix) : "—";
+              const preview = rule.isActive ? previewTransform(sampleForRuleName(rule.name), rule.stripDigits, rule.addPrefix) : "—";
               return (
                 <tr key={idx} className={`hover:bg-blue-50/40 transition-colors ${!rule.isActive ? "opacity-50" : ""}`}>
                   <td className="px-4 py-2 text-slate-400 font-mono">{idx + 1}</td>
@@ -319,7 +329,7 @@ export default function NumberTranslationPage() {
                       : <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-400">Inactive</span>}
                   </td>
                   <td className="px-3 py-2 text-center">
-                    <code className="text-[10px] text-slate-400 font-mono">{sample}</code>
+                    <code className="text-[10px] text-slate-400 font-mono">{sampleForRuleName(rule.name)}</code>
                     <span className="text-slate-300 mx-1">→</span>
                     <code className={`text-[10px] font-mono font-semibold ${rule.isActive ? "text-emerald-700" : "text-slate-400"}`}>{preview}</code>
                   </td>
@@ -402,14 +412,14 @@ export default function NumberTranslationPage() {
                 <input type="number" min={0} max={20} value={draft.stripDigits}
                   onChange={e => updateDraft("stripDigits", parseInt(e.target.value) || 0)}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white" />
-                <p className="text-[10px] text-slate-500 mt-1">{sample} with strip={draft.stripDigits} → {draft.stripDigits > 0 ? sample.slice(draft.stripDigits) : sample}</p>
+                <p className="text-[10px] text-slate-500 mt-1">{sample} with strip={draft.stripDigits} → {previewTransform(sample, draft.stripDigits, "")}</p>
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-700 mb-1 block">Add Prefix (text to prepend)</label>
                 <input value={draft.addPrefix} onChange={e => updateDraft("addPrefix", e.target.value)}
                   placeholder="77"
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white" />
-                <p className="text-[10px] text-slate-500 mt-1">{sample} + add &quot;{draft.addPrefix || ""}&quot; → {draft.addPrefix + (draft.stripDigits > 0 ? sample.slice(draft.stripDigits) : sample)}</p>
+                <p className="text-[10px] text-slate-500 mt-1">{sample} + add &quot;{draft.addPrefix || ""}&quot; → {previewTransform(sample, draft.stripDigits, draft.addPrefix)}</p>
               </div>
             </div>
           </div>
