@@ -78,6 +78,26 @@ function versionLabel(v: number): string {
 }
 
 /**
+ * Extract the text from an SMPP short_message field as a string.
+ *
+ * The `smpp` library can deliver short_message as a plain string, a Buffer
+ * (raw bytes when data_coding is absent), or `{ message: string|Buffer, udh? }`
+ * (decoded). Reading `?.message` can therefore yield a Buffer, and calling
+ * `.startsWith()`/`.substring()` on it throws "startsWith is not a function".
+ */
+function smppMessageText(pdu: smpp.PDU): string {
+  const sm = pdu.short_message as unknown;
+  if (typeof sm === "string") return sm;
+  if (Buffer.isBuffer(sm)) return sm.toString("utf8");
+  if (sm && typeof sm === "object") {
+    const m = (sm as { message?: unknown }).message;
+    if (typeof m === "string") return m;
+    if (Buffer.isBuffer(m)) return m.toString("utf8");
+  }
+  return "";
+}
+
+/**
  * Negotiate SMPP version: pick the version if we support it, otherwise fall back to v3.4.
  * If ESME sends an unsupported version, default to v3.4.
  */
@@ -367,9 +387,7 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
           // Non-DLR deliver_sm from a server supplier — treat as inbound MO
           const src = (pdu.source_addr as string) || "";
           const dest = (pdu.destination_addr as string) || "";
-          const text = typeof pdu.short_message === "string"
-            ? pdu.short_message
-            : (pdu.short_message as { message?: string })?.message || "";
+          const text = smppMessageText(pdu);
 
           console.log(`[SMPP-SRV] MO DELIVER_SM from ${ss.systemId}: ${src} → ${dest}: ${text.substring(0, 40)}`);
 
@@ -399,9 +417,7 @@ export function startSmppServer(port: number = 2775): { listen: (port: number, c
         }
 
         // ── DLR receipt from the modem ──
-        const text = typeof pdu.short_message === "string"
-          ? pdu.short_message
-          : (pdu.short_message as { message?: string })?.message || "";
+        const text = smppMessageText(pdu);
 
         const parsed = parseDlrMessage(text);
         if (!parsed) {
@@ -1053,7 +1069,7 @@ async function processSubmitSm(
   const messageId = "SMPP_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
   const origDest = (pdu.destination_addr as string) || "";
   const origSrc = (pdu.source_addr as string) || "";
-  const origContent = (pdu.short_message as { message: string })?.message || "";
+  const origContent = smppMessageText(pdu);
 
   // Dedupe key for this submission — declared at function scope so both the
   // delivery path and the outer catch can release it when the send fails.
@@ -2528,7 +2544,7 @@ async function processSupplierSubmitSm(
   const messageId = "MO_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
   const dest = (pdu.destination_addr as string) || "";
   const src = (pdu.source_addr as string) || "";
-  const content = (pdu.short_message as { message: string })?.message || "";
+  const content = smppMessageText(pdu);
 
   try {
     const dbClient = await pool.connect();
