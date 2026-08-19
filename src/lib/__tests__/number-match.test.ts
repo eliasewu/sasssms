@@ -12,7 +12,7 @@
  * Run:  npx tsx src/lib/__tests__/number-match.test.ts
  */
 import assert from "node:assert/strict";
-import { matchPatternForName, matchPrefixesForName } from "@/lib/number-match";
+import { matchPatternForName, matchPrefixesForName, sampleNumberForName } from "@/lib/number-match";
 
 // ── Test runner ──
 
@@ -96,6 +96,38 @@ async function suiteBuiltPatternBehaviour() {
 }
 
 // ═══════════════════════════════════════════════════════════
+// Country-specific sample numbers
+// ═══════════════════════════════════════════════════════════
+
+async function suiteSampleNumbers() {
+  console.log("\n── Country-specific sample numbers ──");
+  await test('"00971" → UAE sample 00971506380825', () => {
+    assert.equal(sampleNumberForName("00971"), "00971506380825");
+  });
+  await test('"0091" → India sample 00919876543210', () => {
+    assert.equal(sampleNumberForName("0091"), "00919876543210");
+  });
+  await test('"00880" → Bangladesh sample 008801812345678', () => {
+    assert.equal(sampleNumberForName("00880"), "008801812345678");
+  });
+  await test('"0086" → China sample 008613800138000', () => {
+    assert.equal(sampleNumberForName("0086"), "008613800138000");
+  });
+  await test('"+44" normalizes to 0044 UK sample', () => {
+    assert.equal(sampleNumberForName("+44"), "00447911123456");
+  });
+  await test('"1" (bare US) → 0012125551234', () => {
+    assert.equal(sampleNumberForName("1"), "0012125551234");
+  });
+  await test("unknown code falls back to generic subscriber", () => {
+    assert.equal(sampleNumberForName("00999"), "0099912345678");
+  });
+  await test("non-numeric name falls back to 1234567890", () => {
+    assert.equal(sampleNumberForName("Sample Number Strip"), "1234567890");
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
 // Run all suites
 // ═══════════════════════════════════════════════════════════
 
@@ -105,6 +137,7 @@ async function main() {
 
   await suitePrefixExpansion();
   await suiteBuiltPatternBehaviour();
+  await suiteSampleNumbers();
 
   console.log(`\n── Results ──`);
   console.log(`  Passed: ${passed}`);

@@ -5,7 +5,7 @@ import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
 import TranslationModal from "@/components/translation-modal";
 import EntityMultiSelect from "@/components/entity-multiselect";
-import { matchPatternForName, matchPrefixesForName } from "@/lib/number-match";
+import { matchPatternForName, sampleNumberForName } from "@/lib/number-match";
 
 interface NumberRule {
   ruleId: number | null;
@@ -121,12 +121,9 @@ export default function NumberTranslationPage() {
     mcc: "", mnc: "",
   });
 
-  // Build a realistic sample destination from a rule's name, e.g. "00971" →
-  // "0097112345678", so "strip 5 + add 0" previews as 012345678.
-  const sampleForRuleName = (name: string): string => {
-    const prefixes = matchPrefixesForName(name);
-    return prefixes ? prefixes[0] + "12345678" : "1234567890";
-  };
+  // Build a country-specific sample destination from a rule's name, e.g.
+  // "00971" → "00971506380825", so "strip 5 + add 0" previews as 0506380825.
+  const sampleForRuleName = (name: string): string => sampleNumberForName(name);
 
   const openAdd = () => {
     setDraft(newDraft());
