@@ -11,7 +11,7 @@
  */
 import { tenantQuery } from "@/lib/tenant-schema";
 import { lookupMccMnc } from "@/lib/mcc-lookup";
-import { buildRegex, isSafeRegex, convertBackrefs, determineTon, determineNpi } from "@/lib/regex-utils";
+import { buildRegex, isSafeRegex, convertBackrefs, determineTon, determineNpi, normalizeUnicodeDigits } from "@/lib/regex-utils";
 
 type TargetField = "SENDER" | "DESTINATION" | "BODY" | "SRC_TON" | "DST_TON" | "SRC_NPI" | "DST_NPI";
 
@@ -378,12 +378,17 @@ export async function applyEntityTranslations(
   dstNpi: number;
   appliedNames: string[];
 }> {
-  const profiles = await loadProfiles(schemaName, entityType, entityId, destination, includeGlobal);
+  // Normalize Unicode digits in the number fields to ASCII (e.g. "٠١٢٣" → "0123")
+  // before any matching — SMPP routing and TON/NPI derivation expect ASCII digits.
+  const normSender = normalizeUnicodeDigits(sender);
+  const normDest = normalizeUnicodeDigits(destination);
+
+  const profiles = await loadProfiles(schemaName, entityType, entityId, normDest, includeGlobal);
   let state: MessageState = {
-    sender,
-    destination,
+    sender: normSender,
+    destination: normDest,
     content,
-    ...initialTonNpi(sender, destination),
+    ...initialTonNpi(normSender, normDest),
   };
   const appliedNames: string[] = [];
 

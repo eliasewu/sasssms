@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { convertBackrefs, buildRegex, determineTon, determineNpi } from "@/lib/regex-utils";
+import { convertBackrefs, buildRegex, determineTon, determineNpi, normalizeUnicodeDigits } from "@/lib/regex-utils";
 import { normalizeTargetField } from "@/lib/translation-engine";
 
 // ── Backreference conversion (\1 → $1) ──
@@ -44,6 +44,15 @@ assert.equal(normalizeTargetField("DST_NUMBER_NPI"), "DST_NPI");
 assert.equal(normalizeTargetField("SENDER"), "SENDER", "legacy SENDER preserved");
 assert.equal(normalizeTargetField("BODY"), "BODY", "legacy BODY preserved");
 assert.equal(normalizeTargetField("DESTINATION"), "DESTINATION", "legacy DESTINATION preserved");
+
+// ── Unicode digit normalization ──
+assert.equal(normalizeUnicodeDigits("٠١٢٣٤٥٦٧٨٩"), "0123456789", "Arabic-Indic digits");
+assert.equal(normalizeUnicodeDigits("۰۱۲۳۴۵۶۷۸۹"), "0123456789", "Persian digits");
+assert.equal(normalizeUnicodeDigits("०१२३४५६७८९"), "0123456789", "Devanagari digits");
+assert.equal(normalizeUnicodeDigits("０１２３４５６７８９"), "0123456789", "Fullwidth digits");
+assert.equal(normalizeUnicodeDigits("+880١٦١2345678"), "+8801612345678", "mixed ASCII + Arabic-Indic");
+assert.equal(normalizeUnicodeDigits("+8801612345678"), "+8801612345678", "ASCII unchanged");
+assert.equal(normalizeUnicodeDigits(""), "", "empty string");
 
 // ── TON/NPI helpers ──
 assert.equal(determineTon("+8801612345678"), 1, "international → TON 1");
