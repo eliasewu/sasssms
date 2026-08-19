@@ -46,7 +46,7 @@ export default function ContentTranslationPage() {
   const [previewResult, setPreviewResult] = useState<string | null>(null);
   const [extractedOtp, setExtractedOtp] = useState<string | null>(null);
 
-  const sampleContent = "Your OTP code is 252525. Valid for 5 min.";
+  const [sampleContent, setSampleContent] = useState("Your OTP code is 252525. Valid for 5 min.");
 
   const loadRules = useCallback(async (loadedClients: ClientSupplier[], loadedSuppliers: ClientSupplier[]) => {
     try {
@@ -457,6 +457,14 @@ export default function ContentTranslationPage() {
                 placeholder="(\d{6})"
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-teal-500 focus:outline-none bg-white" />
             )}
+          </div>
+
+          <div className="mt-4">
+            <label className="text-xs font-medium text-slate-600 mb-1 block">Test Content</label>
+            <input value={sampleContent} onChange={e => { setSampleContent(e.target.value); setPreviewResult(null); setExtractedOtp(null); }}
+              placeholder="Paste the message to test the match &amp; replace..."
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-teal-500 focus:outline-none bg-white" />
+            <p className="text-[10px] text-slate-400 mt-1">Preview and Test run against this text (not a hardcoded sample).</p>
           </div>
 
           <div className="mt-4 flex items-center gap-2">

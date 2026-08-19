@@ -48,7 +48,7 @@ export default function OtpExtractPage() {
   const [draft, setDraft] = useState<OtpExtractRule | null>(null);
   const [previewResult, setPreviewResult] = useState<string | null>(null);
 
-  const sampleMessage = "Your OTP code is 252525. Valid for 5 min.";
+  const [sampleMessage, setSampleMessage] = useState("Your OTP code is 252525. Valid for 5 min.");
 
   const loadRules = useCallback(async (loadedSuppliers: ClientSupplier[]) => {
     try {
@@ -449,6 +449,14 @@ export default function OtpExtractPage() {
                 <p className="text-[10px] text-slate-500 mt-1">Use <code className="bg-blue-100 px-1 rounded">{"{otp}"}</code> as the OTP placeholder.</p>
               </div>
             </div>
+          </div>
+
+          <div className="mt-4">
+            <label className="text-xs font-medium text-slate-600 mb-1 block">Test Message</label>
+            <input value={sampleMessage} onChange={e => { setSampleMessage(e.target.value); setPreviewResult(null); }}
+              placeholder="Paste the message to test OTP extraction..."
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white" />
+            <p className="text-[10px] text-slate-400 mt-1">Preview and Test extract from this text (not a hardcoded sample).</p>
           </div>
 
           <div className="mt-4 flex items-center gap-2">
