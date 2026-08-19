@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useMccMnc } from "../layout";
 import Spinner from "../spinner";
 import { buildRegex } from "@/lib/regex-utils";
+import { autoDetectOtp } from "@/lib/otp-detect";
 import TranslationModal from "@/components/translation-modal";
 import EntityMultiSelect from "@/components/entity-multiselect";
 
@@ -242,7 +243,10 @@ export default function OtpExtractPage() {
       const m = content.match(regex);
       if (m) return m[draft!.otpGroupIndex] || m[1] || m[0];
     } catch {}
-    return null;
+    // Fall back to smart auto-detection so the OTP is extracted from any
+    // content, even when the custom regex doesn't exactly match (e.g.
+    // "Your code is (\d+)" vs "Your OTP code is 252525").
+    return autoDetectOtp(content);
   };
 
   const runPreview = () => {

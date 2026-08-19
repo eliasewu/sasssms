@@ -277,14 +277,20 @@ async function applyProfile(
     }
   }
 
-  // Normal replacement (supports $1, $2 capture groups)
-  let newValue = input.replace(regex, replacement);
+  // ── {{OTP}} / {code} rewrite templates ──
+  // When the replacement contains {{OTP}} or {code}, the match pattern is a
+  // *trigger* (e.g. "facebook|FB|OTP"): the ENTIRE content is rewritten to the
+  // template, then the real OTP (extracted from the original content) is
+  // substituted in. A plain regex substitution would only swap the matched
+  // keyword and leave the rest of the original message behind (garbled output
+  // like "Your <template> code is 252525…").
+  const isRewriteTemplate = replacement.includes("{{OTP}}") || replacement.includes("{code}");
 
-  // ── {{OTP}} / {code} placeholder replacement ──
-  // If the template/replacement contains {{OTP}} or {code},
-  // extract OTP digits from the original content and substitute
-  // them into the result so the final message has the real OTP.
-  if (newValue.includes("{{OTP}}") || newValue.includes("{code}")) {
+  // Normal replacement (supports $1, $2 capture groups). Rewrite templates get
+  // the full-message rewrite instead of a keyword substitution.
+  let newValue = isRewriteTemplate ? replacement : input.replace(regex, replacement);
+
+  if (isRewriteTemplate) {
     let otp: string | null = null;
     if (otpCustomRegex) {
       try {
@@ -294,7 +300,7 @@ async function applyProfile(
         // invalid custom regex — ignore
       }
     }
-    if (!otp && !otpCustomRegex) {
+    if (!otp) {
       const m = content.match(buildRegex("\\b(\\d{" + otpMinLength + "," + otpMaxLength + "})\\b"));
       if (m) otp = m[1] || null;
     }

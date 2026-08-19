@@ -170,9 +170,11 @@ export default function ContentTranslationPage() {
       try {
         const regex = buildRegex(customRegex);
         const m = content.match(regex);
-        return m ? (m[1] || m[0]) : null;
+        if (m) return m[1] || m[0];
       } catch { /* fall through */ }
     }
+    // Fall back to length-based extraction when no custom regex, or when the
+    // custom regex didn't match — so the OTP is found from any content.
     const regex = buildRegex(`\\b(\\d{${minLen},${maxLen}})\\b`);
     const m = content.match(regex);
     return m ? m[1] : null;
@@ -180,9 +182,16 @@ export default function ContentTranslationPage() {
 
   const previewTransform = (content: string, match: string, replace: string, minOtp: number, maxOtp: number, customRegex?: string): string => {
     try {
-      let result = content.replace(buildRegex(match, "m"), replace);
+      const regex = buildRegex(match, "m");
       const otp = extractOtpWithCustom(content, customRegex || "", minOtp, maxOtp);
-      if (otp) result = result.replace(/\{\{OTP\}\}/g, otp);
+      // When the replacement is a rewrite template ({{OTP}}/{code}), the match
+      // pattern is a trigger: rewrite the ENTIRE content instead of swapping
+      // just the matched keyword, then fill in the real OTP.
+      const isRewrite = replace.includes("{{OTP}}") || replace.includes("{code}");
+      let result = isRewrite
+        ? (regex.test(content) ? replace : content)
+        : content.replace(regex, replace);
+      if (otp) result = result.replace(/\{\{OTP\}\}/g, otp).replace(/\{code\}/g, otp);
       return result;
     } catch { return content; }
   };
