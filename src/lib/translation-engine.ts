@@ -4,7 +4,7 @@
  * in FIXED or RANDOM mode at client-level and supplier-level.
  */
 import { tenantQuery } from "@/lib/tenant-schema";
-import { batchEnrichMccMnc } from "@/lib/rates";
+import { lookupMccMnc } from "@/lib/mcc-lookup";
 import { buildRegex, isSafeRegex } from "@/lib/regex-utils";
 
 interface TranslationProfile {
@@ -93,13 +93,13 @@ async function loadProfiles(
   const hasMccMncProfiles = transformationProfiles.some(p => p.mcc || p.mnc);
   if (!hasMccMncProfiles) return transformationProfiles;
 
-  // Resolve destination's MCC/MNC
+  // Resolve destination's MCC/MNC (actual operator MNC, not a per-MCC
+  // representative — RANDOM SID / RANDOM CONTENT map SIDs per operator).
   let destMcc: string | null = null;
   let destMnc: string | null = null;
   try {
-    const enriched = await batchEnrichMccMnc([destination]);
-    const entry = enriched.get(destination);
-    if (entry) {
+    const entry = await lookupMccMnc(destination);
+    if (entry && entry.mcc) {
       destMcc = entry.mcc;
       destMnc = entry.mnc || null;
     }
@@ -108,7 +108,7 @@ async function loadProfiles(
   }
 
   // Normalize MNC to 3 digits for comparison (profiles may have 2-digit MNC,
-  // while batchEnrichMccMnc returns 3-digit from mcc_mnc_database).
+  // while lookupMccMnc returns the operator MNC from mcc_mnc_prefix_map).
   // Wildcard "*" means "any MNC for this MCC".
   const norm = (mnc: string | null): string | null => {
     if (!mnc) return mnc;
@@ -202,9 +202,8 @@ async function applyProfile(
     // Derive mccmnc filter from destination for per-MCC/MNC pool item selection
     let mccmncFilter: string | null | undefined = undefined;
     try {
-      const enriched = await batchEnrichMccMnc([destination]);
-      const entry = enriched.get(destination);
-      if (entry) {
+      const entry = await lookupMccMnc(destination);
+      if (entry && entry.mcc) {
         mccmncFilter = entry.mcc + (entry.mnc || "").padStart(3, "0");
       }
     } catch { /* skip — use all pool items */ }
